@@ -1,0 +1,60 @@
+"""Authentication router."""
+
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from sqlalchemy.orm import Session
+
+from core.database import get_db
+from rate_limit import limiter
+from auth.schemas import LoginRequest, TokenResponse, RefreshRequest
+from auth.service import AuthService
+
+router = APIRouter(
+    prefix="/auth",
+    tags=["Authentication"],
+)
+
+@router.post("/login", response_model=TokenResponse, status_code=status.HTTP_200_OK)
+@limiter.limit("5/minute")
+async def login(
+    request: Request,
+    data: LoginRequest,
+    db: Session = Depends(get_db)
+):
+    """Authenticate a user and return access/refresh tokens."""
+    tokens = AuthService.authenticate_user(data.username, data.password, db)
+    if not tokens:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password",
+        )
+    return tokens
+
+@router.post("/refresh", response_model=TokenResponse, status_code=status.HTTP_200_OK)
+async def refresh_token(
+    request: Request,
+    data: RefreshRequest,
+    db: Session = Depends(get_db)
+):
+    """Refresh an access token using a valid refresh token."""
+    tokens = AuthService.refresh_access_token(data.refresh_token, db)
+    if not tokens:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired refresh token",
+        )
+    return tokens
+
+@router.post("/logout", status_code=status.HTTP_200_OK)
+async def logout(
+    request: Request,
+    data: RefreshRequest,
+    db: Session = Depends(get_db)
+):
+    """Invalidate a refresh token (logout)."""
+    success = AuthService.blacklist_token(data.refresh_token, db)
+    if not success:
+         raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Token already invalidated or invalid",
+        )
+    return {"detail": "Successfully logged out"}

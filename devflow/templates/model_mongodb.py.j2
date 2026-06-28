@@ -1,0 +1,59 @@
+"""
+models/{{ snake_name }}.py
+
+Beanie Document model for {{ model_name }} (MongoDB).
+"""
+
+from __future__ import annotations
+
+import uuid
+from datetime import datetime, timezone
+{% if needs_optional %}
+from typing import Optional
+{% endif %}
+
+from beanie import Document
+from pydantic import Field
+
+
+class {{ model_name }}(Document):
+    """
+    MongoDB document model for {{ model_name }}.
+
+    Stored in the '{{ table_name }}' collection.
+    """
+
+    # Public identifier — UUID exposed externally, internal _id stays private
+    uuid: str = Field(default_factory=lambda: str(uuid.uuid4()))
+
+    # ── Business fields ───────────────────────────────────────────────────────
+{% for field in fields %}
+{% if field.optional %}
+    {{ field.name }}: Optional[{{ field.python_type.replace("Optional[", "").rstrip("]") }}] = None
+{% elif field.python_type == "datetime" %}
+    {{ field.name }}: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+{% elif field.python_type == "str" %}
+    {{ field.name }}: str = Field(..., max_length=255)
+{% elif field.python_type == "int" %}
+    {{ field.name }}: int = Field(..., ge=0)
+{% elif field.python_type == "float" %}
+    {{ field.name }}: float = Field(..., ge=0.0)
+{% else %}
+    {{ field.name }}: {{ field.python_type }}
+{% endif %}
+{% endfor %}
+
+    # ── Timestamps ────────────────────────────────────────────────────────────
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    class Settings:
+        """Beanie settings for this document."""
+
+        name = "{{ table_name }}"   # MongoDB collection name
+        use_revision = False
+
+    class Config:
+        """Pydantic config."""
+
+        populate_by_name = True

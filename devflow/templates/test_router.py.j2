@@ -1,0 +1,109 @@
+"""Router tests for {{ model_name }}."""
+
+import pytest
+from fastapi.testclient import TestClient
+
+def test_create_{{ snake_name }}(client: TestClient):
+    payload = {
+        {% for field in fields %}
+          {% if field.name == 'password' %}
+            "password": "SecurePassword123!",
+          {% elif field.name == 'email' %}
+            "email": "test@example.com",
+          {% elif field.name == 'phone' %}
+            "phone": "+1234567890",
+          {% elif field.name == 'username' %}
+            "username": "user123",
+          {% elif field.python_type == 'str' %}
+            "{{ field.name }}": "test_string",
+          {% elif field.python_type == 'int' %}
+            "{{ field.name }}": 1,
+          {% elif field.python_type == 'float' %}
+            "{{ field.name }}": 1.0,
+          {% elif field.python_type == 'bool' %}
+            "{{ field.name }}": True,
+          {% else %}
+            "{{ field.name }}": None,
+          {% endif %}
+        {% endfor %}
+    }
+    response = client.post("/{{ snake_name }}s/", json=payload)
+    assert response.status_code == 201
+    data = response.json()
+    assert "uuid" in data
+    {% for field in fields %}
+      {% if field.name != 'password' and not field.optional %}
+        assert "{{ field.name }}" in data
+      {% endif %}
+    {% endfor %}
+
+def test_list_{{ snake_name }}s(client: TestClient):
+    response = client.get("/{{ snake_name }}s/")
+    assert response.status_code == 200
+    assert isinstance(response.json(), list)
+
+def test_get_{{ snake_name }}_by_uuid_not_found(client: TestClient):
+    response = client.get("/{{ snake_name }}s/nonexistent-uuid-123")
+    assert response.status_code == 404
+
+def test_sql_injection_in_query_param(client: TestClient):
+    # SQL injection attempt in query param
+    response = client.get("/{{ snake_name }}s/?skip=0' OR '1'='1")
+    # Pydantic parsing / fast API rejects non-integer inputs for query param limit/skip with 422
+    assert response.status_code == 422
+
+def test_xss_in_body(client: TestClient):
+    payload = {
+        {% for field in fields %}
+          {% if field.name == 'username' or field.name == 'email' %}
+            "{{ field.name }}": "<script>alert('xss')</script>",
+          {% elif field.python_type == 'str' %}
+            "{{ field.name }}": "test_string",
+          {% elif field.python_type == 'int' %}
+            "{{ field.name }}": 1,
+          {% elif field.python_type == 'float' %}
+            "{{ field.name }}": 1.0,
+          {% elif field.python_type == 'bool' %}
+            "{{ field.name }}": True,
+          {% endif %}
+        {% endfor %}
+    }
+    response = client.post("/{{ snake_name }}s/", json=payload)
+    # The validation pattern (regex) rejects username/email patterns containing special script tags
+    assert response.status_code in (400, 422)
+
+def test_rate_limit_exceeded(client: TestClient):
+    # We trigger rate limiter by calling list 61 times rapidly
+    # The slowapi default rate limit is configured to 60/minute for GET
+    for _ in range(60):
+        client.get("/{{ snake_name }}s/")
+    # 61st request should be rate limited
+    response = client.get("/{{ snake_name }}s/")
+    assert response.status_code == 429
+
+def test_password_not_in_response(client: TestClient):
+    # If the model has a password, verify it is never returned in response json
+    payload = {
+        {% for field in fields %}
+          {% if field.name == 'password' %}
+            "password": "Password123!",
+          {% elif field.name == 'email' %}
+            "email": "passwordtest@example.com",
+          {% elif field.name == 'phone' %}
+            "phone": "+1234567890",
+          {% elif field.name == 'username' %}
+            "username": "pwdtest",
+          {% elif field.python_type == 'str' %}
+            "{{ field.name }}": "test",
+          {% elif field.python_type == 'int' %}
+            "{{ field.name }}": 1,
+          {% elif field.python_type == 'float' %}
+            "{{ field.name }}": 1.0,
+          {% elif field.python_type == 'bool' %}
+            "{{ field.name }}": True,
+          {% endif %}
+        {% endfor %}
+    }
+    response = client.post("/{{ snake_name }}s/", json=payload)
+    assert response.status_code == 201
+    assert "password" not in response.json()

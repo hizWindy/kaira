@@ -1,0 +1,83 @@
+"""FastAPI application entry point."""
+
+from __future__ import annotations
+
+from contextlib import asynccontextmanager
+from fastapi import FastAPI
+
+from config.settings import settings
+from core.logger import logger
+from middleware.security import register_security_middleware, register_exception_handlers
+from rate_limit import limiter
+
+# Lifespan for application setup and teardown
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    logger.info("Starting up FastAPI application...")
+    
+    {% if db_type == "mongodb" %}
+    # Initialize Beanie and MongoDB connection
+    # Handlers for model import are done dynamically by generator
+    from core.database import init_db
+    # We will gather document models here
+    from beanie import Document
+    import importlib
+    import pkgutil
+    import models
+    
+    document_models = []
+    for _, module_name, _ in pkgutil.walk_packages(models.__path__, models.__name__ + "."):
+        mod = importlib.import_module(module_name)
+        for name in dir(mod):
+            item = getattr(mod, name)
+            if isinstance(item, type) and issubclass(item, Document) and item is not Document:
+                document_models.append(item)
+                
+    logger.info(f"Registering MongoDB Beanie models: {[m.__name__ for m in document_models]}")
+    await init_db(document_models)
+    {% else %}
+    # Relational database setup (SQLite/PostgreSQL/MySQL)
+    # Automatically create tables in development environment if needed
+    if settings.APP_ENV == "development":
+        from core.database import create_tables
+        logger.info("Ensuring database tables are created...")
+        await create_tables()
+    {% endif %}
+    
+    yield
+    
+    # Shutdown
+    logger.info("Shutting down FastAPI application...")
+    {% if db_type == "mongodb" %}
+    from core.database import close_db
+    await close_db()
+    {% endif %}
+
+
+app = FastAPI(
+    title="{{ project_name }}",
+    description="Auto-generated Secure FastAPI application.",
+    version="1.0.0",
+    docs_url=None if settings.APP_ENV == "production" else "/docs",
+    redoc_url=None if settings.APP_ENV == "production" else "/redoc",
+    lifespan=lifespan,
+)
+
+# Set rate limiter state
+app.state.limiter = limiter
+
+# Register security middlewares & exception handlers
+register_security_middleware(app)
+register_exception_handlers(app)
+
+# ── API Prefix & Routing ──────────────────────────────────────────────────────
+API_VERSION_PREFIX = "/api/{{ api_version }}"
+
+# Routers will be registered by the code generator here:
+# [ROUTER_REGISTRATION]
+
+@app.get("/health", tags=["HealthCheck"])
+def health_check() -> dict:
+    """Return API health status."""
+    return {"status": "ok", "version": app.version}

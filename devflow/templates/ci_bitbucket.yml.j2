@@ -1,0 +1,62 @@
+image: python:3.11-slim
+
+pipelines:
+  default:
+    - step:
+        name: Test
+        caches:
+          - pip
+        script:
+          - pip install --upgrade pip
+          - pip install -r requirements.txt
+          - pip install pytest pytest-cov ruff mypy
+          - ruff check .
+          - mypy .
+          - pytest --cov --cov-report=term-missing --cov-fail-under=80
+
+    - step:
+        name: Security
+        caches:
+          - pip
+        script:
+          - pip install --upgrade pip
+          - pip install -r requirements.txt
+          - pip install pip-audit bandit
+          - pip-audit
+          - bandit -r . -ll
+
+  branches:
+    main:
+      - step:
+          name: Test
+          caches:
+            - pip
+          script:
+            - pip install --upgrade pip
+            - pip install -r requirements.txt
+            - pip install pytest pytest-cov ruff mypy
+            - ruff check .
+            - mypy .
+            - pytest --cov --cov-report=term-missing --cov-fail-under=80
+
+      - step:
+          name: Security
+          caches:
+            - pip
+          script:
+            - pip install --upgrade pip
+            - pip install -r requirements.txt
+            - pip install pip-audit bandit
+            - pip-audit
+            - bandit -r . -ll
+
+      - step:
+          name: Deploy
+          deployment: production
+          services:
+            - docker
+          script:
+            - docker login -u "$DOCKER_USERNAME" -p "$DOCKER_PASSWORD" "$DOCKER_REGISTRY"
+            - docker build -t "$DOCKER_REGISTRY/$DOCKER_IMAGE_NAME:latest" -t "$DOCKER_REGISTRY/$DOCKER_IMAGE_NAME:$BITBUCKET_COMMIT" .
+            - docker push "$DOCKER_REGISTRY/$DOCKER_IMAGE_NAME:latest"
+            - docker push "$DOCKER_REGISTRY/$DOCKER_IMAGE_NAME:$BITBUCKET_COMMIT"

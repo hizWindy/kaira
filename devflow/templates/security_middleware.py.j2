@@ -1,0 +1,103 @@
+"""
+middleware/security.py
+
+Security middleware for {{ project_name }}.
+Auto-registered in main.py — provides:
+  - CORS protection
+  - Security response headers
+  - Rate limiting (slowapi)
+  - Global exception handler (no stack-trace leakage)
+  - Request/response logging via loguru
+"""
+
+from __future__ import annotations
+
+import time
+import uuid as _uuid
+
+from fastapi import FastAPI, Request, status
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from slowapi.errors import RateLimitExceeded
+
+from config.settings import settings
+from core.logger import logger
+
+
+def register_security_middleware(app: FastAPI) -> None:
+    """
+    Register all security middleware on the FastAPI application.
+
+    Args:
+        app: The FastAPI application instance.
+    """
+
+    # ── CORS ─────────────────────────────────────────────────────────────────
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.ALLOWED_ORIGINS,
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
+        expose_headers=["X-Request-ID"],
+    )
+
+    # ── Security headers ──────────────────────────────────────────────────────
+    @app.middleware("http")
+    async def add_security_headers(request: Request, call_next):
+        """Inject OWASP-recommended security response headers on every response."""
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = "geolocation=(), microphone=()"
+        response.headers["Strict-Transport-Security"] = (
+            "max-age=63072000; includeSubDomains; preload"
+        )
+        return response
+
+    # ── Request logging ───────────────────────────────────────────────────────
+    @app.middleware("http")
+    async def log_requests(request: Request, call_next):
+        """Log every incoming request with a unique request ID and duration."""
+        request_id = str(_uuid.uuid4())[:8]
+        start = time.perf_counter()
+        logger.info(
+            f"→ {request.method} {request.url.path} "
+            f"[req_id={request_id}] [client={request.client.host if request.client else 'unknown'}]"
+        )
+        response = await call_next(request)
+        duration_ms = (time.perf_counter() - start) * 1000
+        logger.info(
+            f"← {request.method} {request.url.path} "
+            f"[req_id={request_id}] [status={response.status_code}] [{duration_ms:.1f}ms]"
+        )
+        return response
+
+
+def register_exception_handlers(app: FastAPI) -> None:
+    """
+    Register global exception handlers to prevent stack-trace leakage.
+
+    Args:
+        app: The FastAPI application instance.
+    """
+
+    @app.exception_handler(RateLimitExceeded)
+    async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
+        """Return 429 with a safe message when rate limit is exceeded."""
+        logger.warning(f"Rate limit exceeded: {request.url.path} [client={request.client.host if request.client else 'unknown'}]")
+        return JSONResponse(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            content={"detail": "Too many requests. Please slow down."},
+        )
+
+    @app.exception_handler(Exception)
+    async def generic_exception_handler(request: Request, exc: Exception):
+        """Catch-all handler — logs full traceback internally, returns safe message."""
+        logger.error(f"Unhandled exception on {request.method} {request.url.path}: {exc!r}")
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"detail": "An internal error occurred. Please try again later."},
+        )

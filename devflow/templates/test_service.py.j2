@@ -1,0 +1,55 @@
+"""Service layer unit tests for {{ model_name }}Service."""
+
+import pytest
+from unittest.mock import MagicMock
+from fastapi import HTTPException
+from {{ services_dir }}.{{ snake_name }}_service import {{ model_name }}Service
+from {{ schemas_dir }}.{{ snake_name }}_schema import {{ model_name }}Create, {{ model_name }}Update
+
+def test_create_{{ snake_name }}_service():
+    db_mock = MagicMock()
+    service = {{ model_name }}Service(db_mock)
+    
+    payload = {{ model_name }}Create(
+        {% for field in fields %}
+          {% if field.name == 'password' %}
+            password="SecurePassword123!",
+          {% elif field.name == 'email' %}
+            email="test@example.com",
+          {% elif field.name == 'phone' %}
+            phone="+1234567890",
+          {% elif field.name == 'username' %}
+            username="user123",
+          {% elif field.python_type == 'str' %}
+            {{ field.name }}="test_string",
+          {% elif field.python_type == 'int' %}
+            {{ field.name }}=1,
+          {% elif field.python_type == 'float' %}
+            {{ field.name }}=1.0,
+          {% elif field.python_type == 'bool' %}
+            {{ field.name }}=True,
+          {% endif %}
+        {% endfor %}
+    )
+    
+    # Mock repo response
+    repo_mock = service._repo
+    repo_mock.create = MagicMock(return_value=MagicMock(
+        uuid="uuid-123",
+        created_at="2026-01-01",
+        updated_at="2026-01-01",
+        **payload.model_dump()
+    ))
+    
+    res = service.create(payload)
+    assert res.uuid == "uuid-123"
+    repo_mock.create.assert_called_once()
+
+def test_get_by_uuid_not_found_raises():
+    db_mock = MagicMock()
+    service = {{ model_name }}Service(db_mock)
+    service._repo.get_by_uuid = MagicMock(return_value=None)
+    
+    with pytest.raises(HTTPException) as exc:
+        service.get_by_uuid("invalid-uuid")
+    assert exc.value.status_code == 404

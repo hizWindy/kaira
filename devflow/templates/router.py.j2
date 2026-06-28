@@ -1,0 +1,173 @@
+"""
+routers/{{ snake_name }}_router.py
+
+FastAPI router for {{ model_name }} endpoints.
+Auto-registered under the versioned API prefix.
+"""
+
+from __future__ import annotations
+
+from fastapi import APIRouter, Depends, Query, Request, status
+from core.logger import logger
+from rate_limit import limiter
+
+{% if db_type == "mongodb" %}
+from {{ schemas_dir }}.{{ snake_name }}_schema import (
+    {{ model_name }}Create,
+    {{ model_name }}Update,
+    {{ model_name }}Response,
+)
+from {{ services_dir }}.{{ snake_name }}_service import {{ model_name }}Service
+{% else %}
+from sqlalchemy.ext.asyncio import AsyncSession
+from core.database import get_db
+from {{ schemas_dir }}.{{ snake_name }}_schema import (
+    {{ model_name }}Create,
+    {{ model_name }}Update,
+    {{ model_name }}Response,
+)
+from {{ services_dir }}.{{ snake_name }}_service import {{ model_name }}Service
+{% endif %}
+{% if has_auth_guard %}
+from auth.dependencies import get_current_user
+{% endif %}
+
+
+router = APIRouter(
+    prefix="/{{ snake_name }}s",
+    tags=["{{ model_name }}"],
+)
+
+
+{% if db_type == "mongodb" %}
+def get_service() -> {{ model_name }}Service:
+    """Provide a {{ model_name }} service instance."""
+    return {{ model_name }}Service()
+{% else %}
+def get_service(db: AsyncSession = Depends(get_db)) -> {{ model_name }}Service:
+    """Provide a {{ model_name }} service instance."""
+    return {{ model_name }}Service(db)
+{% endif %}
+
+
+@router.post(
+    "/",
+    response_model={{ model_name }}Response,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create {{ model_name }}",
+    description="Create a new {{ model_name }} record.",
+)
+@limiter.limit("20/minute")
+async def create_{{ snake_name }}(
+    request: Request,
+    data: {{ model_name }}Create,
+    service: {{ model_name }}Service = Depends(get_service),
+    {% if has_auth_guard %}
+    current_user: dict = Depends(get_current_user),
+    {% endif %}
+) -> {{ model_name }}Response:
+    """Create a new {{ model_name }}."""
+    {% if has_auth_guard %}
+    logger.info(f"REQUEST POST /{{ snake_name }}s by user_id={current_user.get('uuid') or current_user.get('id')}")
+    {% else %}
+    logger.info("REQUEST POST /{{ snake_name }}s")
+    {% endif %}
+    return await service.create(data)
+
+
+@router.get(
+    "/",
+    response_model=list[{{ model_name }}Response],
+    summary="List {{ model_name }}s",
+    description="Retrieve a paginated list of {{ model_name }} records.",
+)
+@limiter.limit("60/minute")
+async def list_{{ snake_name }}s(
+    request: Request,
+    skip: int = Query(default=0, ge=0, description="Records to skip"),
+    limit: int = Query(default=100, ge=1, le=1000, description="Maximum records to return"),
+    service: {{ model_name }}Service = Depends(get_service),
+    {% if has_auth_guard %}
+    current_user: dict = Depends(get_current_user),
+    {% endif %}
+) -> list[{{ model_name }}Response]:
+    """Return a paginated list of {{ model_name }} records."""
+    {% if has_auth_guard %}
+    logger.info(f"REQUEST GET /{{ snake_name }}s by user_id={current_user.get('uuid') or current_user.get('id')}")
+    {% else %}
+    logger.info("REQUEST GET /{{ snake_name }}s")
+    {% endif %}
+    return await service.get_all(skip=skip, limit=limit)
+
+
+@router.get(
+    "/{uuid}",
+    response_model={{ model_name }}Response,
+    summary="Get {{ model_name }}",
+    description="Retrieve a single {{ model_name }} by UUID.",
+)
+@limiter.limit("60/minute")
+async def get_{{ snake_name }}(
+    request: Request,
+    uuid: str,
+    service: {{ model_name }}Service = Depends(get_service),
+    {% if has_auth_guard %}
+    current_user: dict = Depends(get_current_user),
+    {% endif %}
+) -> {{ model_name }}Response:
+    """Return a single {{ model_name }} by UUID."""
+    {% if has_auth_guard %}
+    logger.info(f"REQUEST GET /{{ snake_name }}s/{uuid} by user_id={current_user.get('uuid') or current_user.get('id')}")
+    {% else %}
+    logger.info(f"REQUEST GET /{{ snake_name }}s/{uuid}")
+    {% endif %}
+    return await service.get_by_uuid(uuid)
+
+
+@router.put(
+    "/{uuid}",
+    response_model={{ model_name }}Response,
+    summary="Update {{ model_name }}",
+    description="Update an existing {{ model_name }} record by UUID.",
+)
+@limiter.limit("20/minute")
+async def update_{{ snake_name }}(
+    request: Request,
+    uuid: str,
+    data: {{ model_name }}Update,
+    service: {{ model_name }}Service = Depends(get_service),
+    {% if has_auth_guard %}
+    current_user: dict = Depends(get_current_user),
+    {% endif %}
+) -> {{ model_name }}Response:
+    """Update an existing {{ model_name }} by UUID."""
+    {% if has_auth_guard %}
+    logger.info(f"REQUEST PUT /{{ snake_name }}s/{uuid} by user_id={current_user.get('uuid') or current_user.get('id')}")
+    {% else %}
+    logger.info(f"REQUEST PUT /{{ snake_name }}s/{uuid}")
+    {% endif %}
+    return await service.update(uuid, data)
+
+
+@router.delete(
+    "/{uuid}",
+    summary="Delete {{ model_name }}",
+    description="Delete a {{ model_name }} record by UUID.",
+    status_code=status.HTTP_200_OK,
+)
+@limiter.limit("20/minute")
+async def delete_{{ snake_name }}(
+    request: Request,
+    uuid: str,
+    service: {{ model_name }}Service = Depends(get_service),
+    {% if has_auth_guard %}
+    current_user: dict = Depends(get_current_user),
+    {% endif %}
+) -> dict:
+    """Delete a {{ model_name }} by UUID."""
+    {% if has_auth_guard %}
+    logger.info(f"REQUEST DELETE /{{ snake_name }}s/{uuid} by user_id={current_user.get('uuid') or current_user.get('id')}")
+    {% else %}
+    logger.info(f"REQUEST DELETE /{{ snake_name }}s/{uuid}")
+    {% endif %}
+    return await service.delete(uuid)

@@ -1,0 +1,137 @@
+"""
+repositories/{{ snake_name }}_repository.py
+
+Async SQLAlchemy 2.0 repository for {{ model_name }}.
+All queries use parameterised ORM expressions — no raw SQL.
+"""
+
+from __future__ import annotations
+
+from typing import Optional
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from {{ models_dir }}.{{ snake_name }} import {{ model_name }}
+from {{ schemas_dir }}.{{ snake_name }}_schema import {{ model_name }}Create, {{ model_name }}Update
+
+
+class {{ model_name }}Repository:
+    """
+    Data-access layer for :class:`{{ model_name }}` using async SQLAlchemy 2.0.
+
+    Args:
+        db: An active :class:`AsyncSession` instance (injected by FastAPI).
+    """
+
+    def __init__(self, db: AsyncSession) -> None:
+        self.db = db
+        self._db = db
+
+    # ── Create ───────────────────────────────────────────────────────────────
+
+    async def create(self, payload: {{ model_name }}Create) -> {{ model_name }}:
+        """
+        Persist a new {{ model_name }} record.
+
+        Args:
+            payload: Validated creation data.
+
+        Returns:
+            The newly created {{ model_name }} ORM instance.
+        """
+        obj = {{ model_name }}(**payload.model_dump(exclude_unset=False))
+        self._db.add(obj)
+        await self._db.commit()
+        await self._db.refresh(obj)
+        return obj
+
+    # ── Read ─────────────────────────────────────────────────────────────────
+
+    async def get_by_id(self, record_id: int) -> Optional[{{ model_name }}]:
+        """
+        Retrieve a {{ model_name }} by its internal integer primary key.
+
+        Args:
+            record_id: The primary key value.
+
+        Returns:
+            {{ model_name }} instance or None if not found.
+        """
+        result = await self._db.execute(
+            select({{ model_name }}).where({{ model_name }}.id == record_id)
+        )
+        return result.scalar_one_or_none()
+
+    async def get_by_uuid(self, uuid_str: str) -> Optional[{{ model_name }}]:
+        """
+        Retrieve a {{ model_name }} by its public UUID.
+
+        Args:
+            uuid_str: The UUID string to look up.
+
+        Returns:
+            {{ model_name }} instance or None if not found.
+        """
+        result = await self._db.execute(
+            select({{ model_name }}).where({{ model_name }}.uuid == uuid_str)
+        )
+        return result.scalar_one_or_none()
+
+    async def get_all(self, skip: int = 0, limit: int = 100) -> list[{{ model_name }}]:
+        """
+        Return a paginated list of {{ model_name }} records.
+
+        Args:
+            skip: Number of records to skip (offset).
+            limit: Maximum records to return (capped at 1 000).
+
+        Returns:
+            List of {{ model_name }} instances.
+        """
+        limit = min(limit, 1000)  # Safety cap
+        result = await self._db.execute(
+            select({{ model_name }}).offset(skip).limit(limit)
+        )
+        return list(result.scalars().all())
+
+    # ── Update ───────────────────────────────────────────────────────────────
+
+    async def update(self, uuid_str: str, payload: {{ model_name }}Update) -> Optional[{{ model_name }}]:
+        """
+        Update a {{ model_name }} record identified by UUID.
+
+        Args:
+            uuid_str: UUID of the record to update.
+            payload: Validated update data (partial — only set fields applied).
+
+        Returns:
+            Updated {{ model_name }} instance, or None if not found.
+        """
+        obj = await self.get_by_uuid(uuid_str)
+        if obj is None:
+            return None
+        for key, value in payload.model_dump(exclude_unset=True).items():
+            setattr(obj, key, value)
+        await self._db.commit()
+        await self._db.refresh(obj)
+        return obj
+
+    # ── Delete ───────────────────────────────────────────────────────────────
+
+    async def delete(self, uuid_str: str) -> bool:
+        """
+        Delete a {{ model_name }} record identified by UUID.
+
+        Args:
+            uuid_str: UUID of the record to delete.
+
+        Returns:
+            True if deleted, False if record was not found.
+        """
+        obj = await self.get_by_uuid(uuid_str)
+        if obj is None:
+            return False
+        await self._db.delete(obj)
+        await self._db.commit()
+        return True

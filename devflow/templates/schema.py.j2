@@ -1,0 +1,89 @@
+"""Pydantic v2 schemas for {{ model_name }}."""
+
+from __future__ import annotations
+
+from datetime import datetime
+{% if needs_optional %}
+from typing import Optional
+{% endif %}
+
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class {{ model_name }}Base(BaseModel):
+    """Shared fields for {{ model_name }} schemas."""
+{% if fields %}
+{% for field in fields %}
+  {% if field.name == 'email' %}
+    {{ field.name }}: str = Field(..., max_length=255, pattern=r'^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$')
+  {% elif field.name == 'phone' %}
+    {{ field.name }}: str = Field(..., max_length=20, pattern=r'^\+?[1-9]\d{1,14}$')
+  {% elif field.name == 'password' %}
+    {{ field.name }}: str = Field(..., min_length=8, max_length=128)
+  {% elif field.name == 'username' %}
+    {{ field.name }}: str = Field(..., min_length=3, max_length=50, pattern=r'^[a-zA-Z0-9_]+$')
+  {% elif field.python_type == 'str' %}
+    {{ field.name }}: str = Field(..., max_length=255)
+  {% elif field.python_type == 'Optional[str]' %}
+    {{ field.name }}: Optional[str] = Field(None, max_length=255)
+  {% else %}
+    {{ field.name }}: {{ field.python_type }}
+  {% endif %}
+{% endfor %}
+{% else %}
+    pass
+{% endif %}
+
+
+class {{ model_name }}Create({{ model_name }}Base):
+    """Schema for creating a new {{ model_name }}."""
+
+    pass
+
+
+class {{ model_name }}Update(BaseModel):
+    """Schema for updating an existing {{ model_name }}.
+
+    All fields are optional to support partial updates (PATCH semantics).
+    """
+{% if fields %}
+{% for field in fields %}
+  {% if field.name == 'email' %}
+    {{ field.name }}: Optional[str] = Field(None, max_length=255, pattern=r'^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$')
+  {% elif field.name == 'phone' %}
+    {{ field.name }}: Optional[str] = Field(None, max_length=20, pattern=r'^\+?[1-9]\d{1,14}$')
+  {% elif field.name == 'password' %}
+    {{ field.name }}: Optional[str] = Field(None, min_length=8, max_length=128)
+  {% elif field.name == 'username' %}
+    {{ field.name }}: Optional[str] = Field(None, min_length=3, max_length=50, pattern=r'^[a-zA-Z0-9_]+$')
+  {% elif field.python_type == 'str' or field.python_type == 'Optional[str]' %}
+    {{ field.name }}: Optional[str] = Field(None, max_length=255)
+  {% else %}
+    {{ field.name }}: Optional[{{ field.python_type | replace('Optional[', '') | replace(']', '') }}] = None
+  {% endif %}
+{% endfor %}
+{% else %}
+    pass
+{% endif %}
+
+
+class {{ model_name }}Response(BaseModel):
+    """Schema returned from API endpoints (excludes internal ID and sensitive data)."""
+
+    uuid: str
+{% for field in fields %}
+  {% if field.name != 'password' %}
+    {% if field.python_type == 'str' %}
+    {{ field.name }}: str = Field(..., max_length=255)
+    {% elif field.python_type == 'Optional[str]' %}
+    {{ field.name }}: Optional[str] = Field(None, max_length=255)
+    {% else %}
+    {{ field.name }}: {{ field.python_type }}
+    {% endif %}
+  {% endif %}
+{% endfor %}
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True, str_strip_whitespace=True)
+

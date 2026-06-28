@@ -1,0 +1,92 @@
+"""SQLAlchemy ORM model for {{ model_name }}."""
+
+from __future__ import annotations
+
+from datetime import datetime, timezone
+import uuid
+{% if needs_optional %}
+from typing import Optional
+{% endif %}
+
+from sqlalchemy import (
+    Column,
+    Integer,
+    String,
+    Float,
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Table,
+)
+from sqlalchemy.orm import relationship, Mapped, mapped_column
+from sqlalchemy.sql import func
+
+from core.database import Base
+{% for rel in many_to_many %}
+from {{ models_dir }}.{{ to_snake(rel.target) }}_{{ rel.target | lower }}_association import {{ snake_name }}_{{ to_snake(rel.target) }}_association
+{% endfor %}
+
+
+class {{ model_name }}(Base):
+    """ORM model for the ``{{ table_name }}`` table."""
+
+    __tablename__ = "{{ table_name }}"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    uuid: Mapped[str] = mapped_column(String(36), unique=True, index=True, default=lambda: str(uuid.uuid4()))
+{% for field in fields %}
+{% if field.optional %}
+    {{ field.name }}: Mapped[{{ field.python_type }}] = mapped_column({{ field.sqlalchemy_type }}, nullable=True)
+{% else %}
+    {{ field.name }}: Mapped[{{ field.python_type }}] = mapped_column({{ field.sqlalchemy_type }}, nullable=False)
+{% endif %}
+{% endfor %}
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+{% if one_to_many %}
+
+    # ── One-to-Many relationships ────────────────────────────────────────────
+{% for rel in one_to_many %}
+    {{ to_snake(rel.target) }}s: Mapped[list["{{ rel.target }}"]] = relationship(
+        "{{ rel.target }}",
+        back_populates="{{ snake_name }}",
+{% if rel.cascade %}
+        cascade="{{ rel.cascade }}",
+{% endif %}
+    )
+{% endfor %}
+{% endif %}
+{% if many_to_one %}
+
+    # ── Many-to-One relationships ────────────────────────────────────────────
+{% for rel in many_to_one %}
+    {{ to_snake(rel.target) }}_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("{{ to_snake(rel.target) }}s.id"), nullable=True
+    )
+    {{ to_snake(rel.target) }}: Mapped["{{ rel.target }}"] = relationship(
+        "{{ rel.target }}",
+        back_populates="{{ snake_name }}s",
+    )
+{% endfor %}
+{% endif %}
+{% if many_to_many %}
+
+    # ── Many-to-Many relationships ───────────────────────────────────────────
+{% for rel in many_to_many %}
+    {{ to_snake(rel.target) }}s: Mapped[list["{{ rel.target }}"]] = relationship(
+        "{{ rel.target }}",
+        secondary={{ snake_name }}_{{ to_snake(rel.target) }}_association,
+        back_populates="{{ snake_name }}s",
+    )
+{% endfor %}
+{% endif %}
+
+    def __repr__(self) -> str:
+        return f"<{{ model_name }}(id={self.id})>"

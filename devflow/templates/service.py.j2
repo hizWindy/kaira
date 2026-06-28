@@ -1,0 +1,249 @@
+"""
+services/{{ snake_name }}_service.py
+
+Business logic layer for {{ model_name }} resource.
+Handles all operations between router and repository.
+"""
+
+from __future__ import annotations
+
+from typing import Optional, List
+from fastapi import HTTPException, status
+from core.logger import logger
+
+{% if db_type == "mongodb" %}
+# MongoDB Beanie ODM imports
+from {{ models_dir }}.{{ snake_name }} import {{ model_name }}
+from {{ repositories_dir }}.{{ snake_name }}_repository import {{ model_name }}Repository
+from {{ schemas_dir }}.{{ snake_name }}_schema import {{ model_name }}Create, {{ model_name }}Update, {{ model_name }}Response
+{% else %}
+# Relational DB async SQLAlchemy imports
+from sqlalchemy.ext.asyncio import AsyncSession
+from {{ models_dir }}.{{ snake_name }} import {{ model_name }}
+from {{ repositories_dir }}.{{ snake_name }}_repository import {{ model_name }}Repository
+from {{ schemas_dir }}.{{ snake_name }}_schema import {{ model_name }}Create, {{ model_name }}Update, {{ model_name }}Response
+{% endif %}
+
+class {{ model_name }}Service:
+    """
+    Business logic layer for :class:`{{ model_name }}` operations.
+    
+    Coordinates transactional workflows and exception handling.
+    """
+
+    {% if db_type == "mongodb" %}
+    def __init__(self, db=None) -> None:
+        self._repo = {{ model_name }}Repository()
+        self._db = db
+    {% else %}
+    def __init__(self, db: AsyncSession) -> None:
+        self._repo = {{ model_name }}Repository(db)
+        self._db = db
+    {% endif %}
+
+    # ── Create ───────────────────────────────────────────────────────────────
+
+    async def create(self, data: {{ model_name }}Create) -> {{ model_name }}Response:
+        """
+        Create a new {{ model_name }} record.
+
+        Args:
+            data: Validated creation payload.
+
+        Returns:
+            {{ model_name }}Response: The newly created record.
+            
+        Raises:
+            HTTPException: If creation fails or database error occurs.
+        """
+        # Determine username/identifying attribute for log safety
+        {% set log_val = "data" %}
+        {% for field in fields %}
+          {% if field.name == 'username' or field.name == 'email' or field.name == 'name' %}
+            {% set log_val = "data." + field.name %}
+          {% endif %}
+        {% endfor %}
+        logger.info(f"POST /{{ snake_name }}s → creating {{ snake_name }}: { {{"{}"}} }".format({{ log_val }}))
+        
+        try:
+            # Ensure password hashing on creation
+            {% for field in fields %}
+              {% if field.name == 'password' %}
+            if hasattr(data, 'password') and data.password:
+                import bcrypt
+                salt = bcrypt.gensalt(rounds=12)
+                data.password = bcrypt.hashpw(data.password.encode('utf-8'), salt).decode('utf-8')
+              {% endif %}
+            {% endfor %}
+            
+            obj = await self._repo.create(data)
+            logger.success(f"POST /{{ snake_name }}s → {{ snake_name }} created: uuid={obj.uuid}")
+            return {{ model_name }}Response.model_validate(obj)
+        except Exception as e:
+            logger.error(f"POST /{{ snake_name }}s → failed to create {{ snake_name }}: {e}")
+            raise
+
+    # ── Read ─────────────────────────────────────────────────────────────────
+
+    async def get_by_id(self, record_id: int) -> {{ model_name }}Response:
+        """
+        Retrieve a {{ model_name }} by internal database ID.
+
+        Args:
+            record_id: Internal integer ID of the record.
+
+        Returns:
+            {{ model_name }}Response: The matching record.
+
+        Raises:
+            HTTPException: 404 if the record does not exist.
+        """
+        logger.info(f"GET /{{ snake_name }}s/id/{record_id} → fetching {{ snake_name }}")
+        try:
+            {% if db_type == "mongodb" %}
+            # Beanie has no auto-increment ID by default, fallback to UUID lookup or raise
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Integer lookup is not supported for MongoDB projects. Use UUID."
+            )
+            {% else %}
+            obj = await self._repo.get_by_id(record_id)
+            if obj is None:
+                logger.warning(f"GET /{{ snake_name }}s/id/{record_id} → {{ snake_name }} not found")
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"{{ model_name }} with id={record_id} not found.",
+                )
+            logger.success(f"GET /{{ snake_name }}s/id/{record_id} → {{ snake_name }} found")
+            return {{ model_name }}Response.model_validate(obj)
+            {% endif %}
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"GET /{{ snake_name }}s/id/{record_id} → failed to fetch {{ snake_name }}: {e}")
+            raise
+
+    async def get_by_uuid(self, uuid_str: str) -> {{ model_name }}Response:
+        """
+        Retrieve a {{ model_name }} by public UUID.
+
+        Args:
+            uuid_str: Public UUID of the record.
+
+        Returns:
+            {{ model_name }}Response: The matching record.
+
+        Raises:
+            HTTPException: 404 if the record does not exist.
+        """
+        logger.info(f"GET /{{ snake_name }}s/{uuid_str} → fetching {{ snake_name }}")
+        try:
+            obj = await self._repo.get_by_uuid(uuid_str)
+            if obj is None:
+                logger.warning(f"GET /{{ snake_name }}s/{uuid_str} → {{ snake_name }} not found")
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"{{ model_name }} with uuid={uuid_str} not found.",
+                )
+            logger.success(f"GET /{{ snake_name }}s/{uuid_str} → {{ snake_name }} found")
+            return {{ model_name }}Response.model_validate(obj)
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"GET /{{ snake_name }}s/{uuid_str} → failed to fetch {{ snake_name }}: {e}")
+            raise
+
+    async def get_all(self, skip: int = 0, limit: int = 100) -> list[{{ model_name }}Response]:
+        """
+        Return a paginated list of {{ model_name }} records.
+
+        Args:
+            skip: Number of records to skip (offset).
+            limit: Maximum number of records to return.
+
+        Returns:
+            list[{{ model_name }}Response]: Paginated list of records.
+        """
+        logger.info("GET /{{ snake_name }}s → fetching all {{ snake_name }}s")
+        try:
+            objects = await self._repo.get_all(skip=skip, limit=limit)
+            logger.success(f"GET /{{ snake_name }}s → returned {len(objects)} records")
+            return [{{ model_name }}Response.model_validate(o) for o in objects]
+        except Exception as e:
+            logger.error(f"GET /{{ snake_name }}s → failed to fetch all {{ snake_name }}s: {e}")
+            raise
+
+    # ── Update ───────────────────────────────────────────────────────────────
+
+    async def update(self, uuid_str: str, data: {{ model_name }}Update) -> {{ model_name }}Response:
+        """
+        Update an existing {{ model_name }} by public UUID.
+
+        Args:
+            uuid_str: Public UUID of the record to update.
+            data: Validated partial update payload.
+
+        Returns:
+            {{ model_name }}Response: The updated record.
+
+        Raises:
+            HTTPException: 404 if the record does not exist.
+        """
+        logger.info(f"PUT /{{ snake_name }}s/{uuid_str} → updating {{ snake_name }}")
+        try:
+            # Ensure password hashing if updated
+            {% for field in fields %}
+              {% if field.name == 'password' %}
+            if hasattr(data, 'password') and data.password is not None:
+                import bcrypt
+                salt = bcrypt.gensalt(rounds=12)
+                data.password = bcrypt.hashpw(data.password.encode('utf-8'), salt).decode('utf-8')
+              {% endif %}
+            {% endfor %}
+            
+            obj = await self._repo.update(uuid_str, data)
+            if obj is None:
+                logger.warning(f"PUT /{{ snake_name }}s/{uuid_str} → {{ snake_name }} not found")
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"{{ model_name }} with uuid={uuid_str} not found.",
+                )
+            logger.success(f"PUT /{{ snake_name }}s/{uuid_str} → {{ snake_name }} updated")
+            return {{ model_name }}Response.model_validate(obj)
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"PUT /{{ snake_name }}s/{uuid_str} → failed to update {{ snake_name }}: {e}")
+            raise
+
+    # ── Delete ───────────────────────────────────────────────────────────────
+
+    async def delete(self, uuid_str: str) -> dict:
+        """
+        Delete a {{ model_name }} record by public UUID.
+
+        Args:
+            uuid_str: Public UUID of the record to delete.
+
+        Returns:
+            dict: Confirmation message.
+
+        Raises:
+            HTTPException: 404 if the record does not exist.
+        """
+        logger.info(f"DELETE /{{ snake_name }}s/{uuid_str} → deleting {{ snake_name }}")
+        try:
+            deleted = await self._repo.delete(uuid_str)
+            if not deleted:
+                logger.warning(f"DELETE /{{ snake_name }}s/{uuid_str} → {{ snake_name }} not found")
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"{{ model_name }} with uuid={uuid_str} not found.",
+                )
+            logger.success(f"DELETE /{{ snake_name }}s/{uuid_str} → {{ snake_name }} deleted")
+            return {"detail": f"{{ model_name }} {uuid_str} deleted successfully."}
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"DELETE /{{ snake_name }}s/{uuid_str} → failed to delete {{ snake_name }}: {e}")
+            raise

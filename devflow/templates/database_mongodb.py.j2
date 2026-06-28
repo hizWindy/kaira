@@ -1,0 +1,50 @@
+"""
+core/database.py
+
+MongoDB async database setup for {{ project_name }}.
+Uses Motor (async driver) + Beanie (ODM).
+"""
+
+from __future__ import annotations
+
+from motor.motor_asyncio import AsyncIOMotorClient
+
+from config.settings import settings
+
+_client: AsyncIOMotorClient | None = None
+
+
+async def init_db(document_models: list) -> None:
+    """
+    Initialise the MongoDB connection and register Beanie document models.
+
+    This must be called once at application startup, e.g. in a lifespan handler.
+
+    Args:
+        document_models: List of Beanie Document classes to register.
+
+    Example::
+
+        from beanie import init_beanie
+        from motor.motor_asyncio import AsyncIOMotorClient
+        from models.user import User
+
+        @asynccontextmanager
+        async def lifespan(app: FastAPI):
+            await init_db([User])
+            yield
+    """
+    global _client
+    from beanie import init_beanie  # lazy import — only installed for MongoDB projects
+
+    _client = AsyncIOMotorClient(settings.DATABASE_URL)
+    db = _client.get_default_database()
+    await init_beanie(database=db, document_models=document_models)
+
+
+async def close_db() -> None:
+    """Close the Motor client connection gracefully."""
+    global _client
+    if _client is not None:
+        _client.close()
+        _client = None

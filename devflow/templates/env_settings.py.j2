@@ -1,0 +1,33 @@
+"""Application settings management."""
+
+from typing import List, Optional
+import os
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+class Settings(BaseSettings):
+    APP_ENV: str = "development"
+    APP_NAME: str = "{{ project_name }}"
+    DATABASE_URL: str = "sqlite:///./{{ project_slug }}.db"
+    
+    # Enforce minimum 32 character length on the JWT secret key
+    JWT_SECRET_KEY: str = Field("your-minimum-32-character-secret-key-here", min_length=32)
+    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    
+    # CORS Protection
+    ALLOWED_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:8000"]
+    
+    # Rate Limiting settings
+    RATE_LIMIT_GET: str = "60/minute"
+    RATE_LIMIT_WRITE: str = "20/minute"
+    
+    DEBUG: bool = False
+
+    model_config = SettingsConfigDict(
+        env_file=f".env.{os.getenv('APP_ENV', 'development')}",
+        env_file_encoding="utf-8",
+        extra="ignore"
+    )
+
+settings = Settings()

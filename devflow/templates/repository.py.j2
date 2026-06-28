@@ -1,0 +1,80 @@
+"""Repository (data access layer) for {{ model_name }}."""
+
+from __future__ import annotations
+
+from typing import Optional
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from {{ models_dir }}.{{ snake_name }} import {{ model_name }}
+from {{ schemas_dir }}.{{ snake_name }}_schema import {{ model_name }}Create, {{ model_name }}Update
+
+
+class {{ model_name }}Repository:
+    """CRUD operations for :class:`{{ model_name }}`."""
+
+    def __init__(self, db: Session) -> None:
+        self.db = db
+
+    # ── Create ───────────────────────────────────────────────────────────────
+
+    def create(self, data: {{ model_name }}Create) -> {{ model_name }}:
+        """Persist a new {{ model_name }} record."""
+        obj = {{ model_name }}(**data.model_dump())
+        self.db.add(obj)
+        self.db.commit()
+        self.db.refresh(obj)
+        return obj
+
+    # ── Read ─────────────────────────────────────────────────────────────────
+
+    def get_by_id(self, record_id: int) -> Optional[{{ model_name }}]:
+        """Return a {{ model_name }} by primary key, or *None* if not found."""
+        return self.db.execute(select({{ model_name }}).where({{ model_name }}.id == record_id)).scalar_one_or_none()
+
+    def get_by_uuid(self, uuid_str: str) -> Optional[{{ model_name }}]:
+        """Return a {{ model_name }} by uuid, or *None* if not found."""
+        return self.db.execute(select({{ model_name }}).where({{ model_name }}.uuid == uuid_str)).scalar_one_or_none()
+
+    def get_all(self, skip: int = 0, limit: int = 100) -> list[{{ model_name }}]:
+        """Return a paginated list of all {{ model_name }} records."""
+        return list(
+            self.db.scalars(
+                select({{ model_name }})
+                .offset(skip)
+                .limit(limit)
+            ).all()
+        )
+
+    # ── Update ───────────────────────────────────────────────────────────────
+
+    def update(self, uuid_str: str, data: {{ model_name }}Update) -> Optional[{{ model_name }}]:
+        """Update an existing {{ model_name }} record by UUID.
+
+        Only fields present in *data* (non-None) are updated.
+        Returns the updated record, or *None* if not found.
+        """
+        obj = self.get_by_uuid(uuid_str)
+        if obj is None:
+            return None
+        update_data = data.model_dump(exclude_unset=True)
+        for key, value in update_data.items():
+            setattr(obj, key, value)
+        self.db.commit()
+        self.db.refresh(obj)
+        return obj
+
+    # ── Delete ───────────────────────────────────────────────────────────────
+
+    def delete(self, uuid_str: str) -> bool:
+        """Delete a {{ model_name }} record by UUID.
+
+        Returns *True* if deleted, *False* if not found.
+        """
+        obj = self.get_by_uuid(uuid_str)
+        if obj is None:
+            return False
+        self.db.delete(obj)
+        self.db.commit()
+        return True

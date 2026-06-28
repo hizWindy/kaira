@@ -1,0 +1,83 @@
+"""FastAPI application entry point."""
+
+from __future__ import annotations
+
+import os
+import logging
+from fastapi import FastAPI, Request, status
+from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+
+from config.settings import settings
+from rate_limit import limiter
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+logger = logging.getLogger("devflow_app")
+
+app = FastAPI(
+    title="{{ project_name }}",
+    description="Auto-generated Secure FastAPI application.",
+    version="0.1.0",
+    docs_url=None if settings.APP_ENV == "production" else "/docs",
+    redoc_url=None if settings.APP_ENV == "production" else "/redoc",
+)
+
+# Set rate limiter on the app
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# ── Security Headers Middleware ──────────────────────────────────────────────
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        response.headers["Content-Security-Policy"] = "default-src 'self'"
+        return response
+
+app.add_middleware(SecurityHeadersMiddleware)
+
+# ── CORS Middleware (Restrictive) ────────────────────────────────────────────
+
+origins = settings.ALLOWED_ORIGINS
+# Prevent wildcard in production
+if settings.APP_ENV == "production" and "*" in origins:
+    logger.warning("CORS wildcard detected in production env! Restricting allowed origins.")
+    origins = [o for o in origins if o != "*"]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_headers=["Authorization", "Content-Type"],
+)
+
+# ── Global Exception Handler (Info Leakage Protection) ───────────────────────
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.error(f"Unhandled server error: {exc}", exc_info=True)
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={"detail": "An internal error occurred"}
+    )
+
+# ── Routers ───────────────────────────────────────────────────────────────────
+
+# Register your routers here, e.g.:
+# from api.v1.routers.user_router import router as user_router
+# app.include_router(user_router, prefix="/api/v1")
+
+
+@app.get("/health", tags=["Health"])
+def health_check() -> dict:
+    """Return API health status."""
+    return {"status": "ok", "version": app.version}

@@ -1,0 +1,26 @@
+"""Association table(s) for many-to-many relationships on {{ model_name }}."""
+
+from __future__ import annotations
+
+from sqlalchemy import Column, ForeignKey, Integer, Table
+
+from core.database import Base
+{% for rel in many_to_many %}
+
+{{ snake_name }}_{{ to_snake(rel.target) }}_association = Table(
+    "{{ snake_name }}_{{ to_snake(rel.target) }}",
+    Base.metadata,
+    Column(
+        "{{ snake_name }}_id",
+        Integer,
+        ForeignKey("{{ snake_name }}s.id"),
+        primary_key=True,
+    ),
+    Column(
+        "{{ to_snake(rel.target) }}_id",
+        Integer,
+        ForeignKey("{{ to_snake(rel.target) }}s.id"),
+        primary_key=True,
+    ),
+)
+{% endfor %}

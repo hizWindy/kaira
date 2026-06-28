@@ -1,0 +1,79 @@
+"""
+JWT utility functions for password hashing and token validation.
+
+Uses passlib with bcrypt for secure password hashing.
+"""
+
+import re
+import secrets
+
+from passlib.context import CryptContext
+
+# bcrypt context with cost factor 12
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto", bcrypt__rounds=12)
+
+
+def hash_password(password: str) -> str:
+    """Hash a password using bcrypt with cost factor 12.
+
+    Args:
+        password: The plain-text password to hash.
+
+    Returns:
+        The bcrypt hashed password string.
+    """
+    return pwd_context.hash(password)
+
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """Verify a plain-text password against a bcrypt hash.
+
+    Args:
+        plain_password: The plain-text password to verify.
+        hashed_password: The bcrypt hashed password to compare against.
+
+    Returns:
+        True if the password matches, False otherwise.
+    """
+    return pwd_context.verify(plain_password, hashed_password)
+
+
+def compare_tokens(token_a: str, token_b: str) -> bool:
+    """Constant-time comparison of two token strings.
+
+    Uses secrets.compare_digest to prevent timing attacks.
+
+    Args:
+        token_a: The first token string.
+        token_b: The second token string.
+
+    Returns:
+        True if both tokens are identical, False otherwise.
+    """
+    return secrets.compare_digest(token_a.encode("utf-8"), token_b.encode("utf-8"))
+
+
+def validate_password_strength(password: str) -> bool:
+    """Validate that a password meets minimum strength requirements.
+
+    Requirements:
+        - At least 8 characters long
+        - At least 1 uppercase letter
+        - At least 1 digit
+        - At least 1 special character
+
+    Args:
+        password: The password string to validate.
+
+    Returns:
+        True if the password meets all requirements, False otherwise.
+    """
+    if len(password) < 8:
+        return False
+    if not re.search(r"[A-Z]", password):
+        return False
+    if not re.search(r"[0-9]", password):
+        return False
+    if not re.search(r"[!@#$%^&*()_+\-=\[\]{};':\"\\|,.<>\/?~`]", password):
+        return False
+    return True

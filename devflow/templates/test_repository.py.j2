@@ -1,0 +1,52 @@
+"""Repository database unit tests for {{ model_name }}Repository."""
+
+import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
+from core.database import Base
+from {{ models_dir }}.{{ snake_name }} import {{ model_name }}
+from {{ repositories_dir }}.{{ snake_name }}_repository import {{ model_name }}Repository
+from {{ schemas_dir }}.{{ snake_name }}_schema import {{ model_name }}Create, {{ model_name }}Update
+
+@pytest.fixture(name="db_session")
+def fixture_db_session():
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(bind=engine)
+    session_class = sessionmaker(bind=engine)
+    session = session_class()
+    yield session
+    session.close()
+
+def test_repo_create_and_lookup(db_session):
+    repo = {{ model_name }}Repository(db_session)
+    payload = {{ model_name }}Create(
+        {% for field in fields %}
+          {% if field.name == 'password' %}
+            password="SecurePassword123!",
+          {% elif field.name == 'email' %}
+            email="test@example.com",
+          {% elif field.name == 'phone' %}
+            phone="+1234567890",
+          {% elif field.name == 'username' %}
+            username="user123",
+          {% elif field.python_type == 'str' %}
+            {{ field.name }}="test_string",
+          {% elif field.python_type == 'int' %}
+            {{ field.name }}=1,
+          {% elif field.python_type == 'float' %}
+            {{ field.name }}=1.0,
+          {% elif field.python_type == 'bool' %}
+            {{ field.name }}=True,
+          {% endif %}
+        {% endfor %}
+    )
+    
+    record = repo.create(payload)
+    assert record.id is not None
+    assert record.uuid is not None
+    
+    # Verify lookup by UUID works
+    found = repo.get_by_uuid(record.uuid)
+    assert found is not None
+    assert found.uuid == record.uuid

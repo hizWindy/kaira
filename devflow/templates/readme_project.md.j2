@@ -1,0 +1,63 @@
+# {{ project_name }} ⚡
+
+Auto-generated secure FastAPI backend application scaffolded with **DevFlow**.
+
+## Technology Stack
+
+- **Framework**: [FastAPI](https://fastapi.tiangolo.com/)
+- **Database**: {{ db_type }}
+- **ORM/ODM**: {% if db_type == "mongodb" %}Beanie (MongoDB ODM){% else %}SQLAlchemy Async 2.0{% endif %}
+- **Security & Middleware**: Rate limiting (Slowapi), CORS protection, secure headers
+- **Logging**: Loguru (terminal-only structured logs)
+- **Authentication**: {{ auth_type }}
+
+## Directory Structure
+
+```text
+├── models/             # Database ORM/ODM Models
+├── repositories/       # Data-access repository layers
+├── schemas/            # Pydantic v2 validation schemas
+├── services/           # Business logic service layers
+├── routers/            # FastAPI Endpoint Routers
+├── auth/               # Authentication handlers & tokens
+├── config/             # Environment settings class
+│   └── settings.py
+├── core/               # Database connection and logger configurations
+├── middleware/         # Security and exception-handling middleware
+├── logs/               # Log directory
+├── tests/              # Pytest unit & integration suites
+├── main.py             # App execution entrypoint
+└── pyproject.toml      # Project dependencies configuration
+```
+
+## Running the Application
+
+### 1. Set Up Environment Variables
+
+Copy the `.env.example` template:
+```bash
+cp .env.example .env
+```
+And adjust settings (especially `DATABASE_URL` and `JWT_SECRET_KEY`).
+
+### 2. Install Dependencies
+
+Ensure you have a virtual environment active, then run:
+```bash
+pip install -e .
+```
+
+### 3. Migrations {% if db_type == "mongodb" %}(Not applicable for MongoDB){% else %}(SQLAlchemy projects only){% endif %}
+
+```bash
+devflow migrate init
+devflow migrate make "initial schema"
+devflow migrate run
+```
+
+### 4. Run the Development Server
+
+```bash
+uvicorn main:app --reload
+```
+The interactive API documentation will be available at: http://localhost:8000/docs

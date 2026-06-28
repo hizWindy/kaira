@@ -1,0 +1,105 @@
+"""
+repositories/{{ snake_name }}_repository.py
+
+MongoDB repository for {{ model_name }} using Beanie ODM.
+No raw queries — all operations go through Beanie's type-safe API.
+"""
+
+from __future__ import annotations
+
+from typing import Optional
+
+from {{ models_dir }}.{{ snake_name }} import {{ model_name }}
+from {{ schemas_dir }}.{{ snake_name }}_schema import {{ model_name }}Create, {{ model_name }}Update
+
+
+class {{ model_name }}Repository:
+    """
+    Data-access layer for :class:`{{ model_name }}` using Beanie ODM (MongoDB).
+
+    All methods are async. No raw MongoDB queries are used.
+    """
+
+    # ── Create ───────────────────────────────────────────────────────────────
+
+    async def create(self, payload: {{ model_name }}Create) -> {{ model_name }}:
+        """
+        Insert a new {{ model_name }} document into MongoDB.
+
+        Args:
+            payload: Validated creation data.
+
+        Returns:
+            The newly inserted {{ model_name }} document.
+        """
+        obj = {{ model_name }}(**payload.model_dump())
+        await obj.insert()
+        return obj
+
+    # ── Read ─────────────────────────────────────────────────────────────────
+
+    async def get_by_uuid(self, uuid_str: str) -> Optional[{{ model_name }}]:
+        """
+        Retrieve a {{ model_name }} document by its public UUID field.
+
+        Args:
+            uuid_str: The UUID string to look up.
+
+        Returns:
+            {{ model_name }} document or None if not found.
+        """
+        return await {{ model_name }}.find_one({{ model_name }}.uuid == uuid_str)
+
+    async def get_all(self, skip: int = 0, limit: int = 100) -> list[{{ model_name }}]:
+        """
+        Return a paginated list of {{ model_name }} documents.
+
+        Args:
+            skip: Number of documents to skip.
+            limit: Maximum documents to return (capped at 1 000).
+
+        Returns:
+            List of {{ model_name }} documents.
+        """
+        limit = min(limit, 1000)
+        return await {{ model_name }}.find_all().skip(skip).limit(limit).to_list()
+
+    # ── Update ───────────────────────────────────────────────────────────────
+
+    async def update(self, uuid_str: str, payload: {{ model_name }}Update) -> Optional[{{ model_name }}]:
+        """
+        Update a {{ model_name }} document identified by UUID.
+
+        Args:
+            uuid_str: UUID of the document to update.
+            payload: Validated partial update data.
+
+        Returns:
+            Updated document, or None if not found.
+        """
+        obj = await self.get_by_uuid(uuid_str)
+        if obj is None:
+            return None
+        update_data = payload.model_dump(exclude_unset=True)
+        for key, value in update_data.items():
+            setattr(obj, key, value)
+        await obj.save()
+        return obj
+
+    # ── Delete ───────────────────────────────────────────────────────────────
+
+    async def delete(self, uuid_str: str) -> bool:
+        """
+        Delete a {{ model_name }} document identified by UUID.
+
+        Args:
+            uuid_str: UUID of the document to delete.
+
+        Returns:
+            True if deleted, False if not found.
+        """
+        obj = await self.get_by_uuid(uuid_str)
+        if obj is None:
+            return False
+        await obj.delete()
+        return True

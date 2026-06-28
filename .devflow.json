@@ -1,0 +1,32 @@
+{
+  "output_dir": ".",
+  "models_dir": "models",
+  "repositories_dir": "repositories",
+  "schemas_dir": "schemas",
+  "services_dir": "services",
+  "routers_dir": "routers",
+  "default_tier": "full",
+  "ai_provider": "openai",
+  "ai_model": "gpt-4o",
+  "ai_api_key_env": "OPENAI_API_KEY",
+  "generated_models": [
+    {
+      "name": "User",
+      "fields": [
+        {
+          "name": "username",
+          "type": "str"
+        },
+        {
+          "name": "email",
+          "type": "str"
+        },
+        {
+          "name": "age",
+          "type": "int"
+        }
+      ],
+      "relations": []
+    }
+  ]
+}
