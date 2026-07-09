@@ -32,6 +32,25 @@ from devflow.commands.ci_cmd import app as ci_app
 from devflow.commands.audit_cmd import app as audit_app
 from devflow.commands.guide_cmd import app as guide_app
 
+# ── Phase 4 command apps ──────────────────────────────────────────────────────
+from devflow.commands.status_cmd import app as status_app
+from devflow.commands.recap_cmd import app as recap_app
+from devflow.commands.db_cmd import app as db_app
+from devflow.commands.deps_cmd import app as deps_app
+from devflow.commands.quality_cmd import app as quality_app
+from devflow.commands.cache_cmd import app as cache_app
+from devflow.commands.task_cmd import app as task_app
+from devflow.commands.integrate_cmd import app as integrate_app
+from devflow.commands.api_cmd import app as api_cmd_app
+from devflow.commands.profile_cmd import app as profile_app
+from devflow.commands.loadtest_cmd import app as loadtest_app
+from devflow.commands.deploy_cmd import app as deploy_app
+from devflow.commands.middleware_cmd import app as middleware_app
+from devflow.commands.event_cmd import app as event_app
+from devflow.commands.notify_cmd import app as notify_app
+from devflow.commands.flags_cmd import app as flags_app
+from devflow.commands.health_endpoint_cmd import app as health_endpoint_app
+
 # ── Import standalone command functions ───────────────────────────────────────
 from devflow.commands.project import init_command
 from devflow.commands.info import info_command
@@ -54,7 +73,7 @@ app = typer.Typer(
     add_completion=True,
 )
 
-# ── Sub-command groups ────────────────────────────────────────────────────────
+# ── Sub-command groups — Phase 1–3 ────────────────────────────────────────────
 
 app.add_typer(generate_app, name="generate", help="Scaffold FastAPI backend layers.")
 app.add_typer(add_app, name="add", help="Add relationships between models.")
@@ -72,6 +91,26 @@ app.add_typer(websocket_app, name="websocket", help="WebSocket scaffolding comma
 app.add_typer(ci_app, name="ci", help="CI/CD pipeline generation commands.")
 app.add_typer(audit_app, name="audit", help="API auditing and security checking commands.")
 app.add_typer(guide_app, name="guide", help="Interactive guides for all DevFlow operations.")
+
+# ── Sub-command groups — Phase 4 ──────────────────────────────────────────────
+
+app.add_typer(status_app, name="status", help="Live project status snapshot.")
+app.add_typer(recap_app, name="recap", help="Command history viewer.")
+app.add_typer(db_app, name="db", help="Database connection, status, and management.")
+app.add_typer(deps_app, name="deps", help="Dependency management — check, update, audit, tree, add, remove.")
+app.add_typer(quality_app, name="quality", help="Code quality tools — lint, typecheck, format, scan, audit.")
+app.add_typer(cache_app, name="cache", help="Redis cache management and route caching.")
+app.add_typer(task_app, name="task", help="Celery background task scaffolding.")
+app.add_typer(integrate_app, name="integrate", help="Third-party service integrations.")
+app.add_typer(api_cmd_app, name="api", help="API inspection, testing, and client generation.")
+app.add_typer(profile_app, name="profile", help="Route profiling and latency measurement.")
+app.add_typer(loadtest_app, name="loadtest", help="Load testing for local FastAPI routes.")
+app.add_typer(deploy_app, name="deploy", help="Deployment config generation and checklist.")
+app.add_typer(middleware_app, name="middleware", help="Middleware scaffolding and management.")
+app.add_typer(event_app, name="event", help="FastAPI lifespan event scaffolding.")
+app.add_typer(notify_app, name="notify", help="Notification service scaffolding.")
+app.add_typer(flags_app, name="flags", help="Feature flag management.")
+app.add_typer(health_endpoint_app, name="health-endpoint", help="Generate a /health monitoring endpoint.")
 
 
 # ── Standalone commands ───────────────────────────────────────────────────────
@@ -161,9 +200,14 @@ def _version_callback(value: bool) -> None:
 
 @app.callback()
 def main(
+    ctx: typer.Context,
     version: Annotated[
         Optional[bool],
         typer.Option("--version", "-V", callback=_version_callback, is_eager=True, help="Show version"),
+    ] = None,
+    quiet: Annotated[
+        Optional[bool],
+        typer.Option("--quiet", "-q", help="Suppress next-steps hints and informational panels"),
     ] = None,
 ) -> None:
     """[bold cyan]DevFlow[/bold cyan] — Automated FastAPI scaffolding CLI.
@@ -182,6 +226,7 @@ def main(
 
     [bold]Docs:[/bold] https://github.com/your-org/devflow
     """
+    pass
 
 
 if __name__ == "__main__":

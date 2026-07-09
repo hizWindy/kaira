@@ -33,17 +33,26 @@ def guide_main(
     if ctx.invoked_subcommand is None:
         content = (
             "Available guides:\n\n"
-            "  [bold cyan]devflow guide init[/bold cyan]        Project initialization\n"
-            "  [bold cyan]devflow guide generate[/bold cyan]    Model & layer generation\n"
-            "  [bold cyan]devflow guide auth[/bold cyan]        Authentication setup\n"
-            "  [bold cyan]devflow guide migrate[/bold cyan]     Database migrations\n"
-            "  [bold cyan]devflow guide security[/bold cyan]    Security commands\n"
-            "  [bold cyan]devflow guide test[/bold cyan]        Test generation & running\n"
-            "  [bold cyan]devflow guide docker[/bold cyan]      Docker setup\n"
-            "  [bold cyan]devflow guide ci[/bold cyan]          CI/CD pipeline setup\n"
-            "  [bold cyan]devflow guide env[/bold cyan]         Environment management\n"
-            "  [bold cyan]devflow guide db[/bold cyan]          Database configuration\n"
-            "  [bold cyan]devflow guide config[/bold cyan]      DevFlow configuration"
+            "  [bold cyan]devflow guide init[/bold cyan]              Project initialization\n"
+            "  [bold cyan]devflow guide generate[/bold cyan]          Model & layer generation\n"
+            "  [bold cyan]devflow guide auth[/bold cyan]              Authentication setup\n"
+            "  [bold cyan]devflow guide migrate[/bold cyan]           Database migrations\n"
+            "  [bold cyan]devflow guide security[/bold cyan]          Security commands\n"
+            "  [bold cyan]devflow guide test[/bold cyan]              Test generation & running\n"
+            "  [bold cyan]devflow guide docker[/bold cyan]            Docker setup\n"
+            "  [bold cyan]devflow guide ci[/bold cyan]                CI/CD pipeline setup\n"
+            "  [bold cyan]devflow guide env[/bold cyan]               Environment management\n"
+            "  [bold cyan]devflow guide db[/bold cyan]                Database configuration\n"
+            "  [bold cyan]devflow guide config[/bold cyan]            DevFlow configuration\n"
+            "  [bold cyan]devflow guide deps[/bold cyan]              Dependency management\n"
+            "  [bold cyan]devflow guide cache[/bold cyan]             Redis caching\n"
+            "  [bold cyan]devflow guide task[/bold cyan]              Background tasks (Celery)\n"
+            "  [bold cyan]devflow guide integrate[/bold cyan]         Third-party integrations\n"
+            "  [bold cyan]devflow guide api[/bold cyan]               API testing & client generation\n"
+            "  [bold cyan]devflow guide quality[/bold cyan]           Code quality tools\n"
+            "  [bold cyan]devflow guide deploy[/bold cyan]            Deployment checklist & configs\n"
+            "  [bold cyan]devflow guide flags[/bold cyan]             Feature flags\n"
+            "  [bold cyan]devflow guide health-endpoint[/bold cyan]   Health monitoring endpoint"
         )
         print_guide_panel("Index", content, "Run any guide for examples and usage.")
 
@@ -273,3 +282,231 @@ def guide_config() -> None:
         "  devflow config set default_tier simple"
     )
     print_guide_panel("config", content, "Config is stored in .devflow.json at the project root.")
+
+
+@app.command("deps")
+def guide_deps() -> None:
+    """Guide for dependency management."""
+    content = (
+        "Manage project dependencies with pip integration:\n\n"
+        "[bold green]Check installed packages:[/bold green]\n"
+        "  devflow deps check\n\n"
+        "[bold green]Update all to latest and pin versions:[/bold green]\n"
+        "  devflow deps update\n\n"
+        "[bold green]Audit for vulnerabilities (exits 1 on HIGH/CRITICAL):[/bold green]\n"
+        "  devflow deps audit\n\n"
+        "[bold green]Show dependency tree:[/bold green]\n"
+        "  devflow deps tree\n\n"
+        "[bold green]Add a package and pin in pyproject.toml:[/bold green]\n"
+        "  devflow deps add httpx\n"
+        "  devflow deps add pytest --dev\n\n"
+        "[bold green]Remove a package:[/bold green]\n"
+        "  devflow deps remove httpx"
+    )
+    print_guide_panel("deps", content, "deps audit exits 1 on HIGH/CRITICAL vulnerabilities.")
+
+
+@app.command("cache")
+def guide_cache() -> None:
+    """Guide for Redis caching."""
+    content = (
+        "Redis cache management for FastAPI routes:\n\n"
+        "[bold green]Initialise cache module:[/bold green]\n"
+        "  devflow cache init\n\n"
+        "[bold green]Add caching to a GET route:[/bold green]\n"
+        "  devflow cache add GET /users --ttl 300\n\n"
+        "[bold green]Cache all GET routes at once:[/bold green]\n"
+        "  devflow cache add GET / --all-get --ttl 120\n\n"
+        "[bold green]Clear cache for a route:[/bold green]\n"
+        "  devflow cache clear /users\n\n"
+        "[bold green]Clear ALL keys (requires confirmation):[/bold green]\n"
+        "  devflow cache clear --all\n\n"
+        "[bold green]Check Redis connection status:[/bold green]\n"
+        "  devflow cache status\n\n"
+        "Notes:\n"
+        "  • Only GET routes are cacheable. POST/PUT/DELETE are rejected.\n"
+        "  • Auth-guarded routes are namespaced by user ID automatically.\n"
+        "  • REDIS_URL is added to all .env* files and settings.py."
+    )
+    print_guide_panel("cache", content, "Run devflow event generate startup to register init_cache() on startup.")
+
+
+@app.command("task")
+def guide_task() -> None:
+    """Guide for Celery background tasks."""
+    content = (
+        "Celery background task scaffolding:\n\n"
+        "[bold green]Initialise Celery (adds broker/backend to .env):[/bold green]\n"
+        "  devflow task init\n\n"
+        "[bold green]Generate a task class:[/bold green]\n"
+        "  devflow task generate SendEmail\n\n"
+        "[bold green]Generate a scheduled task (cron):[/bold green]\n"
+        '  devflow task generate DailyReport --schedule "crontab(hour=0, minute=0)"\n\n'
+        "[bold green]List all generated tasks:[/bold green]\n"
+        "  devflow task list\n\n"
+        "[bold green]Run a task immediately:[/bold green]\n"
+        "  devflow task run SendEmail\n\n"
+        "[bold green]Open Flower monitoring dashboard:[/bold green]\n"
+        "  devflow task monitor\n\n"
+        "Notes:\n"
+        "  • Task arguments are NEVER logged (PII/secrets risk).\n"
+        "  • Default retry: max_retries=3, delay=60s, autoretry_for=(Exception,)."
+    )
+    print_guide_panel("task", content, "Start Celery worker: celery -A tasks.celery_app worker --loglevel=info")
+
+
+@app.command("integrate")
+def guide_integrate() -> None:
+    """Guide for third-party service integrations."""
+    content = (
+        "Third-party service integration scaffolding:\n\n"
+        "[bold green]Email providers:[/bold green]\n"
+        "  devflow integrate --provider email/sendgrid\n"
+        "  devflow integrate --provider email/mailgun\n"
+        "  devflow integrate --provider email/smtp\n\n"
+        "[bold green]Payment providers:[/bold green]\n"
+        "  devflow integrate --provider payment/stripe\n"
+        "  devflow integrate --provider payment/paypal\n"
+        "  devflow integrate --provider payment/paymongo\n\n"
+        "[bold green]Storage providers:[/bold green]\n"
+        "  devflow integrate --provider storage/s3\n"
+        "  devflow integrate --provider storage/cloudinary\n"
+        "  devflow integrate --provider storage/gcs\n\n"
+        "[bold green]Notification providers:[/bold green]\n"
+        "  devflow integrate --provider notify/firebase\n"
+        "  devflow integrate --provider notify/onesignal\n"
+        "  devflow integrate --provider notify/twilio\n\n"
+        "[bold green]Monitoring providers:[/bold green]\n"
+        "  devflow integrate --provider monitor/sentry\n"
+        "  devflow integrate --provider monitor/datadog\n\n"
+        "[bold green]Search providers:[/bold green]\n"
+        "  devflow integrate --provider search/elasticsearch\n"
+        "  devflow integrate --provider search/meilisearch\n\n"
+        "[bold green]List all providers:[/bold green]\n"
+        "  devflow integrate list"
+    )
+    print_guide_panel("integrate", content, "API keys are always loaded from settings — never hardcoded.")
+
+
+@app.command("api")
+def guide_api() -> None:
+    """Guide for API inspection, testing, and client generation."""
+    content = (
+        "API inspection and testing (requires running dev server):\n\n"
+        "[bold green]Export OpenAPI spec:[/bold green]\n"
+        "  devflow api export --format json\n"
+        "  devflow api export --format yaml\n\n"
+        "[bold green]Validate the spec:[/bold green]\n"
+        "  devflow api validate\n\n"
+        "[bold green]List all routes:[/bold green]\n"
+        "  devflow api list\n\n"
+        "[bold green]Send a test request:[/bold green]\n"
+        "  devflow api test GET /users\n"
+        '  devflow api test POST /users --body \'{"username":"alice"}\'\n\n'
+        "[bold green]Generate Postman collection:[/bold green]\n"
+        "  devflow api postman\n\n"
+        "[bold green]Generate typed API client:[/bold green]\n"
+        "  devflow api client --lang typescript\n"
+        "  devflow api client --lang javascript"
+    )
+    print_guide_panel("api", content, "Start server first: uvicorn main:app --reload")
+
+
+@app.command("quality")
+def guide_quality() -> None:
+    """Guide for code quality tools."""
+    content = (
+        "Code quality checks — lint, typecheck, format, security scan:\n\n"
+        "[bold green]Run all checks at once:[/bold green]\n"
+        "  devflow quality quality .\n\n"
+        "[bold green]Lint with ruff:[/bold green]\n"
+        "  devflow quality lint .\n\n"
+        "[bold green]Type check with mypy:[/bold green]\n"
+        "  devflow quality typecheck .\n\n"
+        "[bold green]Format with ruff:[/bold green]\n"
+        "  devflow quality format .\n\n"
+        "[bold green]Security scan with bandit:[/bold green]\n"
+        "  devflow quality scan .\n\n"
+        "Notes:\n"
+        "  • quality exits 1 on any failure.\n"
+        "  • Missing tools are marked ⏭️ Skipped, not failed.\n"
+        "  • pip-audit is also included in the combined quality check."
+    )
+    print_guide_panel("quality", content, "Install all tools: pip install ruff mypy bandit pip-audit")
+
+
+@app.command("deploy")
+def guide_deploy() -> None:
+    """Guide for deployment configuration and checklist."""
+    content = (
+        "Deployment configuration and pre-flight checklist:\n\n"
+        "[bold green]Generate platform config:[/bold green]\n"
+        "  devflow deploy generate --platform railway\n"
+        "  devflow deploy generate --platform render\n"
+        "  devflow deploy generate --platform fly\n"
+        "  devflow deploy generate --platform vps\n\n"
+        "[bold green]View deploy readiness checklist:[/bold green]\n"
+        "  devflow deploy checklist\n\n"
+        "[bold green]Run checklist and exit 1 on failure:[/bold green]\n"
+        "  devflow deploy check\n\n"
+        "[bold green]Deploy (blocked if checklist has ❌):[/bold green]\n"
+        "  devflow deploy run --platform railway\n\n"
+        "Notes:\n"
+        "  • Credentials are NEVER written into generated config files.\n"
+        "  • deploy run requires typed platform name confirmation.\n"
+        "  • deploy run is blocked in production environments."
+    )
+    print_guide_panel("deploy", content, "Fix all checklist items before running devflow deploy run.")
+
+
+@app.command("flags")
+def guide_flags() -> None:
+    """Guide for feature flag management."""
+    content = (
+        "Feature flag management with fail-closed defaults:\n\n"
+        "[bold green]Initialise flags module:[/bold green]\n"
+        "  devflow flags init\n\n"
+        "[bold green]Add a flag:[/bold green]\n"
+        "  devflow flags add my_new_feature --default false\n"
+        "  devflow flags add dark_mode --default true\n\n"
+        "[bold green]Enable / disable a flag:[/bold green]\n"
+        "  devflow flags enable my_new_feature\n"
+        "  devflow flags disable dark_mode\n\n"
+        "[bold green]List all flags:[/bold green]\n"
+        "  devflow flags list\n\n"
+        "[bold green]Use in your code:[/bold green]\n"
+        "  from core.flags import is_enabled\n"
+        "  if is_enabled('my_new_feature'):\n"
+        "      ...\n\n"
+        "Notes:\n"
+        "  • Flag names must be snake_case.\n"
+        "  • Unknown flags always return False (fail-closed, never fail-open)."
+    )
+    print_guide_panel("flags", content, "Flags are stored in core/flags.py — commit them to version control.")
+
+
+@app.command("health-endpoint")
+def guide_health_endpoint() -> None:
+    """Guide for the /health monitoring endpoint."""
+    content = (
+        "Generate a production-safe /health monitoring endpoint:\n\n"
+        "[bold green]Generate the /health route:[/bold green]\n"
+        "  devflow health-endpoint generate\n\n"
+        "[bold green]Register in main.py:[/bold green]\n"
+        "  from routers.health_router import router as health_router\n"
+        "  app.include_router(health_router)\n\n"
+        "[bold green]Test the endpoint:[/bold green]\n"
+        "  devflow api test GET /health\n\n"
+        "Security guarantees:\n"
+        "  • No auth required (monitoring probes are unauthenticated)\n"
+        "  • Never leaks DATABASE_URL, connection strings, or stack traces\n"
+        "  • Never leaks dependency versions\n"
+        "  • Rate-limited at ~300/min (probes won't hit 429s)\n"
+        "  • Cache check auto-detected from core/cache.py presence"
+    )
+    print_guide_panel(
+        "health-endpoint",
+        content,
+        "Run devflow cache init first to include cache status in /health.",
+    )
+

@@ -11,6 +11,7 @@ from typing import Annotated, Optional
 import typer
 from jinja2 import Environment, FileSystemLoader
 from rich.panel import Panel
+from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
 from rich.prompt import Confirm
 
 from devflow.config import get_config
@@ -100,17 +101,25 @@ def seed_run(
         console.print("[red]Error: Must specify either a model name or --all[/red]")
         raise typer.Exit(1)
 
-    for script in scripts:
-        console.print(f"[cyan]Running seed script: {script.name}...[/cyan]")
-        try:
-            # Set PYTHONPATH so python can resolve local module imports
-            env = os.environ.copy()
-            env["PYTHONPATH"] = str(output_root) + os.pathsep + env.get("PYTHONPATH", "")
-            subprocess.run([sys.executable, str(script)], check=True, env=env)
-            console.print(f"  [green bold]✓[/green bold]  Seeded successfully: {script.name}")
-        except Exception as e:
-            console.print(f"[red]Error seeding {script.name}: {e}[/red]")
-            raise typer.Exit(1)
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TaskProgressColumn(),
+        console=console,
+    ) as progress:
+        task = progress.add_task("[cyan]Running seeds...", total=len(scripts))
+        for script in scripts:
+            progress.update(task, description=f"[cyan]  {script.name}...")
+            try:
+                env = os.environ.copy()
+                env["PYTHONPATH"] = str(output_root) + os.pathsep + env.get("PYTHONPATH", "")
+                subprocess.run([sys.executable, str(script)], check=True, env=env)
+                console.print(f"  [green bold]✓[/green bold]  Seeded successfully: {script.name}")
+            except Exception as e:
+                console.print(f"[red]Error seeding {script.name}: {e}[/red]")
+                raise typer.Exit(1)
+            progress.advance(task)
 
 
 @app.command("clear")

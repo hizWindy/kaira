@@ -14,6 +14,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskPr
 from rich.table import Table
 
 from devflow.console import console
+from devflow.commands.ux_helpers import print_next_steps
 
 from devflow.config import (
     TIER_LAYERS,
@@ -188,9 +189,54 @@ def generate_model(
         )
     )
 
-    _generate_and_write(layers, model_name, parsed_fields, [], force, non_interactive=False)
+    config = get_config()
+    base = Path.cwd()
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TaskProgressColumn(),
+        console=console,
+    ) as progress:
+        task = progress.add_task(f"[cyan]Generating {model_name}...", total=len(layers))
+        for lyr in layers:
+            progress.update(task, description=f"[cyan]  {lyr}...")
+            content = generate_layer(lyr, model_name, parsed_fields, [], config)
+            out_path = resolve_output_path(lyr, model_name, config, base)
+            from devflow.core.detector import write_with_check as _wwc
+            result = _wwc(out_path, content, force=force, non_interactive=False)
+            if result == "written":
+                _ruff_format(out_path)
+                _print_success(out_path)
+                if lyr == "router":
+                    _register_router_in_main(model_name, base, config)
+            else:
+                _print_skipped(out_path)
+            progress.advance(task)
+
+    # Persist model to .devflow.json
+    register_model(
+        config,
+        model_name,
+        [{"name": f.name, "type": f.raw_type} for f in parsed_fields],
+        [],
+    )
+    save_config(config)
 
     console.print(f"\n[bold green]✓[/bold green]  Done! Pipeline generated for [bold]{model_name}[/bold].")
+
+    # Derive next steps from project state
+    db_type = config.db_type
+    output_root = base / config.output_dir
+    next_steps: list[str] = []
+    if db_type != "mongodb" and not (output_root / "alembic").exists():
+        next_steps.append("[cyan]devflow migrate init[/cyan] — set up Alembic migrations")
+    if not (output_root / "auth" / "dependencies.py").exists():
+        next_steps.append("[cyan]devflow auth generate --type jwt[/cyan] — add authentication")
+    if not (output_root / "tests").exists():
+        next_steps.append(f"[cyan]devflow test generate {model_name}[/cyan] — generate tests")
+    next_steps.append(f"[cyan]devflow diff {model_name}[/cyan] — preview future changes")
+    print_next_steps(next_steps)
 
 
 # ---------------------------------------------------------------------------

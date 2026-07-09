@@ -38,7 +38,7 @@ def audit_routes() -> None:
         # Find APIRouter decorators, e.g. @router.get("/", ...)
         # Parse def handlers
         endpoints = re.findall(
-            r"@(router\.(get|post|put|delete|patch|websocket))\(\s*\"([^\"]+)\"[^)]*\)\s*(?:async\s+)?def\s+(\w+)",
+            r"@(router\.(get|post|put|delete|patch|websocket))\(\s*\"([^\"]+)\"[^)]*\)\s*(?:@[^\n]+\s*)*(?:async\s+)?def\s+(\w+)",
             content,
             re.MULTILINE
         )
@@ -65,7 +65,7 @@ def audit_security() -> None:
             content = f.read_text(encoding="utf-8")
             # Parse route functions
             endpoints = re.findall(
-                r"@(router\.(get|post|put|delete|patch|websocket))\(\s*\"([^\"]+)\"[^)]*\)\s*(?:async\s+)?def\s+(\w+)",
+                r"@(router\.(get|post|put|delete|patch|websocket))\(\s*\"([^\"]+)\"[^)]*\)\s*(?:@[^\n]+\s*)*(?:async\s+)?def\s+(\w+)",
                 content,
                 re.MULTILINE
             )

@@ -82,6 +82,22 @@ def prompt_overwrite(path: Path) -> OverwriteChoice:
 
     Returns one of: "overwrite", "skip", "diff".
     """
+    try:
+        import questionary
+        choice = questionary.select(
+            f"File already exists: {path}. Choose an action:",
+            choices=[
+                {"name": "overwrite", "value": "overwrite"},
+                {"name": "skip", "value": "skip"},
+                {"name": "show diff", "value": "diff"},
+            ],
+            default="skip",
+        ).ask()
+        if choice in ("overwrite", "skip", "diff"):
+            return choice
+    except Exception:
+        pass
+
     console.print(
         Panel(
             Text.from_markup(

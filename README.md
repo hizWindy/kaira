@@ -381,6 +381,57 @@ devflow config set models_dir app/models    # Change output directories
 
 ---
 
+## Phase 4 Commands & Features
+
+Phase 4 adds 87 new commands across 14 new functional areas:
+
+### ⚡ Caching (`devflow cache`)
+Redis cache management and route caching:
+- `devflow cache init` — Scaffold `core/cache.py` and register in settings
+- `devflow cache add GET <route> [--ttl 300]` — Add GET route caching
+- `devflow cache clear [<route> | --all]` — Clear cached routes
+- `devflow cache status` — View Redis status and keys
+
+### ⚡ Background Tasks (`devflow task`)
+Scaffold background tasks via Celery:
+- `devflow task init` — Scaffolds celery configurations
+- `devflow task generate <TaskName> [--schedule "<cron>"]` — Scaffolds background task
+- `devflow task list` — List all Celery tasks
+- `devflow task run <TaskName>` — Run background task immediately
+- `devflow task monitor` — Open Flower dashboard
+
+### ⚡ Third-Party Integrations (`devflow integrate`)
+Scaffold 15 integration providers across 6 categories:
+- `devflow integrate --provider <category>/<provider>` (e.g. `email/sendgrid`, `payment/stripe`, `storage/s3`, `monitor/sentry`, etc.)
+- `devflow integrate list` — View all available integration options
+
+### ⚡ API Inspection & client generation (`devflow api`)
+- `devflow api export [--format json|yaml]` — Save OpenAPI spec
+- `devflow api validate` — Validate local OpenAPI spec
+- `devflow api list` — List all endpoints
+- `devflow api test <METHOD> <route>` — Send test request to local server
+- `devflow api postman` — Generate Postman collection
+- `devflow api client [--lang typescript|javascript]` — Scaffolds client SDK
+
+### ⚡ Profiling & Loadtesting (`devflow profile` & `devflow loadtest`)
+- `devflow profile run <METHOD> <route>` — Trace route response latency (p50/p95/p99)
+- `devflow profile report` — View last profile run
+- `devflow loadtest run <METHOD> <route>` — Perform concurrent load test (localhost-only safety lock)
+
+### ⚡ Deployment Configs (`devflow deploy`)
+- `devflow deploy generate --platform <platform>` — Scaffold Render/Railway/Fly/VPS configs
+- `devflow deploy checklist` / `devflow deploy check` — Deploy readiness audit
+- `devflow deploy run --platform <platform>` — Trigger deployment (requires passing checklist)
+
+### ⚡ Scaffolding Layers (`devflow middleware`, `devflow event`, `devflow flags`, `devflow health-endpoint`)
+- `devflow middleware add <MiddlewareName>` — Scaffold Starlette middleware
+- `devflow event generate <startup|shutdown>` — Scaffold lifespan hooks
+- `devflow flags add <flag_name>` — Scaffold feature flag toggle
+- `devflow health-endpoint generate` — Scaffold unauthenticated /health route
+
+---
+
+
 ## Change Detection
 
 DevFlow **never silently overwrites** files. When a file already exists:

@@ -12,21 +12,11 @@
   "generated_models": [
     {
       "name": "User",
-      "fields": [
-        {
-          "name": "username",
-          "type": "str"
-        },
-        {
-          "name": "email",
-          "type": "str"
-        },
-        {
-          "name": "age",
-          "type": "int"
-        }
-      ],
+      "fields": [],
       "relations": []
     }
-  ]
+  ],
+  "db_type": "sqlite",
+  "api_version": "v1",
+  "auth_type": "none"
 }

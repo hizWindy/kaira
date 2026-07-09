@@ -10,6 +10,7 @@ from typing import Annotated, Optional
 import typer
 from jinja2 import Environment, FileSystemLoader
 from rich.panel import Panel
+from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
 from rich.table import Table
 
 from devflow.config import get_config
@@ -68,30 +69,38 @@ def test_generate(
         console.print("[yellow]No models found to generate tests for.[/yellow]")
         return
 
-    for name in models_to_test:
-        # Find model in config
-        model_entry = next((m for m in config.generated_models if m.get("name") == name), None)
-        fields = model_entry.get("fields", []) if model_entry else []
-        
-        snake = camel_to_snake(name)
-        ctx_model = {
-            **ctx,
-            "model_name": name,
-            "snake_name": snake,
-            "fields": fields,
-            "models_dir": config.models_dir,
-            "repositories_dir": config.repositories_dir,
-            "schemas_dir": config.schemas_dir,
-            "services_dir": config.services_dir,
-            "routers_dir": config.routers_dir,
-        }
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TaskProgressColumn(),
+        console=console,
+    ) as progress:
+        task = progress.add_task("[cyan]Generating tests...", total=len(models_to_test) * 3)
+        for name in models_to_test:
+            model_entry = next((m for m in config.generated_models if m.get("name") == name), None)
+            fields = model_entry.get("fields", []) if model_entry else []
 
-        # Render test templates
-        for t_type in ["router", "service", "repository"]:
-            tmpl = env.get_template(f"test_{t_type}.py.j2")
-            out_path = tests_dir / f"test_{snake}_{t_type}.py"
-            write_with_check(out_path, tmpl.render(**ctx_model), force=force)
-            console.print(f"  [green bold]✓[/green bold]  Written: [cyan]{out_path}[/cyan]")
+            snake = camel_to_snake(name)
+            ctx_model = {
+                **ctx,
+                "model_name": name,
+                "snake_name": snake,
+                "fields": fields,
+                "models_dir": config.models_dir,
+                "repositories_dir": config.repositories_dir,
+                "schemas_dir": config.schemas_dir,
+                "services_dir": config.services_dir,
+                "routers_dir": config.routers_dir,
+            }
+
+            for t_type in ["router", "service", "repository"]:
+                progress.update(task, description=f"[cyan]  {name}/{t_type}...")
+                tmpl = env.get_template(f"test_{t_type}.py.j2")
+                out_path = tests_dir / f"test_{snake}_{t_type}.py"
+                write_with_check(out_path, tmpl.render(**ctx_model), force=force)
+                console.print(f"  [green bold]✓[/green bold]  Written: [cyan]{out_path}[/cyan]")
+                progress.advance(task)
 
     console.print(Panel(
         f"[green]Tests generated successfully for: {', '.join(models_to_test)}[/green]",
