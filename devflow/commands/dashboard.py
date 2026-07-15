@@ -231,6 +231,7 @@ def _render_inside_project(config_path: Path) -> None:
         "[dim]Project status:[/dim]   [cyan]devflow status[/cyan]"
     )
     console.print(Panel(quick, title="Quick Commands", border_style="dim", expand=False))
+    _print_attribution_footer()
 
 
 def _render_outside_project() -> None:
@@ -253,6 +254,15 @@ def _render_outside_project() -> None:
             expand=False,
         )
     )
+    _print_attribution_footer()
+
+
+def _print_attribution_footer() -> None:
+    """Print a single muted attribution line below the dashboard panels."""
+    from devflow.core.theme import Theme, attribution, sym
+
+    bolt = sym("BOLT")
+    console.print(f"[{Theme.MUTED}]{bolt} DevFlow · {attribution()}[/{Theme.MUTED}]")
 
 
 # ---------------------------------------------------------------------------
