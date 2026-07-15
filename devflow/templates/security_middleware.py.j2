@@ -52,9 +52,10 @@ def register_security_middleware(app: FastAPI) -> None:
         response.headers["X-XSS-Protection"] = "1; mode=block"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         response.headers["Permissions-Policy"] = "geolocation=(), microphone=()"
-        response.headers["Strict-Transport-Security"] = (
-            "max-age=63072000; includeSubDomains; preload"
-        )
+        if settings.APP_ENV == "production":
+            response.headers["Strict-Transport-Security"] = (
+                "max-age=63072000; includeSubDomains; preload"
+            )
         return response
 
     # ── Request logging ───────────────────────────────────────────────────────
@@ -64,13 +65,13 @@ def register_security_middleware(app: FastAPI) -> None:
         request_id = str(_uuid.uuid4())[:8]
         start = time.perf_counter()
         logger.info(
-            f"→ {request.method} {request.url.path} "
+            f"--> {request.method} {request.url.path} "
             f"[req_id={request_id}] [client={request.client.host if request.client else 'unknown'}]"
         )
         response = await call_next(request)
         duration_ms = (time.perf_counter() - start) * 1000
         logger.info(
-            f"← {request.method} {request.url.path} "
+            f"<-- {request.method} {request.url.path} "
             f"[req_id={request_id}] [status={response.status_code}] [{duration_ms:.1f}ms]"
         )
         return response

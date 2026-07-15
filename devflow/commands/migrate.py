@@ -15,6 +15,34 @@ from devflow.console import console
 app = typer.Typer(help="Alembic database migration commands.")
 
 
+# Database types that are schemaless and therefore have no Alembic path.
+_NON_RELATIONAL_DB_TYPES = {"mongodb", "atlas", "firebase", "firestore"}
+
+
+def _guard_relational_db() -> None:
+    """Block migration commands on MongoDB / Atlas / Firestore projects.
+
+    Alembic only applies to relational databases.  Document stores are
+    schemaless, so any ``migrate`` subcommand must short-circuit here — before
+    Alembic is touched or the ``models/`` package is walked — with the Phase 4
+    smart-error format.
+
+    Raises:
+        typer.Exit: Always, when the project's database is non-relational.
+    """
+    try:
+        from devflow.config import get_config
+
+        db_type = get_config().db_type.lower()
+    except Exception:
+        return  # No/invalid config — let the normal Alembic path handle it.
+
+    if db_type in _NON_RELATIONAL_DB_TYPES:
+        from devflow.commands.smart_errors import error_migrate_on_document_db
+
+        error_migrate_on_document_db(db_type)
+
+
 def _find_alembic_ini() -> Path:
     """Search for alembic.ini from cwd upward."""
     current = Path.cwd()
@@ -47,6 +75,7 @@ def migrate_init() -> None:
 
     Runs: alembic init alembic
     """
+    _guard_relational_db()
     cwd = Path.cwd()
     console.print(
         Panel(
@@ -56,21 +85,147 @@ def migrate_init() -> None:
         )
     )
     _run_alembic(["init", "alembic"], cwd)
-    console.print(
-        "[bold green]✓[/bold green]  Alembic initialized.\n"
-        "[dim]Edit [cyan]alembic/env.py[/cyan] to point to your database URL and import your models.[/dim]"
+
+    # Overwrite env.py with a fully pre-configured, zero-config dynamic version
+    env_path = cwd / "alembic" / "env.py"
+    if env_path.exists():
+        env_content = """import asyncio
+import sys
+from logging.config import fileConfig
+from pathlib import Path
+
+from sqlalchemy import pool
+from sqlalchemy.ext.asyncio import create_async_engine
+
+from alembic import context
+
+# Add project root to python path so settings and core can be imported
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from config.settings import settings
+from core.database import Base
+
+# Dynamically import all modules under models package so they register with Base.metadata
+try:
+    import importlib
+    import pkgutil
+    import models
+    for _, module_name, _ in pkgutil.walk_packages(models.__path__, models.__name__ + "."):
+        importlib.import_module(module_name)
+except Exception:
+    pass
+
+# this is the Alembic Config object, which provides access to the values within the .ini file in use.
+config = context.config
+
+# Interpret the config file for Python logging.
+if config.config_file_name is not None:
+    fileConfig(config.config_file_name)
+
+# Set target metadata
+target_metadata = Base.metadata
+
+# Set database URL dynamically from project settings
+config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+
+
+def run_migrations_offline() -> None:
+    \"\"\"Run migrations in 'offline' mode.
+
+    This configures the context with just a URL
+    and not an Engine, though an Engine is acceptable
+    here as well.  By skipping the Engine creation
+    we don't even need a DB API to be available.
+
+    Calls to context.execute() here emit the given string to the
+    script output.
+
+    \"\"\"
+    url = config.get_main_option("sqlalchemy.url")
+    context.configure(
+        url=url,
+        target_metadata=target_metadata,
+        literal_binds=True,
+        dialect_opts={"paramstyle": "named"},
+        compare_type=True,
     )
+
+    with context.begin_transaction():
+        context.run_migrations()
+
+
+def do_run_migrations(connection):
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+        compare_type=True,
+    )
+
+    with context.begin_transaction():
+        context.run_migrations()
+
+
+async def run_migrations_online() -> None:
+    \"\"\"Run migrations in 'online' mode.
+
+    In this scenario we need to create an Engine
+    and associate a connection with the context.
+
+    \"\"\"
+    connectable = create_async_engine(
+        config.get_main_option("sqlalchemy.url"),
+        poolclass=pool.NullPool,
+    )
+
+    async with connectable.connect() as connection:
+        await connection.run_sync(do_run_migrations)
+
+    await connectable.dispose()
+
+
+if context.is_offline_mode():
+    run_migrations_offline()
+else:
+    asyncio.run(run_migrations_online())
+"""
+        env_path.write_text(env_content, encoding="utf-8")
+        console.print(
+            "[bold green]✓[/bold green]  Alembic env.py automatically pre-configured for async RDBMS and models."
+        )
+    else:
+        console.print(
+            "[yellow]⚠[/yellow]  Could not find generated alembic/env.py file to pre-configure."
+        )
+
+
+def _ensure_alembic_initialized() -> Path:
+    """Ensure alembic.ini is present in the current working directory.
+
+    If not, automatically runs migrate_init() to initialize it.
+    """
+    cwd = Path.cwd()
+    ini_path = cwd / "alembic.ini"
+    env_path = cwd / "alembic" / "env.py"
+    if not ini_path.exists() or not env_path.exists():
+        console.print(
+            "[bold yellow]⚠️  Alembic not initialized — initializing automatically...[/bold yellow]"
+        )
+        migrate_init()
+    return ini_path
 
 
 @app.command("make")
 def migrate_make(
-    message: Annotated[str, typer.Argument(help='Migration message, e.g. "add user table"')],
+    message: Annotated[
+        str, typer.Argument(help='Migration message, e.g. "add user table"')
+    ],
 ) -> None:
     """Generate a new Alembic migration.
 
     Runs: alembic revision --autogenerate -m MESSAGE
     """
-    ini_path = _find_alembic_ini()
+    _guard_relational_db()
+    ini_path = _ensure_alembic_initialized()
     cwd = ini_path.parent
     console.print(
         Panel(
@@ -89,7 +244,8 @@ def migrate_run() -> None:
 
     Runs: alembic upgrade head
     """
-    ini_path = _find_alembic_ini()
+    _guard_relational_db()
+    ini_path = _ensure_alembic_initialized()
     cwd = ini_path.parent
     console.print(
         Panel(
@@ -108,7 +264,8 @@ def migrate_rollback() -> None:
 
     Runs: alembic downgrade -1
     """
-    ini_path = _find_alembic_ini()
+    _guard_relational_db()
+    ini_path = _ensure_alembic_initialized()
     cwd = ini_path.parent
     console.print(
         Panel(

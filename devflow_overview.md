@@ -71,6 +71,17 @@ devflow init myproject --db mongodb --docker --ci github
 
 ---
 
+### 🗄️ Database Diagnostics & Info
+**Plain English:** Inspect your active database connection status, credentials, and list all generated tables/collections instantly.
+
+**Developer terms:** Diagnostic commands for database layer testing. Replaces basic TCP port checks with real authenticated login queries (`SELECT 1` or MongoDB pings), dynamically falls back to SQLite default configuration inside `config/settings.py` if `.env` keys are commented out, and lists tables and column/document counts inside a Rich layout.
+
+* `devflow db connect`: Active credentialed query/login validation (avoids false-positive port checks).
+* `devflow db status`: Diagnostic configuration status summary showing active URL schema and login status.
+* `devflow db info`: Fetches table listings (and column counts) for SQL databases, or collections (and document counts) for MongoDB, formatted as a Rich Table.
+
+---
+
 ### 🔐 Authentication Scaffolding
 **Plain English:** Adds login/security boilerplate so you don't have to build it from scratch.
 
@@ -99,15 +110,14 @@ devflow add relation Post --many-to-many Tag
 ---
 
 ### 🔄 Database Migrations
-**Plain English:** Keeps your database structure in sync with your code changes — safely.
+**Plain English:** Keeps your database structure in sync with your code changes — safely and automatically, with zero manual setup.
 
-**Developer terms:** Thin wrapper around Alembic commands for `init`, `autogenerate`, `upgrade head`, and `downgrade`.
+**Developer terms:** Zero-configuration Alembic wrapper for database migration tasks. Running any migration command (`make`, `run`, `rollback`) on a fresh project will **automatically initialize Alembic** on the fly if missing, using dynamic async database drivers and model packages walk-discovery.
 
 ```bash
-devflow migrate init
-devflow migrate make "add users table"
-devflow migrate run
-devflow migrate rollback
+devflow migrate make "add users table"    # Auto-scaffolds Alembic if needed & generates blueprint
+devflow migrate run                       # Auto-scaffolds Alembic if needed & applies to database
+devflow migrate rollback                  # Reverts the last migration step
 ```
 
 ---
@@ -144,7 +154,7 @@ devflow task monitor
 **Developer terms:** Templates and installs SDKs for 15 providers across 6 fields. Configs are handled strictly in settings — never hardcoded, with standard try/except error shielding.
 
 ```bash
-devflow integrate --provider payment/stripe
+devflow integrate add --provider payment/stripe
 devflow integrate list
 ```
 
@@ -208,12 +218,12 @@ devflow deploy generate --platform railway
 ### 📋 Built-in Guides
 **Plain English:** Has a built-in help system with real, copy-pasteable examples for every feature.
 
-**Developer terms:** `devflow guide [topic]` renders Rich-styled panels with 20 topic guides covering init, generate, db, auth, docker, ci, migrate, config, relations, seed, test, cache, task, integrate, api, quality, deploy, flags, and health-endpoint.
+**Developer terms:** `devflow guide [topic]` renders Rich-styled panels with 23 topic guides covering init, generate, db, auth, docker, ci, migrate, config, relations, seed, test, cache, task, integrate, api, quality, deploy, flags, health-endpoint, cloud, fallback, and menu.
 
 ```bash
 devflow guide          # Show all topics
 devflow guide cache    # Guide for Redis caching
-devflow guide task     # Guide for Celery tasks
+devflow guide cloud    # Guide for cloud DB connectivity
 ```
 
 ---
@@ -256,7 +266,29 @@ devflow guide task     # Guide for Celery tasks
 ### 🏥 Health & Audit
 **Plain English:** Scans your project for problems, missing files, or security issues and reports them in a clear summary. Includes command history audits and config snapshots.
 
-**Developer terms:** `devflow health` validates project layer completeness. `devflow audit routes` parses endpoints. `devflow audit security` checks for auth guards and rate limits. `devflow status` monitors configs. `devflow recap` reads command histories.
+**Developer terms:** `devflow health` validates project layer completeness with structured `SIMPLE_HEAD` tables, side-by-side score panels, and recommended actions cards. `devflow audit routes` parses endpoints. `devflow audit security` checks for auth guards and rate limits. `devflow status` monitors configs. `devflow recap show` reads command histories.
+
+---
+
+### ☁️ Cloud & Fallback Resilience
+**Plain English:** Connect to modern cloud databases and build offline-resilient apps that fall back to local database storage during cloud outages.
+
+**Developer terms:** Scaffolds Firestore templates (model/repository/schema/service/router). Connects to Supabase, Atlas, or Firebase. Generates a client-side `fallback.py` orchestrating mode transitions (CLOUD ↔ DEGRADED ↔ RECOVERED) via local write queues (`0600` permissions) and automated idempotent replays.
+
+```bash
+devflow cloud connect                     # Run cloud wizard
+devflow cloud status                      # View latency and state
+devflow cloud fallback status             # View local fallback queue size
+```
+
+### ⚡ Interactive Command Palette (`devflow menu`)
+**Plain English:** Don't worry about memorising commands — open an interactive keyboard menu to search and run any CLI command.
+
+**Developer terms:** Opens an interactive fuzzy-searchable prompt wrapping all verified CLI commands. Displays shortcut references (Enter to run, Esc to exit) and prints the raw CLI command before running it.
+
+```bash
+devflow menu
+```
 
 ---
 
@@ -274,7 +306,8 @@ devflow guide task     # Guide for Celery tasks
 | Caching | [Redis](https://redis.io/) | In-memory key-value database for fast response caching |
 | Background Jobs | [Celery](https://docs.celeryq.dev/) | Distributed task queue for asynchronous processing |
 | Job Dashboard | [Flower](https://flower.readthedocs.io/) | Real-time monitoring and administration tool for Celery |
-| Interactive Prompts | [Questionary](https://questionary.readthedocs.io/) | Interactive command-line prompts supporting arrow-key choices |
+| Interactive Prompts | [InquirerPy](https://inquirerpy.readthedocs.io/) | Premium keyboard-driven interactive CLI prompts with custom styling |
+| Legacy Prompts | [Questionary](https://questionary.readthedocs.io/) | Fallback terminal prompt wizard |
 | Fuzzy Matching | [RapidFuzz](https://github.com/maxbachmann/RapidFuzz) | Fast string matching and similarity calculations for CLI suggestions |
 | AI Docs | OpenAI / Anthropic via [httpx](https://www.python-httpx.org/) | Intelligent documentation generation |
 

@@ -77,6 +77,17 @@ API_VERSION_PREFIX = "/api/{{ api_version }}"
 # Routers will be registered by the code generator here:
 # [ROUTER_REGISTRATION]
 
+@app.get("/", tags=["Root"])
+def root() -> dict:
+    """Root endpoint — confirms the API is reachable."""
+    return {
+        "app": "{{ project_name }}",
+        "version": app.version,
+        "docs": "/docs",
+        "health": "/health",
+    }
+
+
 @app.get("/health", tags=["HealthCheck"])
 def health_check() -> dict:
     """Return API health status."""

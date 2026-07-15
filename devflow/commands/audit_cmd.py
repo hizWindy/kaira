@@ -18,34 +18,206 @@ app = typer.Typer(help="API auditing and security checking commands.")
 
 @app.command("routes")
 def audit_routes() -> None:
-    """List all project endpoints and their handlers."""
+    """List all project endpoints with full paths, auth, and rate-limit details."""
+    from rich import box
+    from devflow.core.theme import Theme, sym
+
     config = get_config()
     output_root = Path.cwd() / config.output_dir
-
     routers_dir = output_root / config.routers_dir
+
     if not routers_dir.exists():
-        console.print("[yellow]No routers directory found.[/yellow]")
+        console.print(
+            Panel(
+                f"[{Theme.WARNING}]{sym('WARN')}  No routers directory found at "
+                f"[bold]{routers_dir}[/bold]\n"
+                f"[dim]Run [bold]devflow generate model <Name>[/bold] to scaffold your first router.[/dim]",
+                border_style=Theme.BORDER_WARNING,
+                title="[bold]devflow audit routes[/bold]",
+            )
+        )
         return
 
-    table = Table(title="DevFlow — Registered API Routes", border_style="cyan")
-    table.add_column("Router", justify="left")
-    table.add_column("Method", justify="left")
-    table.add_column("Path", justify="left")
-    table.add_column("Handler Function", justify="left")
+    router_files = sorted(routers_dir.glob("*_router.py"))
+    if not router_files:
+        console.print(f"[{Theme.MUTED}]No router files found in {routers_dir}[/{Theme.MUTED}]")
+        return
 
-    for f in routers_dir.glob("*_router.py"):
+    api_version = getattr(config, "api_version", "v1")
+    api_prefix = f"/api/{api_version}"
+
+    METHOD_COLORS = {
+        "GET":    "bold green",
+        "POST":   "bold blue",
+        "PUT":    "bold yellow",
+        "PATCH":  "bold magenta",
+        "DELETE": "bold red",
+        "WEBSOCKET": "bold cyan",
+    }
+
+    table = Table(
+        title=f"[bold {Theme.PRIMARY}]DevFlow — API Route Audit[/bold {Theme.PRIMARY}]  "
+              f"[dim]{api_prefix}/*[/dim]",
+        box=box.ROUNDED,
+        border_style=Theme.BORDER_PRIMARY,
+        header_style=f"bold {Theme.PRIMARY}",
+        show_lines=True,
+        expand=False,
+    )
+    table.add_column("#",               style="dim",              width=4,  justify="right")
+    table.add_column("Method",          width=9,                  justify="center")
+    table.add_column("Full Route",      style=f"bold {Theme.PRIMARY}", min_width=30)
+    table.add_column("Handler",         style="cyan",             min_width=18)
+    table.add_column("Auth",            width=13,                 justify="center")
+    table.add_column("Rate Limit",      style=Theme.MUTED,        width=12, justify="center")
+    table.add_column("File",            style=Theme.MUTED,        min_width=16)
+
+    http_methods = ["GET", "POST", "PUT", "PATCH", "DELETE", "WEBSOCKET"]
+    row_num = 0
+    total = 0
+    secured = 0
+    rate_limited = 0
+
+    for f in router_files:
         content = f.read_text(encoding="utf-8")
-        # Find APIRouter decorators, e.g. @router.get("/", ...)
-        # Parse def handlers
-        endpoints = re.findall(
-            r"@(router\.(get|post|put|delete|patch|websocket))\(\s*\"([^\"]+)\"[^)]*\)\s*(?:@[^\n]+\s*)*(?:async\s+)?def\s+(\w+)",
-            content,
-            re.MULTILINE
-        )
-        for _, method, path, handler in endpoints:
-            table.add_row(f.name, method.upper(), path, handler)
+        lines = content.split("\n")
 
+        # Parse router prefix
+        prefix_match = re.search(r"prefix\s*=\s*[\"']([^\"']+)[\"']", content)
+        router_prefix = prefix_match.group(1) if prefix_match else ""
+        if router_prefix and not router_prefix.startswith("/"):
+            router_prefix = "/" + router_prefix
+
+        current_rate_limit = None
+
+        for idx, line in enumerate(lines):
+            line_str = line.strip()
+
+            # Capture rate limit decorator
+            limit_m = re.match(r"@limiter\.limit\(([^)]+)\)", line_str)
+            if limit_m:
+                val = limit_m.group(1).strip("\"' ")
+                if "RATE_LIMIT_GET" in val:
+                    current_rate_limit = "60/min"
+                elif "RATE_LIMIT_WRITE" in val:
+                    current_rate_limit = "20/min"
+                else:
+                    current_rate_limit = val.replace("/minute", "/min")
+                continue
+
+            for method in http_methods:
+                ml = method.lower()
+
+                # Single-line: @router.get("/path", ...)
+                single = re.match(rf"@router\.{ml}\(\s*[\"']([^\"']*)[\"']", line_str)
+
+                sub_path = None
+                handler = None
+
+                if single:
+                    sub_path = single.group(1)
+                elif re.match(rf"@router\.{ml}\(\s*$", line_str):
+                    # Multi-line: path is on the next non-empty line
+                    for off in range(1, 6):
+                        if idx + off < len(lines):
+                            nxt = lines[idx + off].strip()
+                            pm = re.match(r"""[\"']([^\"']*)[\"']""", nxt)
+                            if pm:
+                                sub_path = pm.group(1)
+                                break
+                    if sub_path is None:
+                        continue
+                else:
+                    continue
+
+                # Normalise sub_path
+                if sub_path == "/":
+                    sub_path = ""
+                elif sub_path and not sub_path.startswith("/"):
+                    sub_path = "/" + sub_path
+
+                full_route = re.sub(r"/+", "/", f"{api_prefix}{router_prefix}{sub_path}")
+
+                # Find the handler function name
+                for off in range(1, 20):
+                    if idx + off < len(lines):
+                        fn_m = re.match(r"(?:async\s+)?def\s+(\w+)\s*\(", lines[idx + off].strip())
+                        if fn_m:
+                            handler = fn_m.group(1)
+                            # Check auth in function signature
+                            sig_lines = []
+                            for so in range(0, 12):
+                                if idx + off + so < len(lines):
+                                    sig_lines.append(lines[idx + off + so])
+                                    if "):" in lines[idx + off + so]:
+                                        break
+                            sig_str = "".join(sig_lines)
+                            has_auth = "get_current_user" in sig_str or "validate_api_key" in sig_str
+                            break
+
+                if handler is None:
+                    has_auth = False
+
+                # Build display strings
+                mcolor = METHOD_COLORS.get(method, "white")
+                method_str = f"[{mcolor}]{method}[/{mcolor}]"
+
+                auth_str = (
+                    f"[bold green]{sym('LOCK')} Secured[/bold green]"
+                    if has_auth
+                    else f"[dim red]{sym('WARN')} Public[/dim red]"
+                )
+
+                rl_display = current_rate_limit or f"[dim]—[/dim]"
+                rl_str = (
+                    f"[{Theme.MUTED}]{rl_display}[/{Theme.MUTED}]"
+                    if current_rate_limit
+                    else rl_display
+                )
+
+                row_num += 1
+                table.add_row(
+                    str(row_num),
+                    method_str,
+                    full_route,
+                    handler or "?",
+                    auth_str,
+                    rl_str,
+                    f.name,
+                )
+
+                total += 1
+                if has_auth:
+                    secured += 1
+                if current_rate_limit:
+                    rate_limited += 1
+
+                current_rate_limit = None
+                break
+
+    console.print()
     console.print(table)
+
+    # Summary footer
+    unsecured = total - secured
+    sec_color = Theme.SUCCESS if unsecured == 0 else Theme.WARNING if unsecured <= 2 else Theme.ERROR
+    rl_color  = Theme.SUCCESS if rate_limited == total else Theme.WARNING
+
+    summary = (
+        f"  [{Theme.MUTED}]Total routes :[/{Theme.MUTED}]  [bold]{total}[/bold]\n"
+        f"  [{Theme.MUTED}]Secured      :[/{Theme.MUTED}]  [{sec_color}]{secured}/{total}[/{sec_color}]\n"
+        f"  [{Theme.MUTED}]Rate-limited :[/{Theme.MUTED}]  [{rl_color}]{rate_limited}/{total}[/{rl_color}]\n"
+        f"  [{Theme.MUTED}]API prefix   :[/{Theme.MUTED}]  [bold cyan]{api_prefix}[/bold cyan]"
+    )
+    console.print(
+        Panel(
+            summary,
+            title="[bold]Audit Summary[/bold]",
+            border_style=Theme.BORDER_PRIMARY,
+            padding=(0, 2),
+        )
+    )
+    console.print()
 
 
 @app.command("security")

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import typer
 from rich.panel import Panel
 from rich.table import Table
 
@@ -32,8 +31,15 @@ def info_command() -> None:
         console.print("[dim]No models generated yet.[/dim]")
         return
 
-    table = Table(title="Generated Models", border_style="cyan", show_lines=True)
-    table.add_column("Model", style="bold cyan", no_wrap=True)
+    from rich import box
+    from devflow.core.theme import Theme
+
+    table = Table(
+        title="Generated Models",
+        box=box.SIMPLE_HEAD,
+        border_style=Theme.PRIMARY,
+    )
+    table.add_column("Model", style=f"bold {Theme.PRIMARY}", no_wrap=True)
     table.add_column("Fields", style="green")
     table.add_column("Relations", style="yellow")
 

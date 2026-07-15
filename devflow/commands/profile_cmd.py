@@ -24,8 +24,7 @@ app = typer.Typer(help="Route profiling and latency measurement.")
 _BASE_URL = "http://127.0.0.1:8000"
 _RESULTS_FILE = Path(".devflow") / "profile_results.json"
 _SERVER_DOWN_MSG = (
-    "⏸️ Server not running.\n"
-    "Start it with: [bold cyan]uvicorn main:app --reload[/bold cyan]"
+    "⏸️ Server not running.\nStart it with: [bold cyan]devflow run[/bold cyan]"
 )
 
 

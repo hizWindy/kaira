@@ -22,18 +22,23 @@ def check_command() -> None:
     config = get_config()
 
     if not config.generated_models:
-        console.print("[dim]No models tracked in .devflow.json yet. Run 'devflow generate model' first.[/dim]")
+        console.print(
+            "[dim]No models tracked in .devflow.json yet. Run 'devflow generate model' first.[/dim]"
+        )
         raise typer.Exit(0)
+
+    from rich import box
+    from devflow.core.theme import Theme
 
     table = Table(
         title="Change Detection Report",
-        border_style="cyan",
-        show_lines=True,
+        box=box.SIMPLE_HEAD,
+        border_style=Theme.PRIMARY,
     )
-    table.add_column("Model", style="bold cyan", no_wrap=True)
+    table.add_column("Model", style=f"bold {Theme.PRIMARY}", no_wrap=True)
     table.add_column("Layer", style="bold")
-    table.add_column("File", style="dim")
-    table.add_column("Status", justify="center")
+    table.add_column("File", style=Theme.MUTED)
+    table.add_column("Status", justify="left")
 
     tier = config.default_tier
     layers = TIER_LAYERS.get(tier, TIER_LAYERS["full"])
@@ -44,9 +49,9 @@ def check_command() -> None:
             out_path = resolve_output_path(layer, model_name, config, Path.cwd())
             exists = file_exists(out_path)
             status = (
-                "[yellow]⚠ exists — would overwrite[/yellow]"
+                "[bold yellow]⚠ exists — would overwrite[/bold yellow]"
                 if exists
-                else "[green]✓ new file[/green]"
+                else "[bold green]✓ new file[/bold green]"
             )
             table.add_row(
                 model_name,
@@ -56,4 +61,6 @@ def check_command() -> None:
             )
 
     console.print(table)
-    console.print("[dim]Run 'devflow generate model <ModelName> --force' to overwrite, or omit --force to be prompted.[/dim]")
+    console.print(
+        "[dim]Run 'devflow generate model <ModelName> --force' to overwrite, or omit --force to be prompted.[/dim]"
+    )

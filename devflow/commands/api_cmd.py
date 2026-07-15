@@ -21,8 +21,7 @@ app = typer.Typer(help="API inspection, testing, and client generation.")
 
 _BASE_URL = "http://127.0.0.1:8000"
 _SERVER_DOWN_MSG = (
-    "⏸️ Server not running.\n"
-    "Start it with: [bold cyan]uvicorn main:app --reload[/bold cyan]"
+    "⏸️ Server not running.\nStart it with: [bold cyan]devflow run[/bold cyan]"
 )
 
 

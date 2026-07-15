@@ -8,8 +8,6 @@ from __future__ import annotations
 from typing import Annotated, Optional
 
 import typer
-from rich.panel import Panel
-from rich import print as rprint
 
 from devflow import __version__
 from devflow.console import console
@@ -50,6 +48,14 @@ from devflow.commands.event_cmd import app as event_app
 from devflow.commands.notify_cmd import app as notify_app
 from devflow.commands.flags_cmd import app as flags_app
 from devflow.commands.health_endpoint_cmd import app as health_endpoint_app
+from devflow.commands.run_cmd import app as run_app
+
+# ── Phase 5 command apps ──────────────────────────────────────────────────────
+from devflow.commands.menu_cmd import app as menu_app
+from devflow.commands.cloud_cmd import app as cloud_app  # noqa: F401 — registered below
+
+# ── Phase 5.5 command apps ────────────────────────────────────────────────────
+from devflow.commands.sync_cmd import app as sync_app
 
 # ── Import standalone command functions ───────────────────────────────────────
 from devflow.commands.project import init_command
@@ -84,36 +90,91 @@ app.add_typer(config_app, name="config", help="Manage DevFlow project configurat
 app.add_typer(auth_app, name="auth", help="Authentication scaffolding commands.")
 app.add_typer(test_app, name="test", help="Testing scaffold and run commands.")
 app.add_typer(env_app, name="env", help="Environment management commands.")
-app.add_typer(docker_app, name="docker", help="Docker configuration scaffolding commands.")
+app.add_typer(
+    docker_app, name="docker", help="Docker configuration scaffolding commands."
+)
 app.add_typer(seed_app, name="seed", help="Database seeding commands.")
-app.add_typer(version_app, name="version", help="API Versioning and deprecation commands.")
+app.add_typer(
+    version_app, name="version", help="API Versioning and deprecation commands."
+)
 app.add_typer(websocket_app, name="websocket", help="WebSocket scaffolding commands.")
 app.add_typer(ci_app, name="ci", help="CI/CD pipeline generation commands.")
-app.add_typer(audit_app, name="audit", help="API auditing and security checking commands.")
-app.add_typer(guide_app, name="guide", help="Interactive guides for all DevFlow operations.")
+app.add_typer(
+    audit_app, name="audit", help="API auditing and security checking commands."
+)
+app.add_typer(
+    guide_app, name="guide", help="Interactive guides for all DevFlow operations."
+)
 
 # ── Sub-command groups — Phase 4 ──────────────────────────────────────────────
 
 app.add_typer(status_app, name="status", help="Live project status snapshot.")
 app.add_typer(recap_app, name="recap", help="Command history viewer.")
 app.add_typer(db_app, name="db", help="Database connection, status, and management.")
-app.add_typer(deps_app, name="deps", help="Dependency management — check, update, audit, tree, add, remove.")
-app.add_typer(quality_app, name="quality", help="Code quality tools — lint, typecheck, format, scan, audit.")
+app.add_typer(
+    deps_app,
+    name="deps",
+    help="Dependency management — check, update, audit, tree, add, remove.",
+)
+app.add_typer(
+    quality_app,
+    name="quality",
+    help="Code quality tools — lint, typecheck, format, scan, audit.",
+)
 app.add_typer(cache_app, name="cache", help="Redis cache management and route caching.")
 app.add_typer(task_app, name="task", help="Celery background task scaffolding.")
 app.add_typer(integrate_app, name="integrate", help="Third-party service integrations.")
-app.add_typer(api_cmd_app, name="api", help="API inspection, testing, and client generation.")
-app.add_typer(profile_app, name="profile", help="Route profiling and latency measurement.")
-app.add_typer(loadtest_app, name="loadtest", help="Load testing for local FastAPI routes.")
-app.add_typer(deploy_app, name="deploy", help="Deployment config generation and checklist.")
-app.add_typer(middleware_app, name="middleware", help="Middleware scaffolding and management.")
+app.add_typer(
+    api_cmd_app, name="api", help="API inspection, testing, and client generation."
+)
+app.add_typer(
+    profile_app, name="profile", help="Route profiling and latency measurement."
+)
+app.add_typer(
+    loadtest_app, name="loadtest", help="Load testing for local FastAPI routes."
+)
+app.add_typer(
+    deploy_app, name="deploy", help="Deployment config generation and checklist."
+)
+app.add_typer(
+    middleware_app, name="middleware", help="Middleware scaffolding and management."
+)
 app.add_typer(event_app, name="event", help="FastAPI lifespan event scaffolding.")
 app.add_typer(notify_app, name="notify", help="Notification service scaffolding.")
 app.add_typer(flags_app, name="flags", help="Feature flag management.")
-app.add_typer(health_endpoint_app, name="health-endpoint", help="Generate a /health monitoring endpoint.")
+app.add_typer(
+    health_endpoint_app,
+    name="health-endpoint",
+    help="Generate a /health monitoring endpoint.",
+)
+app.add_typer(
+    run_app,
+    name="run",
+    help="Start the FastAPI dev/prod server (wraps fastapi dev / fastapi run).",
+)
+
+# ── Sub-command groups — Phase 5 ──────────────────────────────────────────────
+
+app.add_typer(
+    menu_app,
+    name="menu",
+    help="☁️  Interactive fuzzy command palette — search and run any DevFlow command.",
+)
+app.add_typer(
+    cloud_app,
+    name="cloud",
+    help="☁️  Cloud database providers (Supabase, Atlas, Firebase) and fallback.",
+)
+
+# ── Sub-command groups — Phase 5.5 ────────────────────────────────────────────
+
+app.add_typer(
+    sync_app, name="sync", help="Cascade model field changes across all 5 layers."
+)
 
 
 # ── Standalone commands ───────────────────────────────────────────────────────
+
 
 @app.command("init")
 def cmd_init(
@@ -131,7 +192,9 @@ def cmd_init(
     ] = None,
     docker: Annotated[
         Optional[bool],
-        typer.Option("--docker/--no-docker", help="Include Docker scaffolding config files"),
+        typer.Option(
+            "--docker/--no-docker", help="Include Docker scaffolding config files"
+        ),
     ] = None,
     ci: Annotated[
         Optional[str],
@@ -192,10 +255,40 @@ def cmd_health() -> None:
 
 # ── Welcome banner (shown when --help is triggered at root level) ──────────────
 
+
 def _version_callback(value: bool) -> None:
     if value:
+        from devflow.core.theme import Theme, attribution
+
         console.print(f"DevFlow v{__version__}")
+        console.print(f"[{Theme.MUTED}]{attribution()}[/{Theme.MUTED}]")
         raise typer.Exit()
+
+
+@app.command("about")
+def cmd_about() -> None:
+    """Show DevFlow version, tagline, and attribution."""
+    from rich.panel import Panel
+
+    from devflow.core.theme import Theme, attribution, sym
+
+    bolt = sym("BOLT")
+    from devflow.core.theme import PROJECT_URL
+
+    body = (
+        f"[{Theme.PRIMARY}]DevFlow[/{Theme.PRIMARY}]  v{__version__}\n"
+        f"[{Theme.MUTED}]Continuous model-level FastAPI scaffolding[/{Theme.MUTED}]\n\n"
+        f"{attribution()}\n"
+        f"[{Theme.MUTED}]{PROJECT_URL}[/{Theme.MUTED}]"
+    )
+    console.print(
+        Panel(
+            body,
+            title=f"[{Theme.PRIMARY}]{bolt} DevFlow[/{Theme.PRIMARY}]",
+            border_style=Theme.BORDER_PRIMARY,
+            expand=False,
+        )
+    )
 
 
 @app.callback()
@@ -203,11 +296,19 @@ def main(
     ctx: typer.Context,
     version: Annotated[
         Optional[bool],
-        typer.Option("--version", "-V", callback=_version_callback, is_eager=True, help="Show version"),
+        typer.Option(
+            "--version",
+            "-V",
+            callback=_version_callback,
+            is_eager=True,
+            help="Show version",
+        ),
     ] = None,
     quiet: Annotated[
         Optional[bool],
-        typer.Option("--quiet", "-q", help="Suppress next-steps hints and informational panels"),
+        typer.Option(
+            "--quiet", "-q", help="Suppress next-steps hints and informational panels"
+        ),
     ] = None,
 ) -> None:
     """[bold cyan]DevFlow[/bold cyan] — Automated FastAPI scaffolding CLI.
@@ -225,8 +326,21 @@ def main(
       devflow migrate make "initial migration"
 
     [bold]Docs:[/bold] https://github.com/your-org/devflow
+
+    [bold]Phase 5 — Cloud:[/bold]
+
+    \b
+      devflow cloud connect        Connect to Supabase / MongoDB Atlas / Firebase
+      devflow cloud status         Cloud connection and fallback status
+      devflow menu                 Interactive command palette (fuzzy search)
     """
-    pass
+    # Phase 5: first-run onboarding (TTY + no args only, never in CI)
+    try:
+        from devflow.commands.onboarding import run_onboarding
+
+        run_onboarding()
+    except Exception:  # never crash the main CLI due to onboarding
+        pass
 
 
 if __name__ == "__main__":

@@ -141,6 +141,34 @@ def error_migrate_on_mongodb() -> None:
     )
 
 
+# Human-readable labels for document/schemaless databases that have no Alembic.
+_DOCUMENT_DB_LABELS = {
+    "mongodb": "MongoDB",
+    "atlas": "MongoDB Atlas",
+    "firebase": "Firebase (Firestore)",
+    "firestore": "Firebase (Firestore)",
+}
+
+
+def error_migrate_on_document_db(db_type: str) -> None:
+    """Report that migrations are not supported on a document/schemaless database.
+
+    Covers MongoDB, MongoDB Atlas, and Firebase/Firestore projects, all of
+    which are schemaless and therefore have no Alembic migration path.
+
+    Args:
+        db_type: The configured database type (e.g. ``"mongodb"``, ``"firebase"``).
+    """
+    label = _DOCUMENT_DB_LABELS.get(db_type.lower(), db_type)
+    smart_error(
+        context=f"Alembic migrations are not supported for {label} projects "
+        "(schemaless — no migrations needed).",
+        typed="devflow migrate ...",
+        fix_cmd="devflow guide db",
+        guide_topic="db",
+    )
+
+
 def error_missing_devflow_json() -> None:
     """Report that .devflow.json is missing for a project-scoped command."""
     smart_error(

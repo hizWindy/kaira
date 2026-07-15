@@ -7,9 +7,8 @@ Never writes credentials into generated files — always references platform sec
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated
 
 import typer
 from jinja2 import Environment, FileSystemLoader
@@ -93,7 +92,60 @@ def _run_checklist() -> list[tuple[str, bool, str]]:
             "Run: devflow migrate init",
         ))
 
+    # ── Phase 5 cloud/fallback checks ────────────────────────────────────────
+
+    # Check cloud config
+    import json as _json
+    devflow_cfg_path = Path(".devflow.json")
+    is_cloud = False
+    if devflow_cfg_path.exists():
+        try:
+            raw = _json.loads(devflow_cfg_path.read_text(encoding="utf-8"))
+            is_cloud = bool(raw.get("cloud"))
+        except Exception:
+            pass
+
+    if is_cloud:
+        # Check fallback write queue is empty before deploy
+        write_queue = Path(".devflow") / "fallback" / "write_queue.jsonl"
+        queue_empty = True
+        if write_queue.exists():
+            try:
+                lines = [line for line in write_queue.read_text(encoding="utf-8").splitlines() if line.strip()]
+                queue_empty = len(lines) == 0
+            except OSError:
+                queue_empty = False
+        items.append((
+            "Fallback queue empty",
+            queue_empty,
+            "Run: devflow cloud fallback sync  (replay queued writes before deploying)",
+        ))
+
+        # Check cloud credentials are referenced from secret store (not hardcoded in .env.example)
+        _CLOUD_REAL_VALUE_MARKERS = [
+            ("SUPABASE_DB_URL", "postgresql"),
+            ("ATLAS_URI", "mongodb+srv://"),
+            ("FIREBASE_CREDENTIALS_PATH", "/"),
+        ]
+        example_path = output_root / ".env.example"
+        creds_from_store = True
+        if example_path.exists():
+            example_content = example_path.read_text(encoding="utf-8")
+            for key, marker in _CLOUD_REAL_VALUE_MARKERS:
+                for line in example_content.splitlines():
+                    if line.startswith(f"{key}="):
+                        val = line.split("=", 1)[1]
+                        if marker in val and not val.startswith("<"):
+                            creds_from_store = False
+                            break
+        items.append((
+            "Cloud credentials referenced from secret store",
+            creds_from_store,
+            "Ensure .env.example uses placeholders for cloud keys (e.g. <your-supabase-url>)",
+        ))
+
     return items
+
 
 
 @app.command("generate")

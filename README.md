@@ -275,13 +275,71 @@ Appends the relationship code directly to the existing model file.
 ### `devflow migrate`
 
 ```bash
-devflow migrate init          # Initialize Alembic (runs: alembic init alembic)
 devflow migrate make "msg"    # New migration (runs: alembic revision --autogenerate -m "msg")
 devflow migrate run           # Apply migrations (runs: alembic upgrade head)
 devflow migrate rollback      # Revert last migration (runs: alembic downgrade -1)
+devflow migrate init          # Initialize Alembic (runs: alembic init alembic)
 ```
 
-> **Note:** After `devflow migrate init`, edit `alembic/env.py` to import your `Base` and models.
+> **Note:** DevFlow provides a **zero-configuration** migration workflow. You do not need to run `devflow migrate init` or manually configure `alembic/env.py`. Running any migration command (`make`, `run`, or `rollback`) automatically initializes and pre-configures Alembic behind the scenes if it hasn't been set up yet.
+
+---
+
+### `devflow db`
+
+Database verification, diagnostics, and schema/table structure inspection:
+
+```bash
+devflow db status             # Display active DB type, connection URL, and login status
+devflow db connect            # Perform a real database login check & verification query
+devflow db info               # List all tables & column counts (or collections & doc counts)
+devflow db shell              # Launch an interactive database shell (psql, mysql, sqlite3)
+devflow db backup             # Backup active database to a SQL dump/file
+devflow db restore <file>     # Restore active database from a SQL dump/file
+devflow db reset              # Drop and recreate the database (destructive)
+devflow db switch <type>      # Switch DB type (routes cloud providers to cloud connect)
+devflow db benchmark          # Time connection/query latency
+```
+
+*(9 commands total.)*
+
+> **Note:** All database commands dynamically resolve the active connection URL from your environment profile (e.g. `.env.development`) and fall back to your default local SQLite configuration if no credentials are provided. Connection URLs and driver error messages are always credential-masked (`user:****@host`).
+
+---
+
+### `devflow sync model`
+
+Cascade a model's field changes across all five layers — the *continuous* half of continuous scaffolding. Add a field once and schema + router regenerate to match; the service layer is flagged (never auto-rewritten):
+
+```bash
+devflow sync model User --fields "phone:str, verified:bool"   # add fields inline
+devflow sync model User                                       # detect hand-edits to models/user.py
+devflow sync model User --dry-run                             # preview the per-layer plan
+devflow sync model --all                                      # sync every registered model
+```
+
+| Layer | Action |
+|---|---|
+| Model | Apply field changes (overwrite with confirm) |
+| Schema | Regenerate — mirrors model fields |
+| Router | Regenerate — re-point schema references |
+| Repository | Untouched |
+| Service | Flagged for manual review — never auto-rewritten |
+
+> Removed fields require a typed confirmation (never silently dropped). After a relational sync, run `devflow migrate make "sync <model>"`.
+
+---
+
+### `devflow env audit` / `devflow env prune`
+
+Keep `.env` files lean — audit every key against enabled features, then prune the ones for features you never turned on:
+
+```bash
+devflow env audit    # table: key · owning feature · referenced in code? · keep/unused
+devflow env prune    # remove unused-feature keys from all .env.* files (typed confirm)
+```
+
+> Core keys (`DATABASE_URL`, `APP_ENV`, …) and any key referenced in your code are never pruned. `env prune` is blocked when `APP_ENV=production`.
 
 ---
 

@@ -9,7 +9,7 @@ description = "Automated FastAPI scaffolding CLI tool"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
-authors = [{ name = "DevFlow" }]
+authors = [{ name = "Khair" }]
 keywords = ["fastapi", "scaffolding", "cli", "codegen", "sqlalchemy"]
 classifiers = [
     "Programming Language :: Python :: 3",
@@ -32,6 +32,7 @@ dependencies = [
     "httpx>=0.27.0",
     "python-dotenv>=1.0.0",
     "questionary>=2.0.1",
+    "InquirerPy>=0.3.4",
 ]
 
 [project.optional-dependencies]
@@ -62,6 +63,19 @@ all = [
     "flower>=2.0.0",
     "rapidfuzz>=3.0.0",
     "pip-audit>=2.7.0",
+    "InquirerPy>=0.3.4",
+    "asyncpg>=0.29.0",
+    "motor>=3.3.0",
+    "beanie>=1.24.0",
+    "google-cloud-firestore>=2.16.0",
+    "aiosqlite>=0.20.0",
+]
+cloud = [
+    "asyncpg>=0.29.0",
+    "motor>=3.3.0",
+    "beanie>=1.24.0",
+    "google-cloud-firestore>=2.16.0",
+    "aiosqlite>=0.20.0",
 ]
 
 [project.scripts]
@@ -72,7 +86,7 @@ where = ["."]
 include = ["devflow*"]
 
 [tool.setuptools.package-data]
-devflow = ["templates/*.j2"]
+devflow = ["templates/*.j2", "templates/firestore/*.j2"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
