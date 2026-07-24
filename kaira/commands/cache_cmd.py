@@ -15,8 +15,8 @@ from jinja2 import Environment, FileSystemLoader  # nosec B701
 from rich.panel import Panel
 from rich.table import Table
 
-from devflow.console import console
-from devflow.commands.ux_helpers import mask_credentials, typed_confirmation
+from kaira.console import console
+from kaira.commands.ux_helpers import mask_credentials, typed_confirmation
 
 TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
 
@@ -55,7 +55,7 @@ def _update_env_files(key: str, value: str) -> None:
 
 def _get_routers(output_root: Path) -> list[tuple[str, str]]:
     """Scan the routers directory and return GET (method, path) pairs."""
-    from devflow.config import get_config
+    from kaira.config import get_config
     cfg = get_config()
     routers_dir = output_root / cfg.routers_dir
     get_routes: list[tuple[str, str]] = []
@@ -77,7 +77,7 @@ def _cache_key(route: str, scope: str = "all") -> str:
 @app.command("init")
 def cache_init() -> None:
     """Initialise the Redis cache module for this project."""
-    from devflow.config import get_config
+    from kaira.config import get_config
     cfg = get_config()
     output_root = Path.cwd() / cfg.output_dir
     core_dir = output_root / "core"
@@ -129,7 +129,7 @@ def cache_add(
 ) -> None:
     """Add caching to a route or all GET routes. Only GET routes are cacheable."""
     if all_get:
-        from devflow.config import get_config
+        from kaira.config import get_config
         cfg = get_config()
         routes = _get_routers(Path.cwd() / cfg.output_dir)
         if not routes:
@@ -226,7 +226,7 @@ def cache_status_cmd() -> None:
     else:
         table.add_row("Connection", "[dim]Not configured[/dim]")
 
-    from devflow.config import get_config
+    from kaira.config import get_config
     cfg = get_config()
     cache_module = Path.cwd() / cfg.output_dir / "core" / "cache.py"
     table.add_row(

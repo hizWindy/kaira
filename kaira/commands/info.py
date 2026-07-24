@@ -5,8 +5,8 @@ from __future__ import annotations
 from rich.panel import Panel
 from rich.table import Table
 
-from devflow.config import get_config, find_config_path
-from devflow.console import console
+from kaira.config import get_config, find_config_path
+from kaira.console import console
 
 
 def info_command() -> None:
@@ -32,7 +32,7 @@ def info_command() -> None:
         return
 
     from rich import box
-    from devflow.core.theme import Theme
+    from kaira.core.theme import Theme
 
     table = Table(
         title="Generated Models",

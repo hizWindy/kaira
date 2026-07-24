@@ -7,7 +7,7 @@ import pytest
 from click.testing import CliRunner
 from typer.main import get_command
 
-from devflow.main import app
+from kaira.main import app
 
 runner = CliRunner()
 cli = get_command(app)

@@ -16,8 +16,8 @@ from typing import Optional
 import typer
 from typing import Annotated
 
-from devflow.console import console
-from devflow.core.theme import Theme, sym
+from kaira.console import console
+from kaira.core.theme import Theme, sym
 
 app = typer.Typer(
     help="Interactive fuzzy command palette — search and run any Kaira command.",
@@ -548,7 +548,7 @@ def menu_main(
     if ctx.invoked_subcommand is not None:
         return
 
-    from devflow.core import prompts
+    from kaira.core import prompts
     from rich.panel import Panel
     from rich.table import Table
     from rich.align import Align
@@ -622,8 +622,8 @@ def menu_main(
     # Replace the "kaira" command token with the actual executable path for reliability
     parts[0] = sys.executable
     parts.insert(1, "-m")
-    parts.insert(2, "devflow.main")
+    parts.insert(2, "kaira.main")
 
     # Actually launch kaira <subcommand> — propagate exit code
-    result = subprocess.run([sys.executable, "-m", "devflow.main"] + parts[3:])
+    result = subprocess.run([sys.executable, "-m", "kaira.main"] + parts[3:])
     raise typer.Exit(result.returncode)

@@ -7,8 +7,8 @@ from pathlib import Path
 import typer
 from rich.panel import Panel
 
-from devflow.config import get_config
-from devflow.console import console
+from kaira.config import get_config
+from kaira.console import console
 
 app = typer.Typer(help="Project Health Check command.")
 
@@ -204,7 +204,7 @@ def health_command() -> None:
 
     # Print a beautiful Table with SIMPLE_HEAD box style
     from rich import box
-    from devflow.core.theme import Theme
+    from kaira.core.theme import Theme
     from rich.table import Table
 
     table = Table(box=box.SIMPLE_HEAD, border_style=Theme.PRIMARY, show_header=True)

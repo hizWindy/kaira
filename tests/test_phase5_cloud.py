@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from typer.testing import CliRunner
 
-from devflow.main import app
+from kaira.main import app
 
 runner = CliRunner()
 
@@ -57,7 +57,7 @@ class TestSupabaseConnectionString:
         assert "pgbouncer" not in direct
 
     def test_password_not_in_masked_output(self):
-        from devflow.commands.ux_helpers import mask_credentials
+        from kaira.commands.ux_helpers import mask_credentials
 
         raw = "postgresql+asyncpg://postgres:s3cr3t@db.xyzxyz.supabase.co:5432/postgres"
         masked = mask_credentials(raw)
@@ -106,38 +106,38 @@ class TestFirebaseCredentialValidation:
 
 
 # ---------------------------------------------------------------------------
-# .devflow.json cloud config persistence
+# .kaira.json cloud config persistence
 # ---------------------------------------------------------------------------
 
 
 class TestCloudConfigPersistence:
-    def test_save_cloud_to_devflow_json(self, tmp_path, monkeypatch):
+    def test_save_cloud_to_kaira_json(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
-        # Create minimal .devflow.json
+        # Create minimal .kaira.json
         cfg = {
             "output_dir": "app",
             "db_type": "sqlite",
             "models_dir": "models",
         }
-        (tmp_path / ".devflow.json").write_text(json.dumps(cfg))
+        (tmp_path / ".kaira.json").write_text(json.dumps(cfg))
 
-        from devflow.commands.cloud_cmd import _save_cloud_to_devflow
+        from kaira.commands.cloud_cmd import _save_cloud_to_kaira
 
-        with patch("devflow.config.get_config") as mock_cfg:
+        with patch("kaira.config.get_config") as mock_cfg:
             mock_instance = MagicMock()
             mock_instance.db_type = "sqlite"
             mock_cfg.return_value = mock_instance
-            with patch("devflow.config.save_config"):
-                _save_cloud_to_devflow("supabase", {"fallback": {}})
+            with patch("kaira.config.save_config"):
+                _save_cloud_to_kaira("supabase", {"fallback": {}})
 
-        updated = json.loads((tmp_path / ".devflow.json").read_text())
+        updated = json.loads((tmp_path / ".kaira.json").read_text())
         assert updated["database"] == "supabase"
         assert updated["cloud"] is True
         assert updated["cloud_provider"] == "supabase"
 
     def test_get_cloud_config_returns_empty_when_no_file(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
-        from devflow.commands.cloud_cmd import _get_cloud_config
+        from kaira.commands.cloud_cmd import _get_cloud_config
 
         result = _get_cloud_config()
         assert isinstance(result, dict)
@@ -155,7 +155,7 @@ class TestEnvUpdateHelpers:
         env_dev = tmp_path / ".env.development"
         env_dev.write_text("APP_ENV=development\n")
 
-        from devflow.commands.cloud_cmd import _update_env_files
+        from kaira.commands.cloud_cmd import _update_env_files
 
         # _update_env_files searches for .env* files in cwd — no mocking needed
         _update_env_files({"ATLAS_URI": "mongodb+srv://user:pass@cluster.net/db"})
@@ -168,7 +168,7 @@ class TestEnvUpdateHelpers:
         example = tmp_path / ".env.example"
         example.write_text("APP_ENV=development\n")
 
-        from devflow.commands.cloud_cmd import _write_env_placeholders
+        from kaira.commands.cloud_cmd import _write_env_placeholders
 
         _write_env_placeholders(example, {"SUPABASE_DB_URL": "real-value"})
 
@@ -186,13 +186,13 @@ class TestEnvUpdateHelpers:
 class TestDbSwitchCloudRouting:
     def test_db_switch_supabase_calls_cloud_connect(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
-        (tmp_path / ".devflow.json").write_text(json.dumps({
+        (tmp_path / ".kaira.json").write_text(json.dumps({
             "output_dir": "app", "db_type": "sqlite", "models_dir": "models",
             "repositories_dir": "repositories", "schemas_dir": "schemas",
             "services_dir": "services", "routers_dir": "routers",
         }))
 
-        with patch("devflow.commands.cloud_cmd.cloud_connect") as mock_connect:
+        with patch("kaira.commands.cloud_cmd.cloud_connect") as mock_connect:
             mock_connect.return_value = None
             result = runner.invoke(app, ["db", "switch", "supabase"])
         # Should trigger cloud connect routing
@@ -200,7 +200,7 @@ class TestDbSwitchCloudRouting:
 
     def test_db_switch_invalid_type_shows_error(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
-        (tmp_path / ".devflow.json").write_text(json.dumps({
+        (tmp_path / ".kaira.json").write_text(json.dumps({
             "output_dir": "app", "db_type": "sqlite", "models_dir": "models",
             "repositories_dir": "repositories", "schemas_dir": "schemas",
             "services_dir": "services", "routers_dir": "routers",
@@ -217,24 +217,24 @@ class TestDbSwitchCloudRouting:
 class TestQueueHelpers:
     def test_queue_line_count_zero_when_no_file(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
-        from devflow.commands.cloud_cmd import _queue_line_count
+        from kaira.commands.cloud_cmd import _queue_line_count
 
         assert _queue_line_count() == 0
 
     def test_queue_line_count_counts_lines(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
-        queue_dir = tmp_path / ".devflow" / "fallback"
+        queue_dir = tmp_path / ".kaira" / "fallback"
         queue_dir.mkdir(parents=True)
         queue_file = queue_dir / "write_queue.jsonl"
         queue_file.write_text('{"id":"1"}\n{"id":"2"}\n')
 
-        from devflow.commands.cloud_cmd import _queue_line_count
+        from kaira.commands.cloud_cmd import _queue_line_count
 
         assert _queue_line_count() == 2
 
     def test_conflict_line_count_zero_when_no_file(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
-        from devflow.commands.cloud_cmd import _conflict_line_count
+        from kaira.commands.cloud_cmd import _conflict_line_count
 
         assert _conflict_line_count() == 0
 

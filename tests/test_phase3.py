@@ -8,7 +8,7 @@ import pytest
 from click.testing import CliRunner
 from typer.main import get_command
 
-from devflow.main import app
+from kaira.main import app
 
 runner = CliRunner()
 cli = get_command(app)
@@ -33,7 +33,7 @@ class TestPhase3Commands:
             assert "Tip:" in result.output
 
     def test_config_set_case_insensitive(self, tmp_path):
-        # Create a mock .devflow.json inside isolated env first by doing config set
+        # Create a mock .kaira.json inside isolated env first by doing config set
         with runner.isolated_filesystem(temp_dir=tmp_path):
             result = run("config", "set", "API_VERSION", "v3")
             assert result.exit_code == 0
@@ -58,7 +58,7 @@ class TestPhase3Commands:
             assert (project_dir / "core" / "logger.py").exists()
             assert (project_dir / "middleware" / "security.py").exists()
             assert (project_dir / "pyproject.toml").exists()
-            assert (project_dir / ".devflow.json").exists()
+            assert (project_dir / ".kaira.json").exists()
 
             # Verify that settings.py matches sqlite setup
             db_content = (project_dir / "core" / "database.py").read_text()

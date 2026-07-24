@@ -6,7 +6,7 @@ from __future__ import annotations
 import typer
 from rich.panel import Panel
 
-from devflow.console import console
+from kaira.console import console
 
 app = typer.Typer(help="Interactive guides for all Kaira operations.")
 
@@ -60,7 +60,10 @@ def guide_main(
             "  [bold cyan]kaira guide fallback[/bold cyan]          Cloud → local fallback mode\n"
             "  [bold cyan]kaira guide menu[/bold cyan]              Using the interactive command palette\n"
             "  [bold magenta]── Phase 5.5 ────────────────────────────────[/bold magenta]\n"
-            "  [bold cyan]kaira guide sync[/bold cyan]              Cascade model field changes across layers"
+            "  [bold cyan]kaira guide sync[/bold cyan]              Cascade model field changes across layers\n"
+            "  [bold magenta]── Phase 6 ──────────────────────────────────[/bold magenta]\n"
+            "  [bold cyan]kaira guide db-provision[/bold cyan]      Automatic database provisioning\n"
+            "  [bold cyan]kaira guide offline[/bold cyan]           Offline / online database engine"
         )
         print_guide_panel("Index", content, "Run any guide for examples and usage.")
 
@@ -326,7 +329,7 @@ def guide_config() -> None:
         "  kaira config set default_tier simple"
     )
     print_guide_panel(
-        "config", content, "Config is stored in .devflow.json at the project root."
+        "config", content, "Config is stored in .kaira.json at the project root."
     )
 
 
@@ -643,10 +646,10 @@ def guide_fallback() -> None:
         "  DEGRADED   Cloud unreachable → reads served locally, writes queued\n"
         "  RECOVERED  Cloud back → queue replayed, then → CLOUD\n\n"
         "[bold green]DEGRADED behaviour:[/bold green]\n"
-        "  Supabase  → reads from local SQLite mirror (.devflow/fallback.db)\n"
+        "  Supabase  → reads from local SQLite mirror (.kaira/fallback.db)\n"
         "  Atlas     → local MongoDB if reachable, else JSON cache\n"
-        "  Firebase  → JSON snapshot cache (.devflow/fallback/)\n"
-        "  Writes    → queued to .devflow/fallback/write_queue.jsonl (202 Accepted)\n"
+        "  Firebase  → JSON snapshot cache (.kaira/fallback/)\n"
+        "  Writes    → queued to .kaira/fallback/write_queue.jsonl (202 Accepted)\n"
         "  Header    → X-Kaira-Mode: degraded on every response\n\n"
         "[bold green]Configuration:[/bold green]\n"
         "  FALLBACK_PROBE_INTERVAL=30   Seconds between health probes\n"
@@ -659,7 +662,7 @@ def guide_fallback() -> None:
         "  • Queue/mirror files: 0600 permissions, gitignored\n"
         "  • Status shows counts only — never row contents\n"
         "  • Passwords hashed before queueing (service layer order preserved)\n"
-        "  • Conflicts moved to .devflow/fallback/conflicts.jsonl — never silent overwrite\n"
+        "  • Conflicts moved to .kaira/fallback/conflicts.jsonl — never silent overwrite\n"
         "  • Generated tests force CLOUD mode with mocked client"
     )
     print_guide_panel(
@@ -728,10 +731,89 @@ def guide_sync() -> None:
         "[bold green]Notes:[/bold green]\n"
         "  • Removed fields require a typed confirmation — never silently dropped.\n"
         '  • After a relational sync, run: kaira migrate make "sync user"\n'
-        "  • The field snapshot in .devflow.json is updated so the next diff is accurate."
+        "  • The field snapshot in .kaira.json is updated so the next diff is accurate."
     )
     print_guide_panel(
         "sync",
         content,
         "Use --dry-run first to preview the per-layer plan.",
+    )
+
+
+@app.command("db-provision")
+def guide_db_provision() -> None:
+    """Guide for automatic database provisioning."""
+    content = (
+        "kaira provisions your database for you — no hand-creating the DB or\n"
+        "hand-writing a DSN. It runs automatically during init, or on demand.\n\n"
+        "[bold green]As part of init:[/bold green]\n"
+        "  kaira init proj9 --db postgresql          (auto-provision)\n\n"
+        "[bold green]Standalone (current project):[/bold green]\n"
+        "  kaira db create                           (provision now)\n"
+        "  kaira db create --name customdb           (override derived name)\n"
+        "  kaira db create --skip                    (scaffold DSN only)\n\n"
+        "[bold green]How detection works (server, not GUI clients):[/bold green]\n"
+        "  1. server shell on PATH   (psql / mysql / mongosh)\n"
+        "  2. TCP port probe         (5432 / 3306 / 27017)\n"
+        "  3. driver connect         (asyncpg / aiomysql / motor)\n"
+        "  pgAdmin/Compass/Workbench are never used as a signal.\n\n"
+        "[bold green]Credentials — passwordless-first:[/bold green]\n"
+        "  • Trust/socket/env auth connects with no prompt at all.\n"
+        "  • Only if the server rejects auth are you asked for a password;\n"
+        "    it's masked, retried up to 3×, and blank = skip.\n"
+        "  • An entered password is written ONLY to .env.development\n"
+        "    (git-ignored) and masked in every printed connection string.\n\n"
+        "[bold green]Always completes:[/bold green]\n"
+        "  No server reachable, or you skip the password? kaira falls back to\n"
+        "  offline SQLite at ./.kaira/offline.db and records DB_MODE=offline —\n"
+        "  explicitly, never silently. Start the server later and re-run\n"
+        "  kaira db create to go online.\n\n"
+        "[bold green]Profiles:[/bold green]\n"
+        "  --profile solo      auto-create (default)\n"
+        "  --profile standard  auto-create, but confirm first\n"
+        "  --profile scale     never auto-create (managed/external DB assumed)"
+    )
+    print_guide_panel(
+        "db-provision",
+        content,
+        "Names are sanitized to valid DB identifiers and stored as db_name in .kaira.json.",
+    )
+
+
+@app.command("offline")
+def guide_offline() -> None:
+    """Guide for the offline / online database engine."""
+    content = (
+        "Your app always announces which database it is on and whether it is\n"
+        "online or offline. Two independent dials control this — never one\n"
+        "overloaded switch:\n\n"
+        "[bold green]DB_MODE — which database binds at startup (Layer 1):[/bold green]\n"
+        "  online   (default) always DATABASE_URL; fail loudly if unreachable\n"
+        "  offline            always OFFLINE_DATABASE_URL\n"
+        "  auto               probe the primary once (2s), else bind offline\n\n"
+        "  Default is [bold]online[/bold] on purpose: a transient blip must never\n"
+        "  silently divert writes onto a throwaway database. Opt into auto when\n"
+        "  you actually want a dev-time swap.\n\n"
+        "[bold green]FALLBACK_MODE — runtime resilience (Layers 2/3):[/bold green]\n"
+        "  off      (default, this release) no runtime fallback, no write queue\n"
+        "  read-only / read-write are specified but NOT built yet — do not enable.\n\n"
+        "[bold green]Where the mode is reported:[/bold green]\n"
+        "  • kaira run banner        engine · name · online/offline\n"
+        "  • GET /health             {\"database\": {engine, name, mode}} (no DSN)\n"
+        "  • every response header   X-Kaira-DB-Mode: online | offline\n"
+        "  • kaira status            Database:  postgresql · proj9 · ✅ online\n"
+        "  • the welcome dashboard   DB row with a mode badge\n"
+        "  All five read one resolved value — they never diverge or re-probe.\n\n"
+        "[bold green]Offline store matches your data model:[/bold green]\n"
+        "  relational → SQLite mirror (models are portable)\n"
+        "  MongoDB    → local MongoDB namespace, never SQLite\n\n"
+        "[bold green]Type fidelity:[/bold green]\n"
+        "  SQLite can't fully mirror Postgres JSONB/ARRAY/native UUID/ENUM.\n"
+        "  Default templates are portable, so this is fine — kaira warns (only)\n"
+        "  if a model uses a native type before an offline run."
+    )
+    print_guide_panel(
+        "offline",
+        content,
+        "See KAIRA_SQL_ECHO / kaira run --sql to surface SQL for a single run.",
     )

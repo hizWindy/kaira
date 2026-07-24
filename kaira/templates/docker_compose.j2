@@ -18,8 +18,8 @@ services:
   db:
     image: postgres:15-alpine
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-devflow}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-devflow}
+      POSTGRES_USER: ${POSTGRES_USER:-kaira}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-kaira}
       POSTGRES_DB: ${POSTGRES_DB:-{{ project_slug }}}
     env_file:
       - .env
@@ -34,9 +34,9 @@ volumes:
   db:
     image: mysql:8.0
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-devflow}
-      MYSQL_USER: ${MYSQL_USER:-devflow}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-devflow}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-kaira}
+      MYSQL_USER: ${MYSQL_USER:-kaira}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-kaira}
       MYSQL_DATABASE: ${MYSQL_DATABASE:-{{ project_slug }}}
     env_file:
       - .env
@@ -51,8 +51,8 @@ volumes:
   db:
     image: mongo:7
     environment:
-      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-devflow}
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-devflow}
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-kaira}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-kaira}
       MONGO_INITDB_DATABASE: ${MONGO_DB:-{{ project_slug }}}
     env_file:
       - .env

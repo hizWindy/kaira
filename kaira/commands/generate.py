@@ -13,17 +13,17 @@ from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
 from rich.table import Table
 
-from devflow.console import console
-from devflow.commands.ux_helpers import print_next_steps
+from kaira.console import console
+from kaira.commands.ux_helpers import print_next_steps
 
-from devflow.config import (
+from kaira.config import (
     TIER_LAYERS,
     LAYER_DIRS,
     get_config,
     save_config,
     register_model,
 )
-from devflow.core.parser import (
+from kaira.core.parser import (
     parse_fields,
     parse_relations_from_json,
     validate_model_name,
@@ -31,8 +31,8 @@ from devflow.core.parser import (
     FieldDef,
     RelationDef,
 )
-from devflow.core.generator import generate_layer, generate_all, resolve_output_path
-from devflow.core.detector import write_with_check
+from kaira.core.generator import generate_layer, generate_all, resolve_output_path
+from kaira.core.detector import write_with_check
 
 def _ruff_format(path: Path) -> None:
     """Run ruff check --fix and ruff format on the given file path."""
@@ -122,7 +122,7 @@ def _generate_and_write(
         else:
             _print_skipped(out_path)
 
-    # Persist model to .devflow.json
+    # Persist model to .kaira.json
     register_model(
         config,
         model_name,
@@ -203,7 +203,7 @@ def generate_model(
             progress.update(task, description=f"[cyan]  {lyr}...")
             content = generate_layer(lyr, model_name, parsed_fields, [], config)
             out_path = resolve_output_path(lyr, model_name, config, base)
-            from devflow.core.detector import write_with_check as _wwc
+            from kaira.core.detector import write_with_check as _wwc
             result = _wwc(out_path, content, force=force, non_interactive=False)
             if result == "written":
                 _ruff_format(out_path)
@@ -214,7 +214,7 @@ def generate_model(
                 _print_skipped(out_path)
             progress.advance(task)
 
-    # Persist model to .devflow.json
+    # Persist model to .kaira.json
     register_model(
         config,
         model_name,

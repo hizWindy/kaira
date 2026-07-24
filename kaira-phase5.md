@@ -10,7 +10,7 @@
 
 - Treat this document as the source of truth for Phase 5 scope. Do not invent commands, flags, or file paths not listed here.
 - **Do not rebuild, refactor, or regress any existing Phase 1, 2, 3, or 4 command.** If a change to earlier-phase code appears necessary, stop and flag it instead of proceeding.
-- Follow the existing architecture, naming conventions, and code style found in `devflow/commands/`, `devflow/core/`, and `devflow/templates/`.
+- Follow the existing architecture, naming conventions, and code style found in `kaira/commands/`, `kaira/core/`, and `kaira/templates/`.
 - Work through the **Build Order** in Section 6 sequentially.
 - After each feature group is implemented, run `ruff check --fix`, `ruff format`, `mypy`, and `bandit -ll` before moving to the next group.
 - Do not mark a Deliverables Checklist item done until its tests pass at ≥80% coverage.
@@ -19,7 +19,7 @@
 
 ## 1. Project Summary (context)
 
-**DevFlow** is an automated scaffolding CLI for FastAPI backend development. It works at the **model level** — every `devflow generate model` produces all 5 architectural layers (Model → Repository → Schema → Service → Router) with security enforced by default.
+**DevFlow** is an automated scaffolding CLI for FastAPI backend development. It works at the **model level** — every `kaira generate model` produces all 5 architectural layers (Model → Repository → Schema → Service → Router) with security enforced by default.
 
 | Part | Technology |
 |---|---|
@@ -30,7 +30,7 @@
 | Logging | Loguru (terminal only — never log files) |
 | Formatter/Linter | Ruff |
 | Target stack | FastAPI + SQLAlchemy 2.0 (async) + Pydantic v2 + Alembic (or Beanie + Motor for MongoDB) |
-| Project memory | `.devflow.json` at project root |
+| Project memory | `.kaira.json` at project root |
 
 ### Already built (Phases 1–4, ~172 commands — DO NOT MODIFY)
 
@@ -140,13 +140,13 @@ Add `core/ui.py` with helpers: `panel()`, `kv_table()`, `data_table()`, `success
 
 ### UX 14 — First-Run Onboarding
 
-The very first time `devflow` is executed on a machine (no `~/.devflow/config.json`), show a one-time interactive onboarding:
+The very first time `kaira` is executed on a machine (no `~/.kaira/config.json`), show a one-time interactive onboarding:
 
 ```
 ⚡ Welcome to DevFlow!
 
 ? What describes you best?
-  ❯ New to FastAPI       → suggests devflow guide + tutorial tips
+  ❯ New to FastAPI       → suggests kaira guide + tutorial tips
     Experienced dev      → minimal hints, straight to work
 
 ? Enable anonymous usage stats to improve DevFlow? (no code, no secrets, ever)
@@ -155,17 +155,17 @@ The very first time `devflow` is executed on a machine (no `~/.devflow/config.js
 ```
 
 Rules:
-- Writes `~/.devflow/config.json` (`experience_level`, `telemetry`, `theme`).
+- Writes `~/.kaira/config.json` (`experience_level`, `telemetry`, `theme`).
 - **Telemetry defaults to No / opt-in only.** If enabled, it may only ever record command *names* and durations — never arguments, paths, or project names. If not implemented as a real backend yet, store the preference but send nothing.
 - Onboarding is skippable with any flag/args present, and never shown in CI (non-TTY).
-- `devflow config reset-onboarding` re-triggers it.
+- `kaira config reset-onboarding` re-triggers it.
 
-### UX 15 — Command Palette (`devflow menu`)
+### UX 15 — Command Palette (`kaira menu`)
 
 An interactive, fuzzy-searchable menu of all ~175 commands for discoverability:
 
 ```
-devflow menu
+kaira menu
 
 ? Search commands: mig▌
   ❯ migrate make          Create a new migration
@@ -177,7 +177,7 @@ devflow menu
 Selecting a command that needs arguments launches the relevant prompts (via `core/prompts.py`), then shows the equivalent raw command before running it, so users learn the CLI as they go:
 
 ```
-Running: devflow generate model User --fields "name:str, email:str"
+Running: kaira generate model User --fields "name:str, email:str"
 ```
 
 ### UX 16 — Refined `--help` Output
@@ -197,7 +197,7 @@ Implement once in a decorator (`@with_summary`) applied to new Phase 5 commands;
 
 ---
 
-## 4. Feature Specifications — PART 2: Cloud Databases (`devflow cloud`)
+## 4. Feature Specifications — PART 2: Cloud Databases (`kaira cloud`)
 
 ### FEATURE 16 — Cloud Database Providers
 
@@ -212,16 +212,16 @@ Extend the database options with three cloud providers:
 Commands:
 
 ```
-devflow cloud connect                 # interactive provider wizard
-devflow cloud connect --provider supabase|atlas|firebase
-devflow cloud status                  # provider, region, latency, fallback state
-devflow cloud test                    # round-trip health check
-devflow cloud disconnect              # revert to a local database (typed confirm)
-devflow cloud fallback status         # show current mode + queued writes
-devflow cloud fallback sync           # manually push queued writes to cloud
+kaira cloud connect                 # interactive provider wizard
+kaira cloud connect --provider supabase|atlas|firebase
+kaira cloud status                  # provider, region, latency, fallback state
+kaira cloud test                    # round-trip health check
+kaira cloud disconnect              # revert to a local database (typed confirm)
+kaira cloud fallback status         # show current mode + queued writes
+kaira cloud fallback sync           # manually push queued writes to cloud
 ```
 
-#### `devflow cloud connect` wizard flow
+#### `kaira cloud connect` wizard flow
 
 1. Arrow-key provider selection (UX 12 style, with descriptions).
 2. Provider-specific guided input using `secret()` prompts:
@@ -229,18 +229,18 @@ devflow cloud fallback sync           # manually push queued writes to cloud
    - **Atlas**: paste `mongodb+srv://` string (validated by regex before accepting).
    - **Firebase**: path to the service-account JSON file → validated to exist and parse; path stored in settings, file itself **never** copied into the repo. The wizard must add the filename pattern to `.gitignore`.
 3. Live connection test with spinner (UX 11). On failure: Phase 4 smart-error format with provider-specific hints (IP allowlist for Atlas, paused project for Supabase free tier, wrong service-account project for Firebase).
-4. On success: update `.devflow.json` (`"database": "supabase"`, `"cloud": true`, `"fallback": {...}`), write env keys to all `.env` files, register required settings fields.
+4. On success: update `.kaira.json` (`"database": "supabase"`, `"cloud": true`, `"fallback": {...}`), write env keys to all `.env` files, register required settings fields.
 
 #### Supabase / Atlas specifics
 
 - Supabase reuses **relational templates unchanged** — it is PostgreSQL. Only the connection layer and env keys differ. Alembic migrations fully supported (run against the *direct* connection).
 - Atlas reuses **MongoDB templates unchanged**. No migrations (schemaless), same as local MongoDB.
-- `devflow db switch` (Phase 4) must recognize the three new provider names and route to `cloud connect`.
+- `kaira db switch` (Phase 4) must recognize the three new provider names and route to `cloud connect`.
 
 #### Firebase specifics
 
 - New `templates/firestore/` set: document model, repository (Firestore async client), schema (Pydantic v2), service, router — same 5-layer shape, strict layer separation preserved.
-- No Alembic; block `devflow migrate *` on Firestore projects with the Phase 4 smart-error format (mirror the existing MongoDB behavior).
+- No Alembic; block `kaira migrate *` on Firestore projects with the Phase 4 smart-error format (mirror the existing MongoDB behavior).
 - All Firestore access via the official `google-cloud-firestore` async client — installed via the Phase 3 Rich installer.
 - Document IDs: expose UUIDs externally exactly like the other engines.
 
@@ -248,7 +248,7 @@ devflow cloud fallback sync           # manually push queued writes to cloud
 
 Generate a resilience layer so the user's app survives cloud outages.
 
-`devflow cloud connect` (or `devflow cloud fallback enable`) generates `core/fallback.py` into the user's project:
+`kaira cloud connect` (or `kaira cloud fallback enable`) generates `core/fallback.py` into the user's project:
 
 ```
 Modes:
@@ -261,19 +261,19 @@ Behavior spec:
 
 - **Health probe**: a lightweight ping to the cloud DB every N seconds (default 30, configurable via `FALLBACK_PROBE_INTERVAL`). 3 consecutive failures → enter DEGRADED. First success after DEGRADED → enter RECOVERED → replay queue → CLOUD.
 - **Reads in DEGRADED**:
-  - Supabase → read from a local SQLite mirror at `.devflow/fallback.db` (same models — SQLAlchemy makes this nearly free).
-  - Atlas → local MongoDB if reachable, else the JSON snapshot cache at `.devflow/fallback/`.
-  - Firebase → JSON snapshot cache at `.devflow/fallback/`.
+  - Supabase → read from a local SQLite mirror at `.kaira/fallback.db` (same models — SQLAlchemy makes this nearly free).
+  - Atlas → local MongoDB if reachable, else the JSON snapshot cache at `.kaira/fallback/`.
+  - Firebase → JSON snapshot cache at `.kaira/fallback/`.
   - Mirror/snapshot freshness: refreshed opportunistically after successful cloud reads (write-through cache), so DEGRADED serves the last-known-good data. Responses in DEGRADED include header `X-DevFlow-Mode: degraded` so clients can react.
-- **Writes in DEGRADED**: appended to a durable local queue `.devflow/fallback/write_queue.jsonl` and acknowledged to the client with `202 Accepted` + `X-DevFlow-Mode: degraded` (NOT a fake `200/201` — never lie about persistence).
-- **Replay on recovery**: queue replayed in order, idempotently (each queued write carries a UUID; replays are skipped if the UUID already applied). Conflicts (row changed in cloud since queueing) are **not silently overwritten** — conflicting entries are moved to `.devflow/fallback/conflicts.jsonl` and surfaced by `devflow cloud fallback status`.
+- **Writes in DEGRADED**: appended to a durable local queue `.kaira/fallback/write_queue.jsonl` and acknowledged to the client with `202 Accepted` + `X-DevFlow-Mode: degraded` (NOT a fake `200/201` — never lie about persistence).
+- **Replay on recovery**: queue replayed in order, idempotently (each queued write carries a UUID; replays are skipped if the UUID already applied). Conflicts (row changed in cloud since queueing) are **not silently overwritten** — conflicting entries are moved to `.kaira/fallback/conflicts.jsonl` and surfaced by `kaira cloud fallback status`.
 - **Never lose the queue**: append-only file, fsync after each write, gitignored.
-- **Security**: the local mirror and queue may contain user data → files created with `0600` permissions, directory gitignored, and `devflow cloud fallback status` never prints row contents (counts only). Queued writes never include raw passwords — hashing happens *before* queueing (service layer order preserved).
-- **Opt-out**: `devflow cloud fallback disable` removes the wiring; the wizard asks whether to enable fallback (default: Yes).
+- **Security**: the local mirror and queue may contain user data → files created with `0600` permissions, directory gitignored, and `kaira cloud fallback status` never prints row contents (counts only). Queued writes never include raw passwords — hashing happens *before* queueing (service layer order preserved).
+- **Opt-out**: `kaira cloud fallback disable` removes the wiring; the wizard asks whether to enable fallback (default: Yes).
 - **Off in tests**: generated test suite forces CLOUD mode with a mocked client — fallback logic gets its own dedicated generated tests instead.
 
 ```
-devflow cloud fallback status
+kaira cloud fallback status
 
 ⚡ DevFlow — Fallback Status
 ────────────────────────────────────────────────
@@ -284,7 +284,7 @@ devflow cloud fallback status
   Conflicts:      0
   Next probe:     in 12s
 ────────────────────────────────────────────────
-  → devflow cloud fallback sync   (manual replay attempt)
+  → kaira cloud fallback sync   (manual replay attempt)
 ```
 
 ### FEATURE 18 — Env & Validation Integration
@@ -294,18 +294,18 @@ devflow cloud fallback status
   - Atlas: `ATLAS_URI`
   - Firebase: `FIREBASE_CREDENTIALS_PATH`, `FIREBASE_PROJECT_ID`
   - Fallback: `FALLBACK_ENABLED`, `FALLBACK_PROBE_INTERVAL`
-- `devflow env validate` (Phase 2) must additionally check: SSL enforced on cloud URLs, Firebase credentials file exists and is **not** tracked by git, no cloud credentials present in `.env.example` (placeholders only).
+- `kaira env validate` (Phase 2) must additionally check: SSL enforced on cloud URLs, Firebase credentials file exists and is **not** tracked by git, no cloud credentials present in `.env.example` (placeholders only).
 - All printed cloud connection strings masked (`user:****@host`) — same Phase 4 rule.
-- `devflow deploy checklist` (Phase 4) gains: "Fallback queue empty" and "Cloud credentials referenced from secret store" checks.
+- `kaira deploy checklist` (Phase 4) gains: "Fallback queue empty" and "Cloud credentials referenced from secret store" checks.
 
 ---
 
 ## 5. New Guide Pages
 
 ```
-devflow guide cloud
-devflow guide fallback
-devflow guide menu
+kaira guide cloud
+kaira guide fallback
+kaira guide menu
 ```
 
 Each with real copy-pasteable examples in the existing guide style.
@@ -320,7 +320,7 @@ Each with real copy-pasteable examples in the existing guide style.
 4. UX 12 selection wrapper rollout in new code paths
 5. UX 14 first-run onboarding
 6. UX 16 refined `--help`
-7. UX 15 `devflow menu` (needs the prompt wrapper + full command registry)
+7. UX 15 `kaira menu` (needs the prompt wrapper + full command registry)
 8. FEATURE 16 — Supabase (smallest delta: reuses relational templates)
 9. FEATURE 16 — Atlas (reuses MongoDB templates)
 10. FEATURE 16 — Firebase (new `templates/firestore/` set)
@@ -359,17 +359,17 @@ Each with real copy-pasteable examples in the existing guide style.
 - [ ] `core/prompts.py` unified arrow-key prompt wrapper (select, multi, confirm, text, secret, fuzzy)
 - [ ] Modern spinners on every >500ms wait, all resolving to timed result lines
 - [ ] `@with_summary` timing footer decorator
-- [ ] First-run onboarding + `~/.devflow/config.json` + `config reset-onboarding`
-- [ ] `devflow menu` fuzzy command palette showing the raw command before running
+- [ ] First-run onboarding + `~/.kaira/config.json` + `config reset-onboarding`
+- [ ] `kaira menu` fuzzy command palette showing the raw command before running
 - [ ] Rich-styled, categorized `--help`
-- [ ] `devflow cloud connect` wizard (Supabase / Atlas / Firebase)
-- [ ] `devflow cloud status | test | disconnect`
+- [ ] `kaira cloud connect` wizard (Supabase / Atlas / Firebase)
+- [ ] `kaira cloud status | test | disconnect`
 - [ ] Supabase support (pooled + direct URLs, Alembic on direct)
 - [ ] MongoDB Atlas support (`mongodb+srv://` validation)
 - [ ] Firebase support + new `templates/firestore/` 5-layer set + migrate blocked
 - [ ] Fallback engine: probe, CLOUD/DEGRADED/RECOVERED modes
 - [ ] Durable write queue + idempotent replay + conflict file (no silent overwrite)
-- [ ] `devflow cloud fallback status | sync | enable | disable`
+- [ ] `kaira cloud fallback status | sync | enable | disable`
 - [ ] `X-DevFlow-Mode` header + `202` on queued writes
 - [ ] `env validate` + `deploy checklist` cloud/fallback checks
 - [ ] `db switch` recognizes cloud provider names

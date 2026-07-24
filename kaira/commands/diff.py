@@ -17,11 +17,11 @@ from rich.prompt import Prompt
 from rich.syntax import Syntax
 from rich.text import Text
 
-from devflow.config import get_config, TIER_LAYERS
-from devflow.console import console
-from devflow.core.parser import parse_fields, validate_model_name
-from devflow.core.generator import generate_layer, resolve_output_path
-from devflow.core.detector import file_exists
+from kaira.config import get_config, TIER_LAYERS
+from kaira.console import console
+from kaira.core.parser import parse_fields, validate_model_name
+from kaira.core.generator import generate_layer, resolve_output_path
+from kaira.core.detector import file_exists
 
 
 # ---------------------------------------------------------------------------

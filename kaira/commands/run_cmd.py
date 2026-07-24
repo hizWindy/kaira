@@ -26,7 +26,7 @@ from rich.panel import Panel
 from rich.table import Table
 from rich import box as rich_box
 
-from devflow.console import console
+from kaira.console import console
 
 # ---------------------------------------------------------------------------
 # Candidate entry-file search order
@@ -60,6 +60,29 @@ def _module_from_path(entry: Path, cwd: Path) -> str:
         rel = entry
     parts = list(rel.with_suffix("").parts)
     return ".".join(parts)
+
+
+def _db_banner_info(cwd: Path) -> Optional[tuple[str, str, str, bool]]:
+    """Return ``(engine, name, mode, online)`` for the run banner, or ``None``.
+
+    Reads the resolved values from ``.kaira.json`` (``db_type``/``db_name``/
+    ``db_mode``) so the banner reports the same database the app binds — without
+    connecting. Returns ``None`` when not inside a Kaira project.
+    """
+    config_path = cwd / ".kaira.json"
+    if not config_path.exists():
+        return None
+    try:
+        import json
+
+        data = json.loads(config_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    engine = data.get("db_type", "sqlite")
+    name = data.get("db_name") or "—"
+    mode = data.get("db_mode", "online")
+    online = mode != "offline"
+    return engine, name, mode, online
 
 
 def _module_importable(name: str, python_exe: Optional[str] = None) -> bool:
@@ -108,6 +131,10 @@ def run_command(
     prod: Annotated[
         bool,
         typer.Option("--prod", help="Run in production mode (fastapi run / no reload)."),
+    ] = False,
+    sql: Annotated[
+        bool,
+        typer.Option("--sql", "--verbose", help="Show SQL echo for this run (KAIRA_SQL_ECHO=1)."),
     ] = False,
 ) -> None:
     """Start the FastAPI server using 'fastapi dev' or 'fastapi run'.
@@ -168,7 +195,7 @@ def run_command(
     mode_color = "yellow" if prod else "cyan"
 
     import os
-    from devflow.config import get_venv_python
+    from kaira.config import get_venv_python
 
     python_exe = get_venv_python(cwd)
 
@@ -237,6 +264,22 @@ def run_command(
     info_table.add_row("Mode",       f"[{mode_color}]{mode}[/{mode_color}]")
     info_table.add_row("Entry",      f"[white]{entry_display}[/white]")
     info_table.add_row("Runner",     f"[white]{runner_name}[/white]")
+    # Database + online/offline mode — the primary place a developer learns which
+    # DB they're on (Phase 6, Features 2.3 & 4). Reads the resolved values only.
+    db_info = _db_banner_info(cwd)
+    if db_info:
+        from kaira.core.theme import Theme, sym
+
+        engine_name, db_name, db_mode, online = db_info
+        badge_style = Theme.SUCCESS if online else Theme.WARNING
+        badge_icon = sym("OK") if online else sym("WARN")
+        info_table.add_row(
+            "Database",
+            f"[white]{engine_name}[/white]  [dim]·[/dim]  [white]{db_name}[/white]  "
+            f"[dim]·[/dim]  [{badge_style}]{badge_icon} {db_mode}[/{badge_style}]",
+        )
+    if sql:
+        info_table.add_row("SQL echo", "[yellow]on[/yellow]")
     info_table.add_row("URL",        f"[bold cyan]http://{host}:{port}[/bold cyan]")
     info_table.add_row("Docs",       f"[dim]http://{host}:{port}/docs[/dim]")
     info_table.add_row("ReDoc",      f"[dim]http://{host}:{port}/redoc[/dim]")
@@ -255,12 +298,33 @@ def run_command(
             padding=(0, 2),
         )
     )
+    # Type-fidelity heads-up (§3.4): SQLite can't faithfully mirror Postgres
+    # native types. Flag only — never blocks the run.
+    if db_info and db_info[0] == "postgresql":
+        try:
+            import json
+
+            from kaira.core.provisioner import models_with_native_types
+
+            data = json.loads((cwd / ".kaira.json").read_text(encoding="utf-8"))
+            flagged = models_with_native_types(data.get("generated_models", []))
+            for model_name in flagged:
+                console.print(
+                    f"  [yellow]⚠️  model {model_name} uses a Postgres-native type — "
+                    f"not faithfully represented in offline SQLite mode[/yellow]"
+                )
+        except (OSError, ValueError):
+            pass
+
     console.print("  [dim]Press [bold]Ctrl+C[/bold] to stop the server.[/dim]\n")
 
     # ── Hand off to server process (replaces current process stdin/stdout) ────
     env = os.environ.copy()
     env["PYTHONIOENCODING"] = "utf-8"
     env["PYTHONUTF8"] = "1"
+    # SQL echo is off by default; `--sql`/`--verbose` opts in for this run only.
+    if sql:
+        env["KAIRA_SQL_ECHO"] = "1"
 
     try:
         subprocess.run(cmd, cwd=str(cwd), env=env)

@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Optional
 
-from devflow.config import SUPPORTED_FIELD_TYPES, SQLALCHEMY_TYPE_MAP, PYTHON_TYPE_MAP
+from kaira.config import SUPPORTED_FIELD_TYPES, SQLALCHEMY_TYPE_MAP, PYTHON_TYPE_MAP
 
 
 @dataclass

@@ -15,7 +15,7 @@ from jinja2 import Environment, FileSystemLoader
 from rich.panel import Panel
 from rich.table import Table
 
-from devflow.console import console
+from kaira.console import console
 
 TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
 
@@ -78,7 +78,7 @@ def _require_flags_file(output_root: Path) -> Path:
 @app.command("init")
 def flags_init() -> None:
     """Initialise the feature flags module (core/flags.py)."""
-    from devflow.config import get_config
+    from kaira.config import get_config
     cfg = get_config()
     output_root = Path.cwd() / cfg.output_dir
     (output_root / "core").mkdir(parents=True, exist_ok=True)
@@ -121,7 +121,7 @@ def flags_add(
 
     default_bool = default.lower() in ("true", "1", "yes")
 
-    from devflow.config import get_config
+    from kaira.config import get_config
     cfg = get_config()
     output_root = Path.cwd() / cfg.output_dir
     fp = _require_flags_file(output_root)
@@ -146,7 +146,7 @@ def flags_enable(
     flag_name: Annotated[str, typer.Argument(help="Flag name to enable")],
 ) -> None:
     """Enable a feature flag."""
-    from devflow.config import get_config
+    from kaira.config import get_config
     cfg = get_config()
     output_root = Path.cwd() / cfg.output_dir
     fp = _require_flags_file(output_root)
@@ -166,7 +166,7 @@ def flags_disable(
     flag_name: Annotated[str, typer.Argument(help="Flag name to disable")],
 ) -> None:
     """Disable a feature flag."""
-    from devflow.config import get_config
+    from kaira.config import get_config
     cfg = get_config()
     output_root = Path.cwd() / cfg.output_dir
     fp = _require_flags_file(output_root)
@@ -184,7 +184,7 @@ def flags_disable(
 @app.command("list")
 def flags_list() -> None:
     """List all feature flags and their current state."""
-    from devflow.config import get_config
+    from kaira.config import get_config
     cfg = get_config()
     output_root = Path.cwd() / cfg.output_dir
     fp = _flags_path(output_root)

@@ -1,6 +1,6 @@
 """Kaira CLI — Automated FastAPI Scaffolding Tool.
 
-Entry point registered as: kaira = "devflow.main:app"
+Entry point registered as: kaira = "kaira.main:app"
 """
 
 from __future__ import annotations
@@ -9,60 +9,60 @@ from typing import Annotated, Optional
 
 import typer
 
-from devflow import __version__
-from devflow.console import console
+from kaira import __version__
+from kaira.console import console
 
 # ── Import command apps ───────────────────────────────────────────────────────
-from devflow.commands.generate import app as generate_app
-from devflow.commands.relation import app as add_app
-from devflow.commands.migrate import app as migrate_app
-from devflow.commands.list_cmd import app as list_app
-from devflow.commands.docs import app as docs_app
-from devflow.commands.config_cmd import app as config_app
-from devflow.commands.auth_cmd import app as auth_app
-from devflow.commands.test_cmd import app as test_app
-from devflow.commands.env_cmd import app as env_app
-from devflow.commands.docker_cmd import app as docker_app
-from devflow.commands.seed_cmd import app as seed_app
-from devflow.commands.version_cmd import app as version_app
-from devflow.commands.websocket_cmd import app as websocket_app
-from devflow.commands.ci_cmd import app as ci_app
-from devflow.commands.audit_cmd import app as audit_app
-from devflow.commands.guide_cmd import app as guide_app
+from kaira.commands.generate import app as generate_app
+from kaira.commands.relation import app as add_app
+from kaira.commands.migrate import app as migrate_app
+from kaira.commands.list_cmd import app as list_app
+from kaira.commands.docs import app as docs_app
+from kaira.commands.config_cmd import app as config_app
+from kaira.commands.auth_cmd import app as auth_app
+from kaira.commands.test_cmd import app as test_app
+from kaira.commands.env_cmd import app as env_app
+from kaira.commands.docker_cmd import app as docker_app
+from kaira.commands.seed_cmd import app as seed_app
+from kaira.commands.version_cmd import app as version_app
+from kaira.commands.websocket_cmd import app as websocket_app
+from kaira.commands.ci_cmd import app as ci_app
+from kaira.commands.audit_cmd import app as audit_app
+from kaira.commands.guide_cmd import app as guide_app
 
 # ── Phase 4 command apps ──────────────────────────────────────────────────────
-from devflow.commands.status_cmd import app as status_app
-from devflow.commands.recap_cmd import app as recap_app
-from devflow.commands.db_cmd import app as db_app
-from devflow.commands.deps_cmd import app as deps_app
-from devflow.commands.quality_cmd import app as quality_app
-from devflow.commands.cache_cmd import app as cache_app
-from devflow.commands.task_cmd import app as task_app
-from devflow.commands.integrate_cmd import app as integrate_app
-from devflow.commands.api_cmd import app as api_cmd_app
-from devflow.commands.profile_cmd import app as profile_app
-from devflow.commands.loadtest_cmd import app as loadtest_app
-from devflow.commands.deploy_cmd import app as deploy_app
-from devflow.commands.middleware_cmd import app as middleware_app
-from devflow.commands.event_cmd import app as event_app
-from devflow.commands.notify_cmd import app as notify_app
-from devflow.commands.flags_cmd import app as flags_app
-from devflow.commands.health_endpoint_cmd import app as health_endpoint_app
-from devflow.commands.run_cmd import app as run_app
+from kaira.commands.status_cmd import app as status_app
+from kaira.commands.recap_cmd import app as recap_app
+from kaira.commands.db_cmd import app as db_app
+from kaira.commands.deps_cmd import app as deps_app
+from kaira.commands.quality_cmd import app as quality_app
+from kaira.commands.cache_cmd import app as cache_app
+from kaira.commands.task_cmd import app as task_app
+from kaira.commands.integrate_cmd import app as integrate_app
+from kaira.commands.api_cmd import app as api_cmd_app
+from kaira.commands.profile_cmd import app as profile_app
+from kaira.commands.loadtest_cmd import app as loadtest_app
+from kaira.commands.deploy_cmd import app as deploy_app
+from kaira.commands.middleware_cmd import app as middleware_app
+from kaira.commands.event_cmd import app as event_app
+from kaira.commands.notify_cmd import app as notify_app
+from kaira.commands.flags_cmd import app as flags_app
+from kaira.commands.health_endpoint_cmd import app as health_endpoint_app
+from kaira.commands.run_cmd import app as run_app
 
 # ── Phase 5 command apps ──────────────────────────────────────────────────────
-from devflow.commands.menu_cmd import app as menu_app
-from devflow.commands.cloud_cmd import app as cloud_app  # noqa: F401 — registered below
+from kaira.commands.menu_cmd import app as menu_app
+from kaira.commands.cloud_cmd import app as cloud_app  # noqa: F401 — registered below
 
 # ── Phase 5.5 command apps ────────────────────────────────────────────────────
-from devflow.commands.sync_cmd import app as sync_app
+from kaira.commands.sync_cmd import app as sync_app
 
 # ── Import standalone command functions ───────────────────────────────────────
-from devflow.commands.project import init_command
-from devflow.commands.info import info_command
-from devflow.commands.check import check_command
-from devflow.commands.diff import diff_command
-from devflow.commands.health import health_command
+from kaira.commands.project import init_command
+from kaira.commands.info import info_command
+from kaira.commands.check import check_command
+from kaira.commands.diff import diff_command
+from kaira.commands.health import health_command
 
 
 # ── Root Typer app ────────────────────────────────────────────────────────────
@@ -200,6 +200,17 @@ def cmd_init(
         Optional[str],
         typer.Option("--ci", help="CI/CD platform: github, gitlab, bitbucket, none"),
     ] = None,
+    profile: Annotated[
+        Optional[str],
+        typer.Option(
+            "--profile",
+            help="Provisioning profile: solo (auto-create), standard (confirm), scale (never auto-create).",
+        ),
+    ] = None,
+    yes: Annotated[
+        bool,
+        typer.Option("--yes", "-y", help="Skip confirmation prompts (non-interactive)."),
+    ] = False,
 ) -> None:
     """Scaffold a full FastAPI project structure in a named directory with interactive wizard config.
 
@@ -208,8 +219,9 @@ def cmd_init(
     kaira init
     kaira init myproject
     kaira init myproject --db postgresql --auth jwt --docker
+    kaira init proj9 --db postgresql --profile solo
     """
-    init_command(name=name, db=db, auth=auth, docker=docker, ci=ci)
+    init_command(name=name, db=db, auth=auth, docker=docker, ci=ci, profile=profile, yes=yes)
 
 
 @app.command("info")
@@ -258,7 +270,7 @@ def cmd_health() -> None:
 
 def _version_callback(value: bool) -> None:
     if value:
-        from devflow.core.theme import Theme, attribution
+        from kaira.core.theme import Theme, attribution
 
         console.print(f"Kaira v{__version__}")
         console.print(f"[{Theme.MUTED}]{attribution()}[/{Theme.MUTED}]")
@@ -270,10 +282,10 @@ def cmd_about() -> None:
     """Show Kaira version, tagline, and attribution."""
     from rich.panel import Panel
 
-    from devflow.core.theme import Theme, attribution, sym
+    from kaira.core.theme import Theme, attribution, sym
 
     bolt = sym("BOLT")
-    from devflow.core.theme import PROJECT_URL
+    from kaira.core.theme import PROJECT_URL
 
     body = (
         f"[{Theme.PRIMARY}]Kaira[/{Theme.PRIMARY}]  v{__version__}\n"
@@ -325,7 +337,7 @@ def main(
       kaira migrate init
       kaira migrate make "initial migration"
 
-    [bold]Docs:[/bold] https://github.com/your-org/devflow
+    [bold]Docs:[/bold] https://github.com/your-org/kaira
 
     [bold]Phase 5 — Cloud:[/bold]
 
@@ -336,7 +348,7 @@ def main(
     """
     # Phase 5: first-run onboarding (TTY + no args only, never in CI)
     try:
-        from devflow.commands.onboarding import run_onboarding
+        from kaira.commands.onboarding import run_onboarding
 
         run_onboarding()
     except Exception:  # never crash the main CLI due to onboarding

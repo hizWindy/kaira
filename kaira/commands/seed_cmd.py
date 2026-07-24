@@ -14,10 +14,10 @@ from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
 from rich.prompt import Confirm
 
-from devflow.config import get_config
-from devflow.console import console
-from devflow.core.detector import write_with_check
-from devflow.core.parser import camel_to_snake
+from kaira.config import get_config
+from kaira.console import console
+from kaira.core.detector import write_with_check
+from kaira.core.parser import camel_to_snake
 
 TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
 
@@ -112,7 +112,7 @@ def seed_run(
         for script in scripts:
             progress.update(task, description=f"[cyan]  {script.name}...")
             try:
-                from devflow.config import get_venv_python
+                from kaira.config import get_venv_python
                 python_exe = get_venv_python()
                 env = os.environ.copy()
                 env["PYTHONPATH"] = str(output_root) + os.pathsep + env.get("PYTHONPATH", "")
@@ -152,7 +152,7 @@ def seed_clear() -> None:
     )
     
     try:
-        from devflow.config import get_venv_python
+        from kaira.config import get_venv_python
         python_exe = get_venv_python()
         env = os.environ.copy()
         env["PYTHONPATH"] = str(output_root) + os.pathsep + env.get("PYTHONPATH", "")

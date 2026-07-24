@@ -13,7 +13,7 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-from devflow.console import console
+from kaira.console import console
 
 
 # ---------------------------------------------------------------------------
@@ -74,12 +74,12 @@ def _count_files(directory: Path, pattern: str) -> int:
 
 
 def _last_action() -> str:
-    """Read the most recent command from .devflow/history.jsonl.
+    """Read the most recent command from .kaira/history.jsonl.
 
     Returns:
         Short display string of the last command, or 'None'.
     """
-    history_path = Path.cwd() / ".devflow" / "history.jsonl"
+    history_path = Path.cwd() / ".kaira" / "history.jsonl"
     if not history_path.exists():
         return "[dim]None[/dim]"
     try:
@@ -103,15 +103,15 @@ def _render_inside_project(config_path: Path) -> None:
     """Render the full project dashboard.
 
     Args:
-        config_path: Path to the .devflow.json file.
+        config_path: Path to the .kaira.json file.
     """
-    # Load raw config for fields not in DevFlowConfig dataclass
+    # Load raw config for fields not in KairaConfig dataclass
     try:
         raw = json.loads(config_path.read_text(encoding="utf-8"))
     except Exception:
         console.print(
             Panel(
-                "[yellow]⚠️  .devflow.json is malformed or unreadable.\n"
+                "[yellow]⚠️  .kaira.json is malformed or unreadable.\n"
                 "Run [bold]kaira config show[/bold] to inspect it.[/yellow]",
                 title="[yellow]Kaira — Config Warning[/yellow]",
                 border_style="yellow",
@@ -119,12 +119,12 @@ def _render_inside_project(config_path: Path) -> None:
         )
         return
 
-    from devflow.config import DevFlowConfig
+    from kaira.config import KairaConfig
 
     try:
-        cfg = DevFlowConfig.from_dict(raw)
+        cfg = KairaConfig.from_dict(raw)
     except Exception:
-        cfg = DevFlowConfig()
+        cfg = KairaConfig()
 
     project_name = raw.get("project", raw.get("project_name", Path.cwd().name))
     db_type = raw.get("database", cfg.db_type)
@@ -142,6 +142,16 @@ def _render_inside_project(config_path: Path) -> None:
 
     # DB connection probe (non-blocking, 2s timeout)
     db_status = _probe_db(db_type, timeout=2.0)
+
+    # Resolved online/offline mode badge (Phase 6, Feature 4) — from .kaira.json,
+    # the single resolved source; never re-probed here.
+    db_name = raw.get("db_name", "") or cfg.db_name
+    db_mode = raw.get("db_mode", "") or cfg.db_mode or "online"
+    mode_badge = (
+        "[bold yellow]⚠️ offline[/bold yellow]"
+        if db_mode == "offline"
+        else "[bold green]✅ online[/bold green]"
+    )
 
     # Auth status
     auth_dir = output_root / "auth"
@@ -194,7 +204,10 @@ def _render_inside_project(config_path: Path) -> None:
     info = Table.grid(padding=(0, 2))
     info.add_column(style="dim", no_wrap=True)
     info.add_column()
-    info.add_row("Database", f"[bold]{db_type}[/bold]  {db_status}")
+    _db_label = f"[bold]{db_type}[/bold]"
+    if db_name:
+        _db_label += f" [dim]·[/dim] {db_name}"
+    info.add_row("Database", f"{_db_label}  [dim]·[/dim]  {mode_badge}  {db_status}")
     info.add_row("Auth", f"[bold]{auth_type}[/bold]  {auth_status}")
     info.add_row("Docker", docker_status)
     info.add_row("CI/CD", f"[bold]{ci_platform}[/bold]")
@@ -236,7 +249,7 @@ def _render_inside_project(config_path: Path) -> None:
 
 def _render_outside_project() -> None:
     """Render the minimal welcome panel when outside a Kaira project."""
-    from devflow import __version__
+    from kaira import __version__
 
     content = (
         f"[bold cyan]Kaira[/bold cyan] v{__version__} — Automated FastAPI Scaffolding CLI\n\n"
@@ -244,7 +257,7 @@ def _render_outside_project() -> None:
         "  [bold cyan]kaira init <project-name>[/bold cyan]\n\n"
         "Browse guides:\n"
         "  [bold cyan]kaira guide[/bold cyan]\n\n"
-        "[dim]No .devflow.json found in this directory.[/dim]"
+        "[dim]No .kaira.json found in this directory.[/dim]"
     )
     console.print(
         Panel(
@@ -259,7 +272,7 @@ def _render_outside_project() -> None:
 
 def _print_attribution_footer() -> None:
     """Print a single muted attribution line below the dashboard panels."""
-    from devflow.core.theme import Theme, attribution, sym
+    from kaira.core.theme import Theme, attribution, sym
 
     bolt = sym("BOLT")
     console.print(f"[{Theme.MUTED}]{bolt} Kaira · {attribution()}[/{Theme.MUTED}]")
@@ -277,7 +290,7 @@ def welcome_dashboard() -> None:
     Outside a project: minimal welcome pointing to kaira init and kaira guide.
     Never blocks or crashes — all errors handled gracefully.
     """
-    from devflow.config import find_config_path
+    from kaira.config import find_config_path
 
     try:
         config_path = find_config_path()

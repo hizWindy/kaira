@@ -12,7 +12,7 @@ import typer
 from rich.panel import Panel
 from rich.table import Table
 
-from devflow.console import console
+from kaira.console import console
 
 app = typer.Typer(help="Code quality tools — lint, typecheck, format, scan, audit.")
 
@@ -79,7 +79,7 @@ def _run_tool(
 
 @app.command("lint")
 def quality_lint(
-    path: Annotated[str, typer.Argument(help="Path to lint (default: devflow/ or .)")] = ".",
+    path: Annotated[str, typer.Argument(help="Path to lint (default: kaira/ or .)")] = ".",
 ) -> None:
     """Run ruff check on the project.
 

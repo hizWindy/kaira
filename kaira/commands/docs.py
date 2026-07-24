@@ -10,8 +10,8 @@ import typer
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
-from devflow.config import get_config, TIER_LAYERS
-from devflow.console import console
+from kaira.config import get_config, TIER_LAYERS
+from kaira.console import console
 
 app = typer.Typer(help="AI-powered API documentation generation.")
 

@@ -23,12 +23,12 @@ class TestFallbackMode:
         # Import from the template rendered module path — we test the engine
         # orchestrator here since the rendered file lives in user projects.
         # We check the engine + the template structure.
-        from devflow.core.fallback_engine import generate_fallback_module
+        from kaira.core.fallback_engine import generate_fallback_module
 
         assert callable(generate_fallback_module)
 
     def test_local_engine_mapping(self):
-        from devflow.core.fallback_engine import _local_engine_for
+        from kaira.core.fallback_engine import _local_engine_for
 
         assert _local_engine_for("supabase") == "sqlite"
         assert _local_engine_for("atlas") == "mongodb_local"
@@ -44,7 +44,7 @@ class TestFallbackMode:
 class TestFallbackQueue:
     def test_write_queue_created_with_secure_perms(self, tmp_path):
         """Queue file should be created with 0600 permissions."""
-        queue_dir = tmp_path / ".devflow" / "fallback"
+        queue_dir = tmp_path / ".kaira" / "fallback"
         queue_dir.mkdir(parents=True)
         queue_file = queue_dir / "write_queue.jsonl"
 
@@ -201,7 +201,7 @@ class TestQueuedWriteResponse:
         degraded_status_code = 202
         assert degraded_status_code == HTTPStatus.ACCEPTED.value
 
-    def test_x_devflow_mode_header_format(self):
+    def test_x_kaira_mode_header_format(self):
         """X-Kaira-Mode header value must match mode name (lowercase)."""
         mode_header_map = {
             "CLOUD": "cloud",
@@ -221,7 +221,7 @@ class TestFallbackStatusSecurity:
     def test_status_shows_counts_only(self, tmp_path, monkeypatch):
         """Fallback status output must never include row data."""
         monkeypatch.chdir(tmp_path)
-        queue_dir = tmp_path / ".devflow" / "fallback"
+        queue_dir = tmp_path / ".kaira" / "fallback"
         queue_dir.mkdir(parents=True)
         queue_file = queue_dir / "write_queue.jsonl"
         # Write entries with sensitive data
@@ -229,7 +229,7 @@ class TestFallbackStatusSecurity:
             entry = {"id": "uuid-x", "data": {"password": "$2b$12$hashed", "name": "Alice"}}
             queue_file.write_text(json.dumps(entry) + "\n")
 
-        from devflow.commands.cloud_cmd import _queue_line_count
+        from kaira.commands.cloud_cmd import _queue_line_count
 
         count = _queue_line_count()
         # We can only check that the count is correct — actual CLI output
@@ -241,7 +241,7 @@ class TestFallbackStatusSecurity:
         if os.name == "nt":
             pytest.skip("Permission test only applies on Unix")
 
-        fallback_dir = tmp_path / ".devflow" / "fallback"
+        fallback_dir = tmp_path / ".kaira" / "fallback"
         fallback_dir.mkdir(parents=True)
         os.chmod(fallback_dir, stat.S_IRWXU)  # 0700
 
@@ -263,7 +263,7 @@ class TestFallbackEngineGenerate:
         # Create minimal project structure
         app_dir = tmp_path / "app"
         app_dir.mkdir()
-        (tmp_path / ".devflow.json").write_text(json.dumps({
+        (tmp_path / ".kaira.json").write_text(json.dumps({
             "output_dir": "app",
             "db_type": "supabase",
             "models_dir": "models",
@@ -273,7 +273,7 @@ class TestFallbackEngineGenerate:
             "routers_dir": "routers",
         }))
 
-        from devflow.core.fallback_engine import generate_fallback_module
+        from kaira.core.fallback_engine import generate_fallback_module
 
         generated = generate_fallback_module(provider="supabase")
         assert generated.exists()
@@ -287,7 +287,7 @@ class TestFallbackEngineGenerate:
         monkeypatch.chdir(tmp_path)
         app_dir = tmp_path / "app"
         app_dir.mkdir()
-        (tmp_path / ".devflow.json").write_text(json.dumps({
+        (tmp_path / ".kaira.json").write_text(json.dumps({
             "output_dir": "app",
             "db_type": "supabase",
             "models_dir": "models",
@@ -297,7 +297,7 @@ class TestFallbackEngineGenerate:
             "routers_dir": "routers",
         }))
 
-        from devflow.core.fallback_engine import generate_fallback_module
+        from kaira.core.fallback_engine import generate_fallback_module
 
         generated = generate_fallback_module(provider="firebase")
         content = generated.read_text(encoding="utf-8")
@@ -310,7 +310,7 @@ class TestFallbackEngineGenerate:
         monkeypatch.chdir(tmp_path)
         app_dir = tmp_path / "app"
         app_dir.mkdir()
-        (tmp_path / ".devflow.json").write_text(json.dumps({
+        (tmp_path / ".kaira.json").write_text(json.dumps({
             "output_dir": "app",
             "db_type": "atlas",
             "models_dir": "models",
@@ -320,7 +320,7 @@ class TestFallbackEngineGenerate:
             "routers_dir": "routers",
         }))
 
-        from devflow.core.fallback_engine import generate_fallback_module
+        from kaira.core.fallback_engine import generate_fallback_module
 
         generated = generate_fallback_module(provider="atlas")
         content = generated.read_text(encoding="utf-8")

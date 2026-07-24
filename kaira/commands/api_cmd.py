@@ -15,7 +15,7 @@ from rich.panel import Panel
 from rich.syntax import Syntax
 from rich.table import Table
 
-from devflow.console import console
+from kaira.console import console
 
 app = typer.Typer(help="API inspection, testing, and client generation.")
 

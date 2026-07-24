@@ -1,4 +1,4 @@
-"""Config command group — read/write .devflow.json settings."""
+"""Config command group — read/write .kaira.json settings."""
 
 from __future__ import annotations
 
@@ -7,8 +7,8 @@ from typing import Annotated
 import typer
 from rich.table import Table
 
-from devflow.config import get_config, save_config
-from devflow.console import console
+from kaira.config import get_config, save_config
+from kaira.console import console
 
 app = typer.Typer(help="Manage Kaira project configuration.")
 
@@ -35,7 +35,7 @@ def config_set(
     key: Annotated[str, typer.Argument(help="Config key to set")],
     value: Annotated[str, typer.Argument(help="Value to assign")],
 ) -> None:
-    """Set a configuration value in .devflow.json.
+    """Set a configuration value in .kaira.json.
 
     Examples
     --------
@@ -67,7 +67,7 @@ def config_set(
 def config_get(
     key: Annotated[str, typer.Argument(help="Config key to retrieve")],
 ) -> None:
-    """Get a configuration value from .devflow.json.
+    """Get a configuration value from .kaira.json.
 
     Examples
     --------
@@ -91,7 +91,7 @@ def config_show() -> None:
     config = get_config()
 
     from rich import box
-    from devflow.core.theme import Theme
+    from kaira.core.theme import Theme
 
     table = Table(
         title="Kaira Configuration",
@@ -131,13 +131,13 @@ def config_reset_onboarding() -> None:
     --------
     kaira config reset-onboarding
     """
-    from devflow.commands.onboarding import reset_config, _CONFIG_FILE
+    from kaira.commands.onboarding import reset_config, _CONFIG_FILE
 
     if _CONFIG_FILE.exists():
         reset_config()
         console.print(
             "[bold green]✓[/bold green]  Global Kaira config reset. "
-            "Onboarding will run on next [cyan]devflow[/cyan] invocation."
+            "Onboarding will run on next [cyan]kaira[/cyan] invocation."
         )
     else:
         console.print("[dim]No global config found — nothing to reset.[/dim]")

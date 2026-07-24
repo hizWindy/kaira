@@ -17,7 +17,7 @@ import typer
 from rich.panel import Panel
 from rich.table import Table
 
-from devflow.console import console
+from kaira.console import console
 
 app = typer.Typer(help="Load testing for local FastAPI routes.")
 

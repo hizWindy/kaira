@@ -12,16 +12,16 @@ from rich.panel import Panel
 from rich.table import Table
 from typing import Annotated
 
-from devflow.console import console
+from kaira.console import console
 
 app = typer.Typer(help="Show Kaira command history.")
 
-_HISTORY_DIR = ".devflow"
+_HISTORY_DIR = ".kaira"
 _HISTORY_FILE = "history.jsonl"
 
 
 def _load_history(since: Optional[datetime.datetime] = None) -> list[dict]:
-    """Load history records from .devflow/history.jsonl.
+    """Load history records from .kaira/history.jsonl.
 
     Args:
         since: If provided, only return records at or after this datetime.
@@ -68,7 +68,7 @@ def recap_command(
     week: Annotated[bool, typer.Option("--week", help="Show commands from the last 7 days")] = False,
     limit: Annotated[int, typer.Option("--limit", "-n", help="Maximum records to show")] = 50,
 ) -> None:
-    """Show command history from .devflow/history.jsonl.
+    """Show command history from .kaira/history.jsonl.
 
     History is filtered by --today or --week if specified.
     Sensitive argument values are always redacted before display.
@@ -91,7 +91,7 @@ def recap_command(
         console.print(
             Panel(
                 "[dim]No history recorded yet.\n\n"
-                "History is written to [bold].devflow/history.jsonl[/bold] "
+                "History is written to [bold].kaira/history.jsonl[/bold] "
                 "as you run kaira commands.[/dim]",
                 title="Kaira — Recap",
                 border_style="cyan",

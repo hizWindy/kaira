@@ -31,7 +31,7 @@ In one command, Kaira generates:
 # Clone or unzip the project
 cd Kaira
 
-# Install in editable mode — registers the `devflow` command globally
+# Install in editable mode — registers the `kaira` command globally
 pip install -e .
 
 # Verify installation
@@ -92,7 +92,7 @@ project/
 ├── .gitignore
 ├── Dockerfile
 ├── requirements.txt
-└── .devflow.json     # Kaira project config
+└── .kaira.json     # Kaira project config
 ```
 
 ```bash
@@ -158,7 +158,7 @@ kaira guide config
 
 ### Database-aware generation
 
-`kaira generate` reads `.devflow.json` and switches templates based on `db_type`:
+`kaira generate` reads `.kaira.json` and switches templates based on `db_type`:
 
 - `sqlite`, `postgresql`, `mysql` use SQLAlchemy models plus async repositories.
 - `mongodb` uses Beanie document models plus MongoDB repositories.
@@ -290,6 +290,7 @@ kaira migrate init          # Initialize Alembic (runs: alembic init alembic)
 Database verification, diagnostics, and schema/table structure inspection:
 
 ```bash
+kaira db create             # Auto-provision the database (detect server, create DB, wire DSN)
 kaira db status             # Display active DB type, connection URL, and login status
 kaira db connect            # Perform a real database login check & verification query
 kaira db info               # List all tables & column counts (or collections & doc counts)
@@ -301,7 +302,7 @@ kaira db switch <type>      # Switch DB type (routes cloud providers to cloud co
 kaira db benchmark          # Time connection/query latency
 ```
 
-*(9 commands total.)*
+*(10 commands total.)*
 
 > **Note:** All database commands dynamically resolve the active connection URL from your environment profile (e.g. `.env.development`) and fall back to your default local SQLite configuration if no credentials are provided. Connection URLs and driver error messages are always credential-masked (`user:****@host`).
 
@@ -436,6 +437,14 @@ kaira config set models_dir app/models    # Change output directories
 | `ai_provider` | `openai` | AI documentation provider |
 | `ai_model` | `gpt-4o` | AI model to use |
 | `ai_api_key_env` | `OPENAI_API_KEY` | Env var for API key |
+| `db_type` | `sqlite` | Database engine (`postgresql`/`mysql`/`mongodb`/`sqlite`) |
+| `api_version` | `v1` | API version prefix |
+| `auth_type` | `none` | Auth scaffold (`jwt`/`oauth2`/`api-key`/`none`) |
+| `db_name` | `""` | Sanitized database identifier (set by provisioning, Phase 6) |
+| `db_provisioned` | `false` | Whether the database has been created/confirmed (Phase 6) |
+| `db_mode` | `online` | Resolved bind mode: `online`/`offline`/`auto` (Phase 6) |
+
+The last three fields are written by auto-provisioning (`kaira init` / `kaira db create`) and read by every mode-reporting surface — you normally don't set them by hand.
 
 ---
 
@@ -486,6 +495,44 @@ Scaffold 15 integration providers across 6 categories:
 - `kaira event generate <startup|shutdown>` — Scaffold lifespan hooks
 - `kaira flags add <flag_name>` — Scaffold feature flag toggle
 - `kaira health-endpoint generate` — Scaffold unauthenticated /health route
+
+---
+
+## Phase 6: Auto DB Provisioning, `run` Overhaul & Offline/Online Engine
+
+### Auto database provisioning
+
+`kaira init` no longer stops at scaffolding — it provisions the actual database. It detects a local database **server** (never a GUI client like pgAdmin/Compass), creates a database named after the project, and wires the DSN into `.env.development`:
+
+```bash
+kaira init proj9 --db postgresql        # provision as part of init
+kaira db create                         # standalone: provision for current project
+kaira db create --name customdb         # override the derived name
+kaira db create --skip                  # scaffold the DSN only, don't touch the server
+```
+
+- **Passwordless-first.** Trust/socket/env auth connects with no prompt. Only if the server rejects auth are you asked for a password — masked, retried up to 3×, blank = skip.
+- **Secrets stay put.** An entered password is written **only** to `.env.development` (git-ignored) and masked in every printed connection string and driver error.
+- **Always completes.** No server reachable, or you skip the password? Kaira falls back to offline SQLite at `./.kaira/offline.db` and records `DB_MODE=offline` — explicitly, never silently.
+- **Profiles.** `--profile solo` (default) auto-creates; `standard` confirms first; `scale` never auto-creates (managed DB assumed).
+- Project names are sanitized to valid DB identifiers (validated against `^[a-z_][a-z0-9_]*$` before any DDL) and stored as `db_name`.
+
+### Offline / Online engine (Layer 1)
+
+The app binds exactly **one** database at startup, governed by two independent dials:
+
+- `DB_MODE` = `online` (default) · `offline` · `auto` — which database binds. Default is **online** on purpose: a transient blip must never silently divert writes onto a throwaway database. Opt into `auto` for a dev-time swap.
+- `FALLBACK_MODE` = `off` (default) — runtime resilience (Layers 2/3) is specified but **not built** this release.
+
+**Which DB am I on?** Reported identically on five surfaces from one resolved value — `kaira run` banner, `GET /health` (`database` block, no DSN), the `X-Kaira-DB-Mode` response header, `kaira status`, and the welcome dashboard. The offline store matches your data model: SQLite for relational, a local MongoDB namespace for Mongo (never SQLite).
+
+### Cleaner `kaira run`
+
+- SQL echo is **off by default** — `kaira run --sql` (or `--verbose`) surfaces it for a single run.
+- A Loguru `InterceptHandler` unifies uvicorn + SQLAlchemy logging into one format and sink.
+- The launch banner shows the database engine, name, and online/offline mode.
+
+See `kaira guide db-provision` and `kaira guide offline` for full walkthroughs.
 
 ---
 
@@ -541,7 +588,7 @@ my-api/
 ├── .gitignore
 ├── Dockerfile
 ├── requirements.txt
-└── .devflow.json
+└── .kaira.json
 ```
 
 ---

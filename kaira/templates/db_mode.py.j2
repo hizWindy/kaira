@@ -1,0 +1,131 @@
+"""core/db_mode.py
+
+Offline/Online startup resolution (Phase 6, Feature 3 — Layer 1) for
+{{ project_name }}.
+
+The app binds exactly **one** database at startup, decided by ``DB_MODE``:
+
+- ``online``  — always bind ``DATABASE_URL``. If it is unreachable the app
+  fails loudly at first use rather than silently downgrading. This is the
+  default: an explicit mode means explicit behaviour.
+- ``offline`` — always bind ``OFFLINE_DATABASE_URL``.
+- ``auto``    — probe ``DATABASE_URL`` once (2s). Reachable → online;
+  otherwise bind the offline store and announce it loudly.
+
+Resolution happens **once**; the result is cached and read by the lifespan
+handler into ``app.state`` so every surface (banner, ``/health``, the
+``X-Kaira-DB-Mode`` header, ``kaira status``) reports the same values without
+re-probing. No mirror, no queue, no sync: because only one database is ever
+live, there is no consistency problem to solve at this layer.
+
+Credentials are never printed — :func:`mask_url` strips them from every
+diagnostic string.
+"""
+
+from __future__ import annotations
+
+import re
+import socket
+from dataclasses import dataclass
+from urllib.parse import urlparse
+
+from config.settings import settings
+
+_CREDENTIAL_RE = re.compile(r"(://)([^/@]+)@")
+
+
+def mask_url(url: str) -> str:
+    """Return *url* with any ``user:pass@`` credentials replaced by ``***``."""
+    return _CREDENTIAL_RE.sub(r"\1***@", url or "")
+
+
+def engine_name(url: str) -> str:
+    """Return the human engine name for a DSN (``postgresql``/``mysql``/...)."""
+    low = (url or "").lower()
+    if low.startswith("sqlite"):
+        return "sqlite"
+    if low.startswith("mongodb"):
+        return "mongodb"
+    if low.startswith("postgres"):
+        return "postgresql"
+    if low.startswith("mysql"):
+        return "mysql"
+    return "unknown"
+
+
+def db_name(url: str) -> str:
+    """Return the database/file name from a DSN, credentials stripped."""
+    if not url:
+        return ""
+    if url.lower().startswith("sqlite"):
+        # sqlite+aiosqlite:///./.kaira/offline.db  ->  offline.db
+        tail = url.rsplit("/", 1)[-1]
+        return tail or "sqlite"
+    parsed = urlparse(url)
+    name = (parsed.path or "").lstrip("/")
+    return name.split("?")[0] or engine_name(url)
+
+
+def _host_port(url: str) -> tuple[str, int]:
+    """Extract ``(host, port)`` from a DSN, applying per-engine default ports."""
+    parsed = urlparse(url)
+    host = parsed.hostname or "localhost"
+    default_ports = {"postgresql": 5432, "mysql": 3306, "mongodb": 27017}
+    port = parsed.port or default_ports.get(engine_name(url), 0)
+    return host, port
+
+
+def _probe(url: str, timeout: float = 2.0) -> bool:
+    """Return True if the database behind *url* is reachable within *timeout*.
+
+    Uses a lightweight TCP connect (never a full query). File-based SQLite is
+    always considered reachable.
+    """
+    if not url or url.lower().startswith("sqlite"):
+        return True
+    host, port = _host_port(url)
+    if not port:
+        return False
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
+@dataclass
+class DBBinding:
+    """The single database the app resolved to at startup."""
+
+    url: str
+    engine: str  # postgresql | mysql | sqlite | mongodb
+    name: str
+    mode: str  # online | offline
+    online: bool
+
+
+_binding: DBBinding | None = None
+
+
+def resolve_binding() -> DBBinding:
+    """Resolve (once) which database this process binds to, per ``DB_MODE``.
+
+    Returns:
+        The cached :class:`DBBinding`. Safe to call from multiple surfaces.
+    """
+    global _binding
+    if _binding is not None:
+        return _binding
+
+    mode = (getattr(settings, "DB_MODE", "online") or "online").lower()
+    primary = settings.DATABASE_URL
+    offline = getattr(settings, "OFFLINE_DATABASE_URL", "") or ""
+
+    if mode == "offline":
+        _binding = DBBinding(offline, engine_name(offline), db_name(offline), "offline", False)
+    elif mode == "auto" and not _probe(primary):
+        _binding = DBBinding(offline, engine_name(offline), db_name(offline), "offline", False)
+    else:
+        # online (default) or auto-and-reachable: bind the primary.
+        _binding = DBBinding(primary, engine_name(primary), db_name(primary), "online", True)
+    return _binding

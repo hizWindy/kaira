@@ -10,7 +10,7 @@ import pytest
 from click.testing import CliRunner
 from typer.main import get_command
 
-from devflow.main import app
+from kaira.main import app
 
 runner = CliRunner()
 cli = get_command(app)
@@ -99,12 +99,12 @@ class TestGenerateModel:
             assert (cwd / "repositories" / "product_repository.py").exists()
             assert (cwd / "routers" / "product_router.py").exists()
 
-    def test_devflow_json_created(self, tmp_path):
-        """Verify .devflow.json is written with the model entry."""
+    def test_kaira_json_created(self, tmp_path):
+        """Verify .kaira.json is written with the model entry."""
         with runner.isolated_filesystem(temp_dir=tmp_path):
             cwd = Path.cwd()
             run("generate", "model", "Item", "--fields", "name:str")
-            config_file = cwd / ".devflow.json"
+            config_file = cwd / ".kaira.json"
             assert config_file.exists()
             data = json.loads(config_file.read_text())
             names = [m["name"] for m in data["generated_models"]]

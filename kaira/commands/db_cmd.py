@@ -14,8 +14,8 @@ import typer
 from rich.panel import Panel
 from rich.table import Table
 
-from devflow.console import console
-from devflow.commands.ux_helpers import mask_credentials, typed_confirmation
+from kaira.console import console
+from kaira.commands.ux_helpers import mask_credentials, typed_confirmation
 
 app = typer.Typer(help="Database connection, status, and management commands.")
 
@@ -108,13 +108,13 @@ def _extract_setting_default(settings_file: Path, key: str) -> Optional[str]:
 
 
 def _get_db_type_from_config() -> str:
-    """Read db_type from .devflow.json or fallback to env URL inspection.
+    """Read db_type from .kaira.json or fallback to env URL inspection.
 
     Returns:
         Database type string, e.g. 'postgresql'.
     """
     try:
-        from devflow.config import get_config
+        from kaira.config import get_config
 
         cfg = get_config()
         return cfg.db_type
@@ -192,6 +192,38 @@ def _test_connection_real(db_type: str, raw_url: str) -> tuple[bool, str]:
         return False, str(exc)
 
 
+def _set_env_active(key: str, value: str, files: list[Path]) -> None:
+    """Set ``key=value`` as an **active** (uncommented) line in each env file.
+
+    Unlike :func:`_update_env_files`, which comments values out for the user to
+    fill in later, this writes a live value — used for Phase 6 settings
+    (``DB_MODE``/``OFFLINE_DATABASE_URL``) and the provisioned ``DATABASE_URL``
+    that must be readable by the running app immediately.
+
+    Existing active or commented forms of the key are replaced in place; the
+    surrounding file is otherwise left untouched (never truncated/overwritten).
+
+    Args:
+        key: Environment variable name.
+        value: Value to write.
+        files: Target env files (created if missing).
+    """
+    line = f"{key}={value}"
+    pattern = rf"^#?\s*{re.escape(key)}=.*$"
+    for env_file in files:
+        try:
+            content = env_file.read_text(encoding="utf-8") if env_file.exists() else ""
+            if re.search(pattern, content, flags=re.MULTILINE):
+                content = re.sub(pattern, line, content, flags=re.MULTILINE)
+            else:
+                if content and not content.endswith("\n"):
+                    content += "\n"
+                content += line + "\n"
+            env_file.write_text(content, encoding="utf-8")
+        except OSError:
+            pass
+
+
 def _get_db_type_from_url(url: str, default_type: str) -> str:
     """Extract database type dynamically from the connection URL protocol."""
     url_lower = url.lower()
@@ -209,6 +241,254 @@ def _get_db_type_from_url(url: str, default_type: str) -> str:
 # ---------------------------------------------------------------------------
 # Commands
 # ---------------------------------------------------------------------------
+
+
+def _password_prompt_factory(non_interactive: bool):
+    """Return a ``prompt_password`` callback for the provisioner, or ``None``.
+
+    The callback renders the explain-before-asking panel (host/user/db shown),
+    routes masked input through :func:`kaira.core.prompts.secret`, and treats a
+    blank submission as a graceful skip. Returns ``None`` in non-interactive
+    contexts so the provisioner never blocks an automated run.
+    """
+    import sys
+
+    if non_interactive or not sys.stdin.isatty():
+        return None
+
+    from kaira.core import prompts
+    from kaira.core.theme import Theme, sym
+
+    def _prompt(ctx) -> Optional[str]:  # type: ignore[no-untyped-def]
+        lock = sym("LOCK")
+        if ctx.last_error:
+            console.print(
+                f"  [{Theme.ERROR}]{sym('FAIL')} Authentication failed for user "
+                f'"{ctx.user}" (attempt {ctx.attempt} of {ctx.max_attempts})[/{Theme.ERROR}]\n'
+                f"     The password didn't match. Try again, or leave blank to\n"
+                f"     skip and use offline SQLite."
+            )
+        else:
+            console.print(
+                Panel(
+                    f"[bold]{lock} {ctx.engine.capitalize()} needs a password[/bold]\n\n"
+                    f"Kaira detected a running {ctx.engine} server but it requires\n"
+                    f'authentication. Enter the password for user "{ctx.user}"\n'
+                    f'to create the "{ctx.db_name}" database.\n\n'
+                    f"  Host:  {ctx.host}:{ctx.port}\n"
+                    f"  User:  {ctx.user}\n"
+                    f"  [dim](leave blank to skip and use offline SQLite instead)[/dim]",
+                    border_style=Theme.BORDER_WARNING,
+                )
+            )
+        try:
+            value = prompts.secret("Password", flag="--skip")
+        except typer.Exit:
+            return None
+        return value or None
+
+    return _prompt
+
+
+def _env_password(engine: str) -> Optional[str]:
+    """Return a password already present in the environment, if any (§1.3)."""
+    if engine == "postgresql":
+        return os.environ.get("PGPASSWORD") or None
+    if engine == "mysql":
+        return os.environ.get("MYSQL_PWD") or None
+    return None
+
+
+def provision_and_persist(
+    engine: str,
+    project_name: str,
+    cwd: Path,
+    *,
+    db_name: Optional[str] = None,
+    skip: bool = False,
+    profile: str = "solo",
+    assume_yes: bool = False,
+    non_interactive: bool = False,
+) -> "object":
+    """Provision the database and persist the result to ``.env*`` and ``.kaira.json``.
+
+    Shared by ``kaira db create`` and ``kaira init``. Announces every step,
+    masks the DSN everywhere, writes an entered password only to
+    ``.env.development`` (git-ignored), and records the resolved mode.
+
+    Args:
+        engine: Database engine.
+        project_name: Raw project name (used to derive the DB name).
+        cwd: Project root where env/config files live.
+        db_name: Explicit name override.
+        skip: Scaffold the DSN only; do not touch the server.
+        profile: ``solo`` | ``standard`` | ``scale`` (scale never auto-creates).
+        assume_yes: Skip the create confirmation (``--yes``).
+        non_interactive: Never prompt (CI / non-TTY).
+
+    Returns:
+        The :class:`~kaira.core.provisioner.ProvisionResult`.
+    """
+    from kaira.core import provisioner
+    from kaira.core.theme import Theme, sym
+
+    # scale: never auto-create (§1.5). Force scaffold-only.
+    effective_skip = skip or profile == "scale"
+
+    def announce(msg: str) -> None:
+        console.print(f"  [{Theme.PRIMARY}]{sym('BOLT')}[/{Theme.PRIMARY}] {msg}")
+
+    confirm_create = None if (assume_yes or profile == "solo") else _confirm_create_factory()
+
+    result = provisioner.provision_database(
+        engine,
+        project_name,
+        db_name=db_name,
+        skip=effective_skip,
+        env_password=_env_password(engine),
+        prompt_password=_password_prompt_factory(non_interactive),
+        confirm_create=confirm_create,
+        announce=announce,
+    )
+
+    # ── Report outcome ───────────────────────────────────────────────────────
+    if result.offline:
+        console.print(f"  [{Theme.WARNING}]{sym('WARN')} {result.message}[/{Theme.WARNING}]")
+        console.print(
+            f"  [{Theme.MUTED}]→ start {engine} later and run: kaira db create[/{Theme.MUTED}]"
+        )
+    elif result.manual_sql:
+        console.print(
+            Panel(
+                f"[{Theme.WARNING}]{sym('WARN')} cannot create database (insufficient privileges)\n"
+                f"    run this once as a superuser, then re-run `kaira db create`:\n\n"
+                f"    {result.manual_sql}[/{Theme.WARNING}]",
+                border_style=Theme.BORDER_WARNING,
+            )
+        )
+    else:
+        console.print(f"  [{Theme.SUCCESS}]{sym('OK')} {result.message}[/{Theme.SUCCESS}]")
+
+    _persist_provision(cwd, engine, result)
+    return result
+
+
+def _confirm_create_factory():
+    """Return a confirm callback for the create prompt (standard profile)."""
+    from kaira.core import prompts
+
+    def _confirm(name: str) -> bool:
+        try:
+            return prompts.confirm(f'database "{name}" does not exist — create it?', default=True)
+        except typer.Exit:
+            return False
+
+    return _confirm
+
+
+def _persist_provision(cwd: Path, engine: str, result: "object") -> None:
+    """Write DSN/mode to env files and update ``.kaira.json`` after provisioning."""
+    from kaira.core.provisioner import ProvisionResult, offline_store_url
+    from kaira.core.theme import Theme, sym
+
+    assert isinstance(result, ProvisionResult)
+    env_file = cwd / ".env"
+    env_dev = cwd / ".env.development"
+    # Offline store must match the data-model family (SQLite for relational,
+    # local MongoDB for Mongo — never blanket SQLite; Phase 6 §3.3).
+    offline_url = offline_store_url(engine, result.db_name)
+
+    # Live mode + offline URL belong in .env (no secrets there).
+    _set_env_active("DB_MODE", result.mode, [env_file])
+    _set_env_active("OFFLINE_DATABASE_URL", offline_url, [env_file])
+    _set_env_active("FALLBACK_MODE", "off", [env_file])
+
+    # The provisioned DSN (may contain a password) goes ONLY to .env.development.
+    if not result.offline:
+        _set_env_active("DATABASE_URL", result.dsn, [env_dev])
+        if result.password_entered:
+            console.print(
+                f"  [{Theme.SUCCESS}]{sym('OK')} credentials saved to "
+                f".env.development (git-ignored)[/{Theme.SUCCESS}]"
+            )
+    else:
+        # Offline: run against the fallback store explicitly (never silently).
+        _set_env_active("DATABASE_URL", offline_url, [env_dev])
+
+    # Record in .kaira.json in *this* project's directory (not necessarily cwd).
+    try:
+        import json
+
+        from kaira.config import KairaConfig
+
+        config_path = cwd / ".kaira.json"
+        data: dict = {}
+        if config_path.exists():
+            data = json.loads(config_path.read_text(encoding="utf-8"))
+        cfg = KairaConfig.from_dict(data) if data else KairaConfig()
+        cfg.db_name = result.db_name
+        cfg.db_provisioned = not result.offline
+        cfg.db_mode = result.mode
+        config_path.write_text(
+            json.dumps(cfg.to_dict(), indent=2), encoding="utf-8"
+        )
+    except Exception:
+        pass
+
+
+@app.command("create")
+def db_create(
+    name: Annotated[
+        Optional[str],
+        typer.Option("--name", help="Override the derived database name."),
+    ] = None,
+    skip: Annotated[
+        bool,
+        typer.Option("--skip", help="Scaffold the DSN only; don't touch the server."),
+    ] = False,
+    yes: Annotated[
+        bool,
+        typer.Option("--yes", "-y", help="Skip the create confirmation."),
+    ] = False,
+) -> None:
+    """Provision (create) the database for the current project.
+
+    Detects a local server, creates a database named after the project, wires
+    the DSN into ``.env.development``, and falls back to offline SQLite if no
+    server is reachable — so this command always completes.
+
+    Examples
+    --------
+    kaira db create
+    kaira db create --name customdb
+    kaira db create --skip
+    """
+    engine = _get_db_type_from_config()
+    if engine in ("unknown", ""):
+        console.print(
+            Panel(
+                "[red]No database type configured. Run this inside a Kaira project "
+                "or set db_type in .kaira.json.[/red]",
+                border_style="red",
+            )
+        )
+        raise typer.Exit(1)
+
+    try:
+        from kaira.config import get_config
+
+        project_name = get_config().db_name or Path.cwd().name
+    except Exception:
+        project_name = Path.cwd().name
+
+    provision_and_persist(
+        engine,
+        name or project_name,
+        Path.cwd(),
+        db_name=name,
+        skip=skip,
+        assume_yes=yes,
+    )
 
 
 @app.command("connect")
@@ -571,7 +851,7 @@ def db_switch(
         ),
     ],
 ) -> None:
-    """Switch the project's database type. Updates .devflow.json and .env files.
+    """Switch the project's database type. Updates .kaira.json and .env files.
 
     Recognises cloud provider names (supabase, atlas, firebase) and routes
     them to ``kaira cloud connect`` automatically.
@@ -586,14 +866,14 @@ def db_switch(
             f"[bold cyan]ℹ[/bold cyan]  '{db_type}' is a cloud provider — launching "
             f"[bold cyan]kaira cloud connect --provider {db_type}[/bold cyan]..."
         )
-        from devflow.commands.cloud_cmd import cloud_connect
+        from kaira.commands.cloud_cmd import cloud_connect
 
         cloud_connect(provider=db_type.lower())
         return
 
     valid = {"postgresql", "mysql", "mongodb", "sqlite"}
     if db_type not in valid:
-        from devflow.commands.smart_errors import smart_error
+        from kaira.commands.smart_errors import smart_error
 
         smart_error(
             context=f"Unknown database type: {db_type}",
@@ -603,7 +883,7 @@ def db_switch(
         )
 
     try:
-        from devflow.config import get_config, save_config
+        from kaira.config import get_config, save_config
 
         cfg = get_config()
         old_type = cfg.db_type
@@ -624,16 +904,16 @@ def db_switch(
             )
         )
 
-    # Update .devflow.json
+    # Update .kaira.json
     try:
-        from devflow.config import get_config, save_config
+        from kaira.config import get_config, save_config
 
         cfg = get_config()
         cfg.db_type = db_type
         save_config(cfg)
-        console.print(f"[green]✅ .devflow.json updated: db_type = {db_type}[/green]")
+        console.print(f"[green]✅ .kaira.json updated: db_type = {db_type}[/green]")
     except Exception as exc:
-        console.print(f"[yellow]Could not update .devflow.json: {exc}[/yellow]")
+        console.print(f"[yellow]Could not update .kaira.json: {exc}[/yellow]")
 
     # Update DATABASE_URL placeholder in .env files
     url_map = {
@@ -648,7 +928,7 @@ def db_switch(
     # Install driver
     drivers = _DB_DRIVERS.get(db_type, [])
     if drivers:
-        from devflow.commands.project import install_packages
+        from kaira.commands.project import install_packages
 
         install_packages(drivers)
 

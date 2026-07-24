@@ -28,16 +28,16 @@ from typing import Annotated, Optional
 
 import typer
 
-from devflow.console import console
-from devflow.core.theme import Theme, sym
-from devflow.core.ui import (
+from kaira.console import console
+from kaira.core.theme import Theme, sym
+from kaira.core.ui import (
     error_footer,
     kv_table,
     panel,
     spinner_context,
     with_summary,
 )
-from devflow.commands.ux_helpers import mask_credentials, typed_confirmation
+from kaira.commands.ux_helpers import mask_credentials, typed_confirmation
 
 app = typer.Typer(
     help="Cloud database providers (Supabase, Atlas, Firebase) and fallback."
@@ -60,20 +60,20 @@ _PROVIDER_CHOICES = [
 _ATLAS_URI_RE = re.compile(r"^mongodb\+srv://", re.IGNORECASE)
 
 # Fallback dirs/files (inside user project)
-_FALLBACK_DIR = Path(".devflow") / "fallback"
+_FALLBACK_DIR = Path(".kaira") / "fallback"
 _WRITE_QUEUE = _FALLBACK_DIR / "write_queue.jsonl"
 _CONFLICTS = _FALLBACK_DIR / "conflicts.jsonl"
-_FALLBACK_DB = Path(".devflow") / "fallback.db"
+_FALLBACK_DB = Path(".kaira") / "fallback.db"
 
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
 
 
-def _load_devflow_config() -> dict:
-    """Load .devflow.json from the current directory tree."""
+def _load_kaira_config() -> dict:
+    """Load .kaira.json from the current directory tree."""
     try:
-        from devflow.config import get_config
+        from kaira.config import get_config
 
         cfg = get_config()
         return cfg.__dict__ if hasattr(cfg, "__dict__") else {}
@@ -81,15 +81,15 @@ def _load_devflow_config() -> dict:
         return {}
 
 
-def _save_cloud_to_devflow(provider: str, extras: dict) -> None:
-    """Persist cloud provider info into .devflow.json.
+def _save_cloud_to_kaira(provider: str, extras: dict) -> None:
+    """Persist cloud provider info into .kaira.json.
 
     Args:
         provider: Cloud provider name (supabase | atlas | firebase).
         extras: Additional keys to merge under the ``cloud`` section.
     """
     try:
-        from devflow.config import get_config, save_config
+        from kaira.config import get_config, save_config
 
         cfg = get_config()
         # Store cloud provider in db_type field + cloud section
@@ -99,8 +99,8 @@ def _save_cloud_to_devflow(provider: str, extras: dict) -> None:
         if hasattr(cfg, "__dict__"):
             cfg.__dict__["_cloud"] = cloud_data
         save_config(cfg)
-        # Also write to .devflow.json directly for cloud keys
-        config_path = Path(".devflow.json")
+        # Also write to .kaira.json directly for cloud keys
+        config_path = Path(".kaira.json")
         if config_path.exists():
             raw = json.loads(config_path.read_text(encoding="utf-8"))
             raw["database"] = provider
@@ -110,7 +110,7 @@ def _save_cloud_to_devflow(provider: str, extras: dict) -> None:
             config_path.write_text(json.dumps(raw, indent=2), encoding="utf-8")
     except Exception as exc:
         console.print(
-            f"[{Theme.WARNING}]Could not update .devflow.json: {exc}[/{Theme.WARNING}]"
+            f"[{Theme.WARNING}]Could not update .kaira.json: {exc}[/{Theme.WARNING}]"
         )
 
 
@@ -124,7 +124,7 @@ def _update_env_files(updates: dict[str, str]) -> None:
     if not env_files:
         # Try inside output_dir
         try:
-            from devflow.config import get_config
+            from kaira.config import get_config
 
             cfg = get_config()
             env_files = list((Path.cwd() / cfg.output_dir).glob(".env*"))
@@ -222,9 +222,9 @@ def _conflict_line_count() -> int:
 
 
 def _get_cloud_config() -> dict:
-    """Read cloud section from .devflow.json."""
+    """Read cloud section from .kaira.json."""
     try:
-        config_path = Path(".devflow.json")
+        config_path = Path(".kaira.json")
         if config_path.exists():
             raw = json.loads(config_path.read_text(encoding="utf-8"))
             return raw
@@ -343,7 +343,7 @@ def cloud_connect(
     """Interactive wizard to connect to a cloud database provider.
 
     Guides through provider selection, credential input, live connection test,
-    and writes all settings to .devflow.json and .env* files.
+    and writes all settings to .kaira.json and .env* files.
 
     Examples
     --------
@@ -352,7 +352,7 @@ def cloud_connect(
     kaira cloud connect --provider atlas
     kaira cloud connect --provider firebase
     """
-    from devflow.core import prompts
+    from kaira.core import prompts
 
     # ── Step 1: Provider selection ─────────────────────────────────────────
     if provider is None:
@@ -368,7 +368,7 @@ def cloud_connect(
     else:
         provider = provider.lower()
         if provider not in _PROVIDERS:
-            from devflow.commands.smart_errors import smart_error
+            from kaira.commands.smart_errors import smart_error
 
             smart_error(
                 context=f"Unknown cloud provider '{provider}'.",
@@ -428,14 +428,14 @@ def cloud_connect(
         raise typer.Exit(1)
 
     # ── Step 4: Persist settings ───────────────────────────────────────────
-    _save_cloud_to_devflow(provider, extra_config)
+    _save_cloud_to_kaira(provider, extra_config)
     _update_env_files(env_updates)
 
     arrow = sym("ARROW")
     console.print(
         f"\n[{Theme.SUCCESS}]{ok_sym} {provider.capitalize()} connected successfully![/{Theme.SUCCESS}]"
     )
-    console.print(f"  [{Theme.MUTED}]{arrow} .devflow.json updated[/{Theme.MUTED}]")
+    console.print(f"  [{Theme.MUTED}]{arrow} .kaira.json updated[/{Theme.MUTED}]")
     console.print(
         f"  [{Theme.MUTED}]{arrow} Env keys written to all .env* files[/{Theme.MUTED}]"
     )
@@ -452,7 +452,7 @@ def cloud_connect(
 
 def _wizard_supabase(prompts: object) -> tuple[dict[str, str], dict]:
     """Collect Supabase credentials interactively."""
-    import devflow.core.prompts as p
+    import kaira.core.prompts as p
 
     console.print(
         f"[{Theme.MUTED}]Supabase uses the PostgreSQL wire protocol. You need:\n"
@@ -508,7 +508,7 @@ def _wizard_supabase(prompts: object) -> tuple[dict[str, str], dict]:
 
 def _wizard_atlas(prompts: object) -> tuple[dict[str, str], dict]:
     """Collect MongoDB Atlas credentials interactively."""
-    import devflow.core.prompts as p
+    import kaira.core.prompts as p
 
     console.print(
         f"[{Theme.MUTED}]MongoDB Atlas uses a mongodb+srv:// connection string.\n"
@@ -544,7 +544,7 @@ def _wizard_atlas(prompts: object) -> tuple[dict[str, str], dict]:
 
 def _wizard_firebase(prompts: object) -> tuple[dict[str, str], dict]:
     """Collect Firebase Firestore credentials interactively."""
-    import devflow.core.prompts as p
+    import kaira.core.prompts as p
 
     console.print(
         f"[{Theme.MUTED}]Firebase uses a service-account JSON file.\n"
@@ -755,7 +755,7 @@ def cloud_disconnect(
 ) -> None:
     """Revert to a local database and remove cloud configuration.
 
-    This is a destructive action — it removes cloud keys from .devflow.json
+    This is a destructive action — it removes cloud keys from .kaira.json
     and clears cloud env vars.  The local database type defaults to SQLite.
 
     Examples
@@ -774,9 +774,9 @@ def cloud_disconnect(
     ):
         return
 
-    # Revert .devflow.json
+    # Revert .kaira.json
     try:
-        config_path = Path(".devflow.json")
+        config_path = Path(".kaira.json")
         if config_path.exists():
             raw = json.loads(config_path.read_text(encoding="utf-8"))
             raw.pop("cloud", None)
@@ -787,7 +787,7 @@ def cloud_disconnect(
             config_path.write_text(json.dumps(raw, indent=2), encoding="utf-8")
     except Exception as exc:
         console.print(
-            f"[{Theme.WARNING}]Could not update .devflow.json: {exc}[/{Theme.WARNING}]"
+            f"[{Theme.WARNING}]Could not update .kaira.json: {exc}[/{Theme.WARNING}]"
         )
 
     ok = sym("OK")
@@ -882,7 +882,7 @@ def fallback_sync() -> None:
     """Manually attempt to replay queued writes to the cloud.
 
     Each queued write carries a UUID; replays are skipped if already applied.
-    Conflicting entries are moved to .devflow/fallback/conflicts.jsonl.
+    Conflicting entries are moved to .kaira/fallback/conflicts.jsonl.
 
     Examples
     --------
@@ -926,13 +926,13 @@ def fallback_enable() -> None:
     """Generate fallback.py into the project and enable fallback mode.
 
     Writes core/fallback.py into the user's project and creates the
-    .devflow/fallback/ directory with correct permissions.
+    .kaira/fallback/ directory with correct permissions.
 
     Examples
     --------
     kaira cloud fallback enable
     """
-    from devflow.core.fallback_engine import generate_fallback_module
+    from kaira.core.fallback_engine import generate_fallback_module
 
     cfg = _get_cloud_config()
     provider = cfg.get("cloud_provider") or cfg.get("database", "supabase")
@@ -960,16 +960,16 @@ def fallback_enable() -> None:
             pass  # Windows
 
         # Gitignore the fallback dir
-        _add_to_gitignore(".devflow/fallback/")
-        _add_to_gitignore(".devflow/fallback.db")
+        _add_to_gitignore(".kaira/fallback/")
+        _add_to_gitignore(".kaira/fallback.db")
     except OSError as exc:
         console.print(
             f"[{Theme.WARNING}]Could not create fallback directory: {exc}[/{Theme.WARNING}]"
         )
 
-    # Update .devflow.json
+    # Update .kaira.json
     try:
-        config_path = Path(".devflow.json")
+        config_path = Path(".kaira.json")
         if config_path.exists():
             raw = json.loads(config_path.read_text(encoding="utf-8"))
             if "fallback" not in raw:
@@ -1013,7 +1013,7 @@ def fallback_disable(
 
     # Remove generated fallback module
     try:
-        from devflow.config import get_config
+        from kaira.config import get_config
 
         cfg = get_config()
         fallback_py = Path.cwd() / cfg.output_dir / "core" / "fallback.py"
@@ -1026,9 +1026,9 @@ def fallback_disable(
             f"[{Theme.WARNING}]Could not remove fallback.py: {exc}[/{Theme.WARNING}]"
         )
 
-    # Update .devflow.json
+    # Update .kaira.json
     try:
-        config_path = Path(".devflow.json")
+        config_path = Path(".kaira.json")
         if config_path.exists():
             raw = json.loads(config_path.read_text(encoding="utf-8"))
             if "fallback" in raw:

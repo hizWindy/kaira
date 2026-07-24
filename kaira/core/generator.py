@@ -7,14 +7,14 @@ from typing import Optional
 
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
-from devflow.config import (
-    DevFlowConfig,
+from kaira.config import (
+    KairaConfig,
     TIER_LAYERS,
     LAYER_DIRS,
     LAYER_SUFFIX,
     get_config,
 )
-from devflow.core.parser import FieldDef, RelationDef, camel_to_snake, table_name
+from kaira.core.parser import FieldDef, RelationDef, camel_to_snake, table_name
 
 
 # ---------------------------------------------------------------------------
@@ -42,7 +42,7 @@ def _build_context(
     model_name: str,
     fields: list[FieldDef],
     relations: list[RelationDef],
-    config: DevFlowConfig,
+    config: KairaConfig,
 ) -> dict:
     """Build the Jinja2 template rendering context."""
     snake = camel_to_snake(model_name)
@@ -99,7 +99,7 @@ def generate_layer(
     model_name: str,
     fields: list[FieldDef],
     relations: list[RelationDef],
-    config: Optional[DevFlowConfig] = None,
+    config: Optional[KairaConfig] = None,
 ) -> str:
     """Render and return the source code for a single pipeline layer.
 
@@ -156,7 +156,7 @@ def generate_all(
     fields: list[FieldDef],
     relations: list[RelationDef],
     tier: str = "full",
-    config: Optional[DevFlowConfig] = None,
+    config: Optional[KairaConfig] = None,
 ) -> dict[str, str]:
     """Render all layers for *model_name* and return a dict of layer → source.
 
@@ -195,7 +195,7 @@ def generate_all(
 def resolve_output_path(
     layer: str,
     model_name: str,
-    config: Optional[DevFlowConfig] = None,
+    config: Optional[KairaConfig] = None,
     base_dir: Optional[Path] = None,
 ) -> Path:
     """Return the output file path for a given layer and model.
@@ -218,7 +218,7 @@ def resolve_output_path(
 def resolve_association_path(
     model_a: str,
     model_b: str,
-    config: Optional[DevFlowConfig] = None,
+    config: Optional[KairaConfig] = None,
     base_dir: Optional[Path] = None,
 ) -> Path:
     """Return the association table file path for a many-to-many relation."""

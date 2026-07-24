@@ -14,8 +14,8 @@ from rich import box
 from rich.panel import Panel
 from rich.table import Table
 
-from devflow.console import console
-from devflow.core.theme import Theme, is_interactive, sym
+from kaira.console import console
+from kaira.core.theme import Theme, is_interactive, sym
 
 F = TypeVar("F", bound=Callable[..., Any])
 

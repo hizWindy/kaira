@@ -10,7 +10,7 @@ from typing import Annotated
 import typer
 from rich.panel import Panel
 
-from devflow.console import console
+from kaira.console import console
 
 app = typer.Typer(help="Alembic database migration commands.")
 
@@ -31,14 +31,14 @@ def _guard_relational_db() -> None:
         typer.Exit: Always, when the project's database is non-relational.
     """
     try:
-        from devflow.config import get_config
+        from kaira.config import get_config
 
         db_type = get_config().db_type.lower()
     except Exception:
         return  # No/invalid config — let the normal Alembic path handle it.
 
     if db_type in _NON_RELATIONAL_DB_TYPES:
-        from devflow.commands.smart_errors import error_migrate_on_document_db
+        from kaira.commands.smart_errors import error_migrate_on_document_db
 
         error_migrate_on_document_db(db_type)
 
@@ -55,7 +55,7 @@ def _find_alembic_ini() -> Path:
 
 def _run_alembic(args: list[str], cwd: Path) -> None:
     """Run an alembic sub-command and stream output to the terminal."""
-    from devflow.config import get_venv_python
+    from kaira.config import get_venv_python
     python_exe = get_venv_python(cwd)
     cmd = [python_exe, "-m", "alembic"] + args
     console.print(f"[dim]$ {' '.join(cmd)}[/dim]")

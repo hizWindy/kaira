@@ -2,26 +2,91 @@
 core/logger.py
 
 Terminal-only structured logger for {{ project_name }}.
-Uses loguru — all output goes to stdout only, no log files.
+
+One sink, one format, one timestamp style. A Loguru ``InterceptHandler``
+captures the stdlib loggers that FastAPI's stack writes to — ``uvicorn``,
+``uvicorn.access``, ``uvicorn.error``, and ``sqlalchemy.engine`` — so they no
+longer collide with Loguru or print in three different styles (Phase 6,
+Feature 2). All output goes to stdout only; there are no log files.
 """
 
+import logging
 import sys
+
 from loguru import logger
 
-# Remove loguru's default handler before configuring our own
+# Remove loguru's default handler before configuring our own.
 logger.remove()
 
 logger.add(
     sys.stdout,
     format=(
-        "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | "
-        "<level>{level: <8}</level> | "
-        "<cyan>{name}</cyan>:<cyan>{function}</cyan> | "
+        "<green>{time:HH:mm:ss}</green>  "
+        "<level>{level: <5}</level>  "
         "<level>{message}</level>"
     ),
     level="INFO",
     colorize=True,
     enqueue=True,
+    backtrace=False,
+    diagnose=False,
 )
 
-__all__ = ["logger"]
+
+class InterceptHandler(logging.Handler):
+    """Route stdlib ``logging`` records into Loguru's single sink.
+
+    Standard-library loggers (uvicorn, SQLAlchemy) emit through the ``logging``
+    module. Without this bridge they bypass Loguru entirely and print with their
+    own handlers/format. Installing this handler on those loggers unifies every
+    line under one Loguru format and timestamp.
+    """
+
+    def emit(self, record: logging.LogRecord) -> None:
+        # Map the stdlib level number to Loguru's level name where possible.
+        try:
+            level: str | int = logger.level(record.levelname).name
+        except ValueError:
+            level = record.levelno
+
+        # Walk back to the caller so file/line info is meaningful, not this shim.
+        frame, depth = logging.currentframe(), 2
+        while frame and frame.f_code.co_filename == logging.__file__:
+            frame = frame.f_back
+            depth += 1
+
+        logger.opt(depth=depth, exception=record.exc_info).log(
+            level, record.getMessage()
+        )
+
+
+def configure_intercept(sql_echo: bool = False) -> None:
+    """Redirect the noisy stdlib loggers into Loguru's single sink.
+
+    Args:
+        sql_echo: When True, allow ``sqlalchemy.engine`` INFO (the SQL echo) to
+            flow through. When False (default), SQLAlchemy is capped at WARNING
+            so DDL/PRAGMA chatter never floods the terminal — ``kaira run --sql``
+            (which also sets the engine's ``echo``) is the opt-in.
+    """
+    intercept = InterceptHandler()
+    logging.basicConfig(handlers=[intercept], level=logging.INFO, force=True)
+
+    for name in ("uvicorn", "uvicorn.access", "uvicorn.error"):
+        std = logging.getLogger(name)
+        std.handlers = [intercept]
+        std.propagate = False
+
+    sa = logging.getLogger("sqlalchemy.engine")
+    sa.handlers = [intercept]
+    sa.propagate = False
+    sa.setLevel(logging.INFO if sql_echo else logging.WARNING)
+
+
+# Install the bridge at import time so it is active before uvicorn configures
+# its own logging. `sql_echo` follows the same env flag the engine reads.
+import os as _os  # noqa: E402
+
+configure_intercept(sql_echo=_os.getenv("KAIRA_SQL_ECHO") == "1")
+
+__all__ = ["logger", "InterceptHandler", "configure_intercept"]

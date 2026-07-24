@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from typer.testing import CliRunner
-from devflow.main import app
+from kaira.main import app
 
 def test_wiring_registration():
-    """Verify that all Phase 4 commands and subcommand groups are registered in devflow.main.app."""
+    """Verify that all Phase 4 commands and subcommand groups are registered in kaira.main.app."""
     runner = CliRunner()
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0

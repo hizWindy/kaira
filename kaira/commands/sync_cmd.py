@@ -3,7 +3,7 @@
 ``kaira sync model`` closes the *field-refresh gap*: after a field is added to
 (or removed from) a model, this command regenerates the mechanical layers
 (schema, router) so they stay in step with the model, updates the field snapshot
-in ``.devflow.json``, and flags the service layer for manual review instead of
+in ``.kaira.json``, and flags the service layer for manual review instead of
 overwriting hand-written business logic.
 
 Per-layer safety
@@ -27,27 +27,27 @@ from typing import Annotated, Optional
 
 import typer
 
-from devflow.config import (
+from kaira.config import (
     SUPPORTED_FIELD_TYPES,
-    DevFlowConfig,
+    KairaConfig,
     get_config,
     register_model,
     save_config,
 )
-from devflow.console import console
-from devflow.core.detector import write_with_check
-from devflow.core.generator import generate_layer, resolve_output_path
-from devflow.core.parser import (
+from kaira.console import console
+from kaira.core.detector import write_with_check
+from kaira.core.generator import generate_layer, resolve_output_path
+from kaira.core.parser import (
     FieldDef,
     RelationDef,
     parse_fields,
     parse_relations_from_json,
     validate_model_name,
 )
-from devflow.core.theme import Theme, sym
-from devflow.core.ui import panel, with_summary
-from devflow.commands.smart_errors import smart_error
-from devflow.commands.ux_helpers import require_project, typed_confirmation
+from kaira.core.theme import Theme, sym
+from kaira.core.ui import panel, with_summary
+from kaira.commands.smart_errors import smart_error
+from kaira.commands.ux_helpers import require_project, typed_confirmation
 
 app = typer.Typer(help="Synchronise model field changes across all layers.")
 
@@ -111,7 +111,7 @@ def _parse_model_fields(model_path: Path) -> Optional[list[FieldDef]]:
     """Read user-defined scalar fields back from a generated model file via AST.
 
     Returns a list of :class:`FieldDef`, or ``None`` if the file cannot be parsed
-    (in which case the caller falls back to the ``.devflow.json`` snapshot).
+    (in which case the caller falls back to the ``.kaira.json`` snapshot).
     """
     try:
         tree = ast.parse(model_path.read_text(encoding="utf-8"))
@@ -143,7 +143,7 @@ def _parse_model_fields(model_path: Path) -> Optional[list[FieldDef]]:
 
 
 def _snapshot_fields(entry: dict) -> list[FieldDef]:
-    """Rebuild :class:`FieldDef` objects from a ``.devflow.json`` model entry."""
+    """Rebuild :class:`FieldDef` objects from a ``.kaira.json`` model entry."""
     return [
         FieldDef(name=f["name"], raw_type=f["type"])
         for f in entry.get("fields", [])
@@ -152,7 +152,7 @@ def _snapshot_fields(entry: dict) -> list[FieldDef]:
 
 
 def _snapshot_relations(entry: dict) -> list[RelationDef]:
-    """Rebuild :class:`RelationDef` objects from a ``.devflow.json`` model entry."""
+    """Rebuild :class:`RelationDef` objects from a ``.kaira.json`` model entry."""
     try:
         return parse_relations_from_json(entry.get("relations", []))
     except ValueError:
@@ -187,7 +187,7 @@ def sync_model(
     ] = None,
     all_models: Annotated[
         bool,
-        typer.Option("--all", help="Sync every model registered in .devflow.json."),
+        typer.Option("--all", help="Sync every model registered in .kaira.json."),
     ] = False,
     dry_run: Annotated[
         bool,
@@ -216,7 +216,7 @@ def sync_model(
         targets = [m["name"] for m in config.generated_models]
         if not targets:
             smart_error(
-                context="No models registered in .devflow.json to sync.",
+                context="No models registered in .kaira.json to sync.",
                 fix_cmd='kaira generate model User --fields "name:str"',
                 guide_topic="generate",
             )
@@ -240,7 +240,7 @@ def _sync_one(
     fields: Optional[str],
     dry_run: bool,
     force: bool,
-    config: DevFlowConfig,
+    config: KairaConfig,
 ) -> None:
     """Sync a single model. Mutates *config*'s snapshot in place when applied."""
     try:
@@ -341,7 +341,7 @@ def _sync_one(
 
 
 def _print_plan(
-    model_name: str, added: list[str], removed: list[str], config: DevFlowConfig
+    model_name: str, added: list[str], removed: list[str], config: KairaConfig
 ) -> None:
     """Render the per-layer sync plan panel."""
     changes = []
@@ -372,7 +372,7 @@ def _print_plan(
 
 
 def _flag_service_layer(
-    model_name: str, added: list[str], config: DevFlowConfig, base: Path
+    model_name: str, added: list[str], config: KairaConfig, base: Path
 ) -> None:
     """Warn that the service layer may need manual updates for new fields."""
     service_path = resolve_output_path("service", model_name, config, base)

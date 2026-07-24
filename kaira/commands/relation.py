@@ -8,11 +8,11 @@ from typing import Annotated, Optional
 import typer
 from rich.panel import Panel
 
-from devflow.config import get_config
-from devflow.console import console
-from devflow.core.parser import validate_model_name, camel_to_snake, parse_relation
-from devflow.core.generator import resolve_output_path
-from devflow.core.detector import file_exists
+from kaira.config import get_config
+from kaira.console import console
+from kaira.core.parser import validate_model_name, camel_to_snake, parse_relation
+from kaira.core.generator import resolve_output_path
+from kaira.core.detector import file_exists
 
 app = typer.Typer(help="Add relationships between models.")
 

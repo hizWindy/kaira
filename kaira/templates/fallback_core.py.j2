@@ -41,10 +41,10 @@ _FAILURE_THRESHOLD: int = 3  # consecutive failures before DEGRADED
 _PROVIDER: str = "{{ provider }}"
 _LOCAL_ENGINE: str = "{{ local_engine }}"
 
-_FALLBACK_DIR = Path(".devflow") / "fallback"
+_FALLBACK_DIR = Path(".kaira") / "fallback"
 _WRITE_QUEUE = _FALLBACK_DIR / "write_queue.jsonl"
 _CONFLICTS = _FALLBACK_DIR / "conflicts.jsonl"
-_MIRROR_DB = Path(".devflow") / "fallback.db"
+_MIRROR_DB = Path(".kaira") / "fallback.db"
 _MODE_FILE = _FALLBACK_DIR / ".mode"
 
 

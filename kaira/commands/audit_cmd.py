@@ -10,8 +10,8 @@ import typer
 from rich.panel import Panel
 from rich.table import Table
 
-from devflow.config import get_config
-from devflow.console import console
+from kaira.config import get_config
+from kaira.console import console
 
 app = typer.Typer(help="API auditing and security checking commands.")
 
@@ -20,7 +20,7 @@ app = typer.Typer(help="API auditing and security checking commands.")
 def audit_routes() -> None:
     """List all project endpoints with full paths, auth, and rate-limit details."""
     from rich import box
-    from devflow.core.theme import Theme, sym
+    from kaira.core.theme import Theme, sym
 
     config = get_config()
     output_root = Path.cwd() / config.output_dir

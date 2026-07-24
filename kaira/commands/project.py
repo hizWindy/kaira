@@ -19,9 +19,9 @@ from rich.table import Table
 from rich.text import Text
 from rich.columns import Columns
 
-from devflow.config import DevFlowConfig
-from devflow.console import console
-from devflow.core.detector import write_with_check
+from kaira.config import KairaConfig
+from kaira.console import console
+from kaira.core.detector import write_with_check
 
 TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
 
@@ -96,7 +96,7 @@ def install_packages(packages: list[str], project_dir: Optional[Path] = None) ->
     import importlib.util
     import importlib.metadata
     from rich import box as rich_box
-    from devflow.config import get_venv_python
+    from kaira.config import get_venv_python
 
     python_exe = get_venv_python(project_dir)
 
@@ -420,6 +420,15 @@ def init_project(
         non_interactive=True,
     )
 
+    # 3b. core/db_mode.py — offline/online startup resolution (Phase 6, Feature 3)
+    dbmode_tmpl = env.get_template("db_mode.py.j2")
+    write_with_check(
+        cwd / "core" / "db_mode.py",
+        dbmode_tmpl.render(**ctx),
+        force=True,
+        non_interactive=True,
+    )
+
     # 4. core/logger.py
     logger_tmpl = env.get_template("logger.py.j2")
     write_with_check(
@@ -481,7 +490,7 @@ def init_project(
     # 8. Active environment file (.env). Staging/production config belongs in the
     # deploy platform's env/secrets, not committed files — so only .env (+ the
     # committed .env.example below) is generated.
-    secret = "placeholder-32-character-secret-key-for-devflow-api"
+    secret = "placeholder-32-character-secret-key-for-kaira-api"
     db_url = "sqlite+aiosqlite:///./app.db"
     if db == "postgresql":
         db_url = f"postgresql+asyncpg://user:pass@localhost:5432/{slug}"
@@ -499,10 +508,22 @@ def init_project(
             f"# DATABASE_URL={db_url}\n"
             f"# Uncomment and fill in your real credentials before running the app.\n"
         )
+    # Offline/Online contract (Phase 6, Feature 3). Offline store matches the
+    # data-model family: SQLite for relational, local MongoDB for Mongo (§3.3).
+    if db == "mongodb":
+        offline_url = f"mongodb://localhost:27017/{slug}_offline"
+    else:
+        offline_url = "sqlite+aiosqlite:///./.kaira/offline.db"
+    mode_lines = (
+        f"DB_MODE=online\n"
+        f"OFFLINE_DATABASE_URL={offline_url}\n"
+        f"FALLBACK_MODE=off\n"
+    )
     env_content = (
         f"APP_ENV=development\n"
         f"APP_NAME={name}\n"
         f"{db_line}"
+        f"{mode_lines}"
         f"JWT_SECRET_KEY={secret}\n"
         f'ALLOWED_ORIGINS=["http://localhost:3000","http://localhost:8000"]\n'
         f"DEBUG=True\n"
@@ -521,6 +542,7 @@ def init_project(
         "APP_ENV=development\n"
         f"APP_NAME={name}\n"
         f"{example_db_line}"
+        f"{mode_lines}"
         "JWT_SECRET_KEY=your-minimum-32-character-secret-key-here\n"
         'ALLOWED_ORIGINS=["http://localhost:3000","http://localhost:8000"]\n'
         "DEBUG=False\n"
@@ -632,9 +654,9 @@ def init_project(
     )
 
     # 12. Local Kaira settings configuration file
-    config = DevFlowConfig(db_type=db, auth_type=auth, output_dir=".")
+    config = KairaConfig(db_type=db, auth_type=auth, output_dir=".")
     # Save config directly inside the project directory
-    config_path = cwd / ".devflow.json"
+    config_path = cwd / ".kaira.json"
     import json
 
     with open(config_path, "w", encoding="utf-8") as f:
@@ -647,11 +669,21 @@ def init_command(
     auth: Optional[str] = None,
     docker: Optional[bool] = None,
     ci: Optional[str] = None,
+    profile: Optional[str] = None,
+    yes: bool = False,
 ) -> None:
     """Entrypoint for kaira init command with wizard setup."""
     valid_dbs = {"postgresql", "mysql", "mongodb", "sqlite"}
     valid_auth = {"jwt", "oauth2", "api-key", "none"}
     valid_ci = {"github", "gitlab", "bitbucket", "none"}
+    valid_profiles = {"solo", "standard", "scale"}
+
+    profile = (profile or "solo").lower()
+    if profile not in valid_profiles:
+        console.print(
+            f"[red]Error: Unknown profile '{profile}'. Choose: {', '.join(sorted(valid_profiles))}.[/red]"
+        )
+        raise typer.Exit(1)
 
     # Check if we are inside a folder with existing kaira configuration
     # If project name is completely omitted, we trigger the wizard or prompt
@@ -752,32 +784,36 @@ def init_command(
 
     # Package installation phase
     # Determine DB-specific and Core required packages
+    # Minimum-version (">=") pins so pip installs the newest wheel that fits the
+    # user's Python (fresh wheels exist for 3.10–3.14+); upper caps only where the
+    # next major would break generated code (beanie 2.0 drops motor; bcrypt 5.0
+    # trips a passlib warning).
     req_packages = [
-        "fastapi[standard]==0.115.0",
-        "uvicorn[standard]==0.29.0",
-        "pydantic==2.10.0",
-        "pydantic-settings==2.7.0",
-        "slowapi==0.1.9",
-        "loguru==0.7.2",
-        "python-dotenv==1.0.1",
-        "bcrypt==4.1.2",
-        "python-jose[cryptography]==3.3.0",
-        "passlib[bcrypt]==1.7.4",
+        "fastapi[standard]>=0.115.0",
+        "uvicorn[standard]>=0.29.0",
+        "pydantic>=2.9.0,<3.0.0",
+        "pydantic-settings>=2.5.0,<3.0.0",
+        "slowapi>=0.1.9",
+        "loguru>=0.7.2",
+        "python-dotenv>=1.0.1",
+        "bcrypt>=4.1.2,<5.0.0",
+        "python-jose[cryptography]>=3.3.0",
+        "passlib[bcrypt]>=1.7.4",
     ]
 
     if db == "postgresql":
         req_packages.extend(
-            ["sqlalchemy[asyncio]==2.0.36", "asyncpg==0.30.0", "alembic==1.14.0"]
+            ["sqlalchemy[asyncio]>=2.0.36,<3.0.0", "asyncpg>=0.30.0", "alembic>=1.14.0"]
         )
     elif db == "mysql":
         req_packages.extend(
-            ["sqlalchemy[asyncio]==2.0.36", "aiomysql==0.2.0", "alembic==1.14.0"]
+            ["sqlalchemy[asyncio]>=2.0.36,<3.0.0", "aiomysql>=0.2.0", "alembic>=1.14.0"]
         )
     elif db == "mongodb":
-        req_packages.extend(["motor==3.6.0", "beanie==1.27.0"])
+        req_packages.extend(["motor>=3.3.0,<4.0.0", "beanie>=1.24.0,<2.0.0"])
     elif db == "sqlite":
         req_packages.extend(
-            ["sqlalchemy[asyncio]==2.0.36", "aiosqlite==0.20.0", "alembic==1.14.0"]
+            ["sqlalchemy[asyncio]>=2.0.36,<3.0.0", "aiosqlite>=0.20.0", "alembic>=1.14.0"]
         )
 
     if os.environ.get("PYTEST_CURRENT_TEST"):
@@ -794,6 +830,29 @@ def init_command(
             console.print(f"[yellow]⚠️  Could not create virtual environment: {e}[/yellow]")
 
         install_packages(req_packages, project_dir=project_dir)
+
+    # ── Auto database provisioning (Phase 6, Feature 1) ───────────────────────
+    # Detect a local server, create the DB, wire the DSN — or fall back to
+    # offline SQLite so init always completes. The `scale` profile scaffolds the
+    # DSN only (managed/external DB assumed).
+    console.print("\n────────────────────────────────────")
+    console.print("🗄️  Provisioning database...")
+    console.print("────────────────────────────────────")
+    try:
+        from kaira.commands.db_cmd import provision_and_persist
+
+        in_tests = bool(os.environ.get("PYTEST_CURRENT_TEST"))
+        provision_and_persist(
+            db,
+            name,
+            project_dir,
+            profile=profile,
+            assume_yes=yes,
+            non_interactive=in_tests or not sys.stdin.isatty(),
+        )
+    except Exception as exc:  # provisioning must never abort a successful scaffold
+        console.print(f"[yellow]⚠️  Skipped auto-provisioning: {exc}[/yellow]")
+        console.print("[dim]→ run `kaira db create` once your database server is up.[/dim]")
 
     console.print(
         f"\n[bold green]✓[/bold green]  Project [bold]{name}[/bold] scaffolded successfully!\n"

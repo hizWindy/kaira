@@ -19,7 +19,7 @@ echo "Deploying {{ project_name }} to $HOST..."
 # Sync files (excluding secrets and local env files)
 rsync -avz \
   --exclude='.env*' \
-  --exclude='.devflow/' \
+  --exclude='.kaira/' \
   --exclude='__pycache__/' \
   --exclude='.git/' \
   . "$HOST:$APP_DIR/"

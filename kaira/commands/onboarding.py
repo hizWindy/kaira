@@ -1,6 +1,6 @@
 """First-run onboarding for Kaira.
 
-Shown once per machine when no ``~/.devflow/config.json`` exists and stdin is
+Shown once per machine when no ``~/.kaira/config.json`` exists and stdin is
 a TTY.  Writes ``experience_level``, ``telemetry``, and ``theme`` preferences.
 Telemetry is strictly opt-in; records command names + durations only — never
 paths, arguments, or project names.
@@ -8,7 +8,7 @@ paths, arguments, or project names.
 Skip conditions (onboarding is NOT shown):
 - stdin is not a TTY (CI / piped input)
 - Any CLI flags or arguments are present in sys.argv (user knows what they want)
-- ``~/.devflow/config.json`` already exists
+- ``~/.kaira/config.json`` already exists
 
 ``kaira config reset-onboarding`` re-triggers it by deleting the file.
 """
@@ -24,10 +24,10 @@ from typing import Any
 
 import typer
 
-from devflow.console import console
-from devflow.core.theme import Theme, is_interactive, sym
+from kaira.console import console
+from kaira.core.theme import Theme, is_interactive, sym
 
-_CONFIG_DIR = Path.home() / ".devflow"
+_CONFIG_DIR = Path.home() / ".kaira"
 _CONFIG_FILE = _CONFIG_DIR / "config.json"
 
 # ---------------------------------------------------------------------------
@@ -52,9 +52,9 @@ def load_config() -> dict[str, Any]:
 
 
 def save_config(data: dict[str, Any]) -> None:
-    """Persist *data* to ``~/.devflow/config.json`` with safe permissions.
+    """Persist *data* to ``~/.kaira/config.json`` with safe permissions.
 
-    Creates ``~/.devflow/`` if it does not exist.  File is written with
+    Creates ``~/.kaira/`` if it does not exist.  File is written with
     ``0600`` permissions so only the current user can read it.
 
     Args:
@@ -92,7 +92,7 @@ def _should_show(argv: list[str]) -> bool:
         - stdin is a real TTY
         - ``NO_COLOR`` env var is not set
         - config file does not exist yet
-        - No flags or arguments beyond the base ``devflow`` invocation
+        - No flags or arguments beyond the base ``kaira`` invocation
     """
     if not is_interactive():
         return False
@@ -113,7 +113,7 @@ def run_onboarding() -> None:
     """Run the first-time interactive onboarding wizard.
 
     Collects experience level and telemetry preference, then writes
-    ``~/.devflow/config.json``.  Safe to call unconditionally — it checks
+    ``~/.kaira/config.json``.  Safe to call unconditionally — it checks
     :func:`_should_show` internally and exits immediately if conditions are
     not met.
     """
@@ -121,7 +121,7 @@ def run_onboarding() -> None:
         return
 
     try:
-        from devflow.core import prompts
+        from kaira.core import prompts
     except ImportError:
         # InquirerPy not installed — skip onboarding silently
         return

@@ -8,7 +8,7 @@ from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Any, Optional
 
-CONFIG_FILE = ".devflow.json"
+CONFIG_FILE = ".kaira.json"
 
 SUPPORTED_FIELD_TYPES = {
     "str",
@@ -74,7 +74,7 @@ LAYER_SUFFIX = {
 
 
 @dataclass
-class DevFlowConfig:
+class KairaConfig:
     """Project-level Kaira configuration."""
 
     output_dir: str = "."
@@ -92,12 +92,16 @@ class DevFlowConfig:
     db_type: str = "sqlite"          # postgresql | mysql | mongodb | sqlite
     api_version: str = "v1"           # v1 | v2 | …
     auth_type: str = "none"           # jwt | oauth2 | api-key | none
+    # Phase 6 — auto DB provisioning (Feature 1) + offline/online mode (Feature 3)
+    db_name: str = ""                 # sanitized database identifier
+    db_provisioned: bool = False      # True once the DB has been created/confirmed
+    db_mode: str = "online"           # online | offline | auto (Layer-1 default: online)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "DevFlowConfig":
+    def from_dict(cls, data: dict[str, Any]) -> "KairaConfig":
         known = {k: v for k, v in data.items() if k in cls.__dataclass_fields__}
         return cls(**known)
 
@@ -113,7 +117,7 @@ class DevFlowConfig:
 
 
 def find_config_path() -> Path:
-    """Search for .devflow.json starting from cwd, walking up."""
+    """Search for .kaira.json starting from cwd, walking up."""
     current = Path.cwd()
     for directory in [current, *current.parents]:
         candidate = directory / CONFIG_FILE
@@ -122,34 +126,34 @@ def find_config_path() -> Path:
     return Path.cwd() / CONFIG_FILE
 
 
-def get_config() -> DevFlowConfig:
-    """Load config from .devflow.json or return defaults."""
+def get_config() -> KairaConfig:
+    """Load config from .kaira.json or return defaults."""
     config_path = find_config_path()
     if config_path.exists():
         try:
             with open(config_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
-            return DevFlowConfig.from_dict(data)
+            return KairaConfig.from_dict(data)
         except (json.JSONDecodeError, TypeError):
-            return DevFlowConfig()
-    return DevFlowConfig()
+            return KairaConfig()
+    return KairaConfig()
 
 
-def save_config(config: DevFlowConfig) -> None:
-    """Save config to .devflow.json in cwd."""
+def save_config(config: KairaConfig) -> None:
+    """Save config to .kaira.json in cwd."""
     config_path = Path.cwd() / CONFIG_FILE
     with open(config_path, "w", encoding="utf-8") as f:
         json.dump(config.to_dict(), f, indent=2)
 
 
-def get_output_root(config: Optional[DevFlowConfig] = None) -> Path:
+def get_output_root(config: Optional[KairaConfig] = None) -> Path:
     """Return the root output directory."""
     if config is None:
         config = get_config()
     return Path.cwd() / config.output_dir
 
 
-def register_model(config: DevFlowConfig, model_name: str, fields: list[dict], relations: list[dict]) -> None:
+def register_model(config: KairaConfig, model_name: str, fields: list[dict], relations: list[dict]) -> None:
     """Add or update a model entry in config's generated_models list."""
     for entry in config.generated_models:
         if entry.get("name") == model_name:

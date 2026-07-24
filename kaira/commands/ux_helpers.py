@@ -11,7 +11,7 @@ from typing import Optional
 import typer
 from rich.panel import Panel
 
-from devflow.console import console
+from kaira.console import console
 
 # ---------------------------------------------------------------------------
 # Fuzzy suggestion helper
@@ -174,7 +174,7 @@ def redact_sensitive(key: str, value: str) -> str:
 
 
 def require_project() -> Path:
-    """Assert that a .devflow.json exists in the CWD tree.
+    """Assert that a .kaira.json exists in the CWD tree.
 
     Returns:
         Path to the config file.
@@ -182,13 +182,13 @@ def require_project() -> Path:
     Raises:
         typer.Exit: With code 1 if no config is found.
     """
-    from devflow.config import find_config_path
+    from kaira.config import find_config_path
 
     config_path = find_config_path()
     if not config_path.exists():
         console.print(
             Panel(
-                "[red]No .devflow.json found in the current directory or any parent.\n\n"
+                "[red]No .kaira.json found in the current directory or any parent.\n\n"
                 "Start a new project with:[/red]\n"
                 "  [bold cyan]kaira init <name>[/bold cyan]",
                 title="[red]Not in a Kaira project[/red]",
@@ -203,12 +203,12 @@ def require_project() -> Path:
 # History file helper
 # ---------------------------------------------------------------------------
 
-_HISTORY_DIR = ".devflow"
+_HISTORY_DIR = ".kaira"
 _HISTORY_FILE = "history.jsonl"
 
 
 def append_history(command: str, args: dict[str, str]) -> None:
-    """Append a command invocation record to .devflow/history.jsonl.
+    """Append a command invocation record to .kaira/history.jsonl.
 
     Sensitive argument values are automatically redacted before writing.
     The history dir is gitignored by the generated project templates.

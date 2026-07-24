@@ -7,7 +7,9 @@ Database: {{ db_type }}
 
 from __future__ import annotations
 
+import os
 from collections.abc import AsyncGenerator
+from pathlib import Path
 
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
@@ -16,25 +18,37 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.orm import DeclarativeBase
 
-from config.settings import settings
+from core.db_mode import resolve_binding
+
+# Resolve which database this process binds to (online / offline / auto) exactly
+# once at startup. Every surface reads mode/engine/name from this binding.
+BINDING = resolve_binding()
+
+# Ensure the offline SQLite directory exists so the fallback can be created.
+if BINDING.url.startswith("sqlite") and "/./" in BINDING.url:
+    _rel = BINDING.url.split("///", 1)[-1]
+    Path(_rel).parent.mkdir(parents=True, exist_ok=True)
 
 
 class Base(DeclarativeBase):
     """Shared declarative base for all ORM models."""
 
 
-# Build engine arguments dynamically based on database type
-engine_kwargs = {
-    "echo": settings.DEBUG,
+# SQL echo is OFF by default — the flood of DDL/PRAGMA lines is opt-in via
+# `kaira run --sql` (which sets KAIRA_SQL_ECHO=1), never tied to DEBUG.
+_SQL_ECHO = os.getenv("KAIRA_SQL_ECHO") == "1"
+
+engine_kwargs: dict = {
+    "echo": _SQL_ECHO,
     "pool_pre_ping": True,
 }
 
-if not settings.DATABASE_URL.startswith("sqlite"):
+if not BINDING.url.startswith("sqlite"):
     engine_kwargs["pool_size"] = 10
     engine_kwargs["max_overflow"] = 20
 
 engine = create_async_engine(
-    settings.DATABASE_URL,
+    BINDING.url,
     **engine_kwargs,
 )
 

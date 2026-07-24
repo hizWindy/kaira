@@ -10,9 +10,9 @@ import typer
 from jinja2 import Environment, FileSystemLoader
 from rich.panel import Panel
 
-from devflow.config import get_config
-from devflow.console import console
-from devflow.core.detector import write_with_check
+from kaira.config import get_config
+from kaira.console import console
+from kaira.core.detector import write_with_check
 
 TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
 
@@ -75,7 +75,7 @@ def docker_init(
 
 @app.command("build")
 def docker_build(
-    tag: Annotated[str, typer.Option("-t", "--tag", help="Build tag name.")] = "devflow-app",
+    tag: Annotated[str, typer.Option("-t", "--tag", help="Build tag name.")] = "kaira-app",
 ) -> None:
     """Build the docker container image."""
     console.print(f"[cyan]Building Docker image [bold]{tag}[/bold]...[/cyan]")
@@ -90,7 +90,7 @@ def docker_build(
 
 @app.command("run")
 def docker_run(
-    tag: Annotated[str, typer.Option("-t", "--tag", help="Tag name of the image to run.")] = "devflow-app",
+    tag: Annotated[str, typer.Option("-t", "--tag", help="Tag name of the image to run.")] = "kaira-app",
     port: Annotated[int, typer.Option("-p", "--port", help="Port mapping.")] = 8000,
 ) -> None:
     """Run the secure docker container instance."""

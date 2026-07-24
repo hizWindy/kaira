@@ -50,7 +50,7 @@ def supports_utf8() -> bool:
 
 AUTHOR_NAME = "Khair"
 AUTHOR_ARABIC = "خير"
-PROJECT_URL = "github.com/khair/devflow"
+PROJECT_URL = "github.com/khair/kaira"
 
 
 def attribution() -> str:

@@ -1,4 +1,4 @@
-"""Tests for devflow.core.detector."""
+"""Tests for kaira.core.detector."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import pytest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
-from devflow.core.detector import (
+from kaira.core.detector import (
     compute_diff,
     file_exists,
     show_diff,
@@ -115,7 +115,7 @@ class TestWriteWithCheckInteractive:
         path = tmp_path / "user.py"
         path.write_text("old content")
 
-        with patch("devflow.core.detector.prompt_overwrite", return_value="overwrite"):
+        with patch("kaira.core.detector.prompt_overwrite", return_value="overwrite"):
             result = write_with_check(path, "new content", force=False, non_interactive=False)
 
         assert result == "written"
@@ -125,7 +125,7 @@ class TestWriteWithCheckInteractive:
         path = tmp_path / "user.py"
         path.write_text("original")
 
-        with patch("devflow.core.detector.prompt_overwrite", return_value="skip"):
+        with patch("kaira.core.detector.prompt_overwrite", return_value="skip"):
             result = write_with_check(path, "new content", force=False, non_interactive=False)
 
         assert result == "skipped"
@@ -144,8 +144,8 @@ class TestWriteWithCheckInteractive:
                 return "diff"
             return "skip"
 
-        with patch("devflow.core.detector.prompt_overwrite", side_effect=prompt_side_effect), \
-             patch("devflow.core.detector.show_diff"):
+        with patch("kaira.core.detector.prompt_overwrite", side_effect=prompt_side_effect), \
+             patch("kaira.core.detector.show_diff"):
             result = write_with_check(path, "new content", force=False, non_interactive=False)
 
         assert result == "skipped"

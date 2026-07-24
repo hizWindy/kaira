@@ -33,17 +33,16 @@ async def health_check(request: Request) -> dict:
     Returns:
         Dict with 'status', 'database', and optionally 'cache' keys.
     """
-    import socket
-
     result: dict = {"status": "ok"}
 
-    # Database connectivity check
-    try:
-        from core.database import engine  # type: ignore[import]
-        # Async ping — just check if engine is configured, not raw connection string
-        result["database"] = "ok"
-    except Exception:
-        result["database"] = "unavailable"
+    # Database block — engine, name, and mode only (never the DSN). Read from the
+    # single startup resolution in app.state (Phase 6, Features 3 & 4).
+    state = request.app.state
+    result["database"] = {
+        "engine": getattr(state, "db_engine_name", "unknown"),
+        "name": getattr(state, "db_name", ""),
+        "mode": getattr(state, "db_mode", "online"),
+    }
 
     {% if cache_enabled %}
     # Cache check — only included if cache was initialised

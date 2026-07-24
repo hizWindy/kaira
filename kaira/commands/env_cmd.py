@@ -12,9 +12,9 @@ from jinja2 import Environment, FileSystemLoader
 from rich.panel import Panel
 from rich.table import Table
 
-from devflow.config import DevFlowConfig, get_config
-from devflow.console import console
-from devflow.core.detector import write_with_check
+from kaira.config import KairaConfig, get_config
+from kaira.console import console
+from kaira.core.detector import write_with_check
 
 TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
 
@@ -59,9 +59,9 @@ _KEY_FEATURES: dict[str, str] = {
 _ENV_GLOB = ".env.*"
 
 
-def _load_devflow_raw() -> dict:
-    """Return the raw .devflow.json contents (empty dict if absent/invalid)."""
-    cfg_path = Path(".devflow.json")
+def _load_kaira_raw() -> dict:
+    """Return the raw .kaira.json contents (empty dict if absent/invalid)."""
+    cfg_path = Path(".kaira.json")
     if cfg_path.exists():
         try:
             return json.loads(cfg_path.read_text(encoding="utf-8"))
@@ -70,7 +70,7 @@ def _load_devflow_raw() -> dict:
     return {}
 
 
-def _feature_enabled(feature: str, config: DevFlowConfig, output_root: Path) -> bool:
+def _feature_enabled(feature: str, config: KairaConfig, output_root: Path) -> bool:
     """Return True when *feature* is active for this project.
 
     Enablement is inferred from real project state — config fields plus the
@@ -87,9 +87,9 @@ def _feature_enabled(feature: str, config: DevFlowConfig, output_root: Path) -> 
             output_root / "tasks"
         ).exists()
     if feature == "cloud":
-        return bool(_load_devflow_raw().get("cloud"))
+        return bool(_load_kaira_raw().get("cloud"))
     if feature == "fallback":
-        return bool(_load_devflow_raw().get("fallback", {}).get("enabled"))
+        return bool(_load_kaira_raw().get("fallback", {}).get("enabled"))
     return False
 
 
@@ -165,7 +165,7 @@ def env_init(
     for e in envs:
         env_path = output_root / f".env.{e}"
         # Make a secure default key
-        secret = "placeholder-32-character-secret-key-for-devflow-api"
+        secret = "placeholder-32-character-secret-key-for-kaira-api"
         db_url = "sqlite:///./app.db"
         if e == "production":
             db_url = "postgresql://user:pass@localhost/dbname?sslmode=require"
@@ -326,12 +326,12 @@ def env_validate() -> None:
         "DEBUG",
     ]
 
-    # Detect cloud provider from .devflow.json
+    # Detect cloud provider from .kaira.json
     cloud_provider: str = ""
     try:
         import json as _json
 
-        cfg_path = Path(".devflow.json")
+        cfg_path = Path(".kaira.json")
         if cfg_path.exists():
             raw = _json.loads(cfg_path.read_text(encoding="utf-8"))
             if raw.get("cloud"):
@@ -504,7 +504,7 @@ def env_validate() -> None:
 
 
 def _audit_rows(
-    config: DevFlowConfig, output_root: Path
+    config: KairaConfig, output_root: Path
 ) -> list[tuple[str, str, bool, bool]]:
     """Return ``(key, feature, enabled, referenced)`` for every env key in use."""
     rows: list[tuple[str, str, bool, bool]] = []
@@ -533,8 +533,8 @@ def env_audit() -> None:
     --------
     kaira env audit
     """
-    from devflow.core.theme import Theme, sym
-    from devflow.core.ui import data_table
+    from kaira.core.theme import Theme, sym
+    from kaira.core.ui import data_table
 
     config = get_config()
     output_root = Path.cwd() / config.output_dir
@@ -597,8 +597,8 @@ def env_prune(
     --------
     kaira env prune
     """
-    from devflow.core.theme import Theme, sym
-    from devflow.commands.ux_helpers import typed_confirmation
+    from kaira.core.theme import Theme, sym
+    from kaira.commands.ux_helpers import typed_confirmation
 
     config = get_config()
     output_root = Path.cwd() / config.output_dir

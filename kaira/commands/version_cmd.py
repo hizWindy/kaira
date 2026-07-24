@@ -11,9 +11,9 @@ import typer
 from rich.panel import Panel
 from rich.table import Table
 
-from devflow.config import get_config
-from devflow.console import console
-from devflow.core.parser import camel_to_snake
+from kaira.config import get_config
+from kaira.console import console
+from kaira.core.parser import camel_to_snake
 
 app = typer.Typer(help="API Versioning and deprecation commands.")
 
@@ -22,7 +22,7 @@ app = typer.Typer(help="API Versioning and deprecation commands.")
 def version_main_callback(ctx: typer.Context) -> None:
     """Show the Kaira version when called without subcommands."""
     if ctx.invoked_subcommand is None:
-        from devflow import __version__
+        from kaira import __version__
         console.print(
             Panel(
                 f"[bold cyan]Kaira[/bold cyan] v[bold]{__version__}[/bold]",

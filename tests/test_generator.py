@@ -1,12 +1,12 @@
-"""Tests for devflow.core.generator."""
+"""Tests for kaira.core.generator."""
 
 from __future__ import annotations
 
 import pytest
 
-from devflow.config import DevFlowConfig
-from devflow.core.parser import parse_fields, parse_relation
-from devflow.core.generator import (
+from kaira.config import KairaConfig
+from kaira.core.parser import parse_fields, parse_relation
+from kaira.core.generator import (
     generate_layer,
     generate_all,
     resolve_output_path,
@@ -18,8 +18,8 @@ from devflow.core.generator import (
 # ---------------------------------------------------------------------------
 
 @pytest.fixture
-def config() -> DevFlowConfig:
-    return DevFlowConfig()
+def config() -> KairaConfig:
+    return KairaConfig()
 
 
 @pytest.fixture

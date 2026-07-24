@@ -14,7 +14,7 @@ import typer
 from jinja2 import Environment, FileSystemLoader
 from rich.panel import Panel
 
-from devflow.console import console
+from kaira.console import console
 
 TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
 
@@ -46,7 +46,7 @@ def event_generate(
     """Generate a FastAPI lifespan startup or shutdown event handler."""
     valid = {"startup", "shutdown"}
     if event_type not in valid:
-        from devflow.commands.smart_errors import smart_error
+        from kaira.commands.smart_errors import smart_error
         smart_error(
             context=f"Unknown event type '{event_type}'.",
             typed=event_type,
@@ -55,7 +55,7 @@ def event_generate(
             guide_topic="event",
         )
 
-    from devflow.config import get_config
+    from kaira.config import get_config
     cfg = get_config()
     output_root = Path.cwd() / cfg.output_dir
     events_dir = output_root / "events"

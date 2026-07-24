@@ -3,7 +3,7 @@ requires = ["setuptools>=61", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "devflow"
+name = "kaira"
 version = "0.1.0"
 description = "Automated FastAPI scaffolding CLI tool"
 readme = "README.md"
@@ -79,14 +79,14 @@ cloud = [
 ]
 
 [project.scripts]
-kaira = "devflow.main:app"
+kaira = "kaira.main:app"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["devflow*"]
+include = ["kaira*"]
 
 [tool.setuptools.package-data]
-devflow = ["templates/*.j2", "templates/firestore/*.j2"]
+kaira = ["templates/*.j2", "templates/firestore/*.j2"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

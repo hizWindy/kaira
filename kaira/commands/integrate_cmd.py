@@ -21,7 +21,7 @@ from jinja2 import Environment, FileSystemLoader
 from rich.panel import Panel
 from rich.table import Table
 
-from devflow.console import console
+from kaira.console import console
 
 TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
 
@@ -86,7 +86,7 @@ def _update_env_files(key: str, value: str) -> None:
 
 def _add_to_settings(key: str) -> None:
     """Add a required field to settings.py so env validate catches it missing."""
-    from devflow.config import get_config
+    from kaira.config import get_config
     cfg = get_config()
     output_root = Path.cwd() / cfg.output_dir
     for candidate in [output_root / "core" / "config.py", output_root / "config" / "settings.py"]:
@@ -139,7 +139,7 @@ def integrate_add(
     sdk_package, env_keys = _PROVIDERS[cat][prov]
     class_prefix = _provider_class_name(prov)
 
-    from devflow.config import get_config
+    from kaira.config import get_config
     cfg = get_config()
     output_root = Path.cwd() / cfg.output_dir
     integration_dir = output_root / "integrations" / cat / prov
@@ -179,7 +179,7 @@ def integrate_add(
 
     if sdk_package:
         console.print(f"  [cyan]Installing {sdk_package}...[/cyan]")
-        from devflow.commands.project import install_packages
+        from kaira.commands.project import install_packages
         install_packages([sdk_package])
 
     console.print(

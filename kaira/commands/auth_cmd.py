@@ -10,9 +10,9 @@ import typer
 from jinja2 import Environment, FileSystemLoader
 from rich.panel import Panel
 
-from devflow.config import get_config
-from devflow.console import console
-from devflow.core.detector import write_with_check, file_exists
+from kaira.config import get_config
+from kaira.console import console
+from kaira.core.detector import write_with_check, file_exists
 
 TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
 
@@ -129,7 +129,7 @@ def auth_add_guard(
         raise typer.Exit(1)
 
     # Find the router file
-    from devflow.core.parser import camel_to_snake
+    from kaira.core.parser import camel_to_snake
     snake = camel_to_snake(router_name)
     router_path = output_root / config.routers_dir / f"{snake}_router.py"
     if not router_path.exists():

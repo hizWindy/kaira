@@ -15,8 +15,8 @@ import typer
 from jinja2 import Environment, FileSystemLoader
 from rich.panel import Panel
 
-from devflow.console import console
-from devflow.commands.ux_helpers import print_next_steps
+from kaira.console import console
+from kaira.commands.ux_helpers import print_next_steps
 
 TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
 
@@ -43,7 +43,7 @@ def health_endpoint_generate() -> None:
     - Includes a cache check only if core/cache.py exists
     - Is rate-limited at ~300/min via slowapi
     """
-    from devflow.config import get_config
+    from kaira.config import get_config
     cfg = get_config()
     output_root = Path.cwd() / cfg.output_dir
 

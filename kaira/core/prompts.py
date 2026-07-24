@@ -17,7 +17,7 @@ from typing import Any, Sequence
 
 import typer
 
-from devflow.core.theme import Theme, is_interactive, sym
+from kaira.core.theme import Theme, is_interactive, sym
 
 # ---------------------------------------------------------------------------
 # InquirerPy availability guard
@@ -41,7 +41,7 @@ except ImportError:
 def _require_inquirerpy() -> None:
     """Raise a friendly error when InquirerPy is not installed."""
     if not _HAS_INQUIRERPY:
-        from devflow.console import console
+        from kaira.console import console
 
         console.print(
             f"[{Theme.ERROR}]InquirerPy is required for interactive prompts.[/{Theme.ERROR}]\n"
@@ -52,7 +52,7 @@ def _require_inquirerpy() -> None:
 
 def _non_tty_error(flag: str) -> None:
     """Print a Phase-4-style smart error for missing non-TTY flag, then exit."""
-    from devflow.console import console
+    from kaira.console import console
 
     warn = sym("WARN")
     console.print(
@@ -64,7 +64,7 @@ def _non_tty_error(flag: str) -> None:
 
 def _handle_cancel() -> None:
     """Print a clean 'Cancelled.' message and exit — no traceback."""
-    from devflow.console import console
+    from kaira.console import console
 
     console.print(f"[{Theme.MUTED}]Cancelled.[/{Theme.MUTED}]")
     raise typer.Exit(0)

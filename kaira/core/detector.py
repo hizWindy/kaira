@@ -12,7 +12,7 @@ from rich.prompt import Prompt
 from rich.syntax import Syntax
 from rich.text import Text
 
-from devflow.console import console
+from kaira.console import console
 
 OverwriteChoice = Literal["overwrite", "skip", "diff"]
 

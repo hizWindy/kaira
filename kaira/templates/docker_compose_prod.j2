@@ -29,14 +29,14 @@ services:
   db:
     image: postgres:15-alpine
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-devflow}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-devflow}
-      POSTGRES_DB: ${POSTGRES_DB:-devflow}
+      POSTGRES_USER: ${POSTGRES_USER:-kaira}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-kaira}
+      POSTGRES_DB: ${POSTGRES_DB:-kaira}
     env_file:
       - .env
     restart: always
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-devflow}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-kaira}"]
       interval: 10s
       timeout: 5s
       retries: 5

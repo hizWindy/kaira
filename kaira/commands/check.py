@@ -7,10 +7,10 @@ from pathlib import Path
 import typer
 from rich.table import Table
 
-from devflow.config import get_config, TIER_LAYERS
-from devflow.console import console
-from devflow.core.generator import resolve_output_path
-from devflow.core.detector import file_exists
+from kaira.config import get_config, TIER_LAYERS
+from kaira.console import console
+from kaira.core.generator import resolve_output_path
+from kaira.core.detector import file_exists
 
 
 def check_command() -> None:
@@ -23,12 +23,12 @@ def check_command() -> None:
 
     if not config.generated_models:
         console.print(
-            "[dim]No models tracked in .devflow.json yet. Run 'kaira generate model' first.[/dim]"
+            "[dim]No models tracked in .kaira.json yet. Run 'kaira generate model' first.[/dim]"
         )
         raise typer.Exit(0)
 
     from rich import box
-    from devflow.core.theme import Theme
+    from kaira.core.theme import Theme
 
     table = Table(
         title="Change Detection Report",

@@ -14,7 +14,7 @@ import typer
 from rich.panel import Panel
 from rich.table import Table
 
-from devflow.console import console
+from kaira.console import console
 
 app = typer.Typer(help="Notification service scaffolding.")
 
@@ -57,7 +57,7 @@ def notify_init() -> None:
     Creates notifications/__init__.py and checks that at least one provider
     is integrated. Prints the exact integrate command if no provider is found.
     """
-    from devflow.config import get_config
+    from kaira.config import get_config
 
     cfg = get_config()
     output_root = Path.cwd() / cfg.output_dir
@@ -95,7 +95,7 @@ def notify_generate(
         notification_type: One of EmailNotification, PushNotification, SMSNotification.
     """
     if notification_type not in _CHANNEL_MAP:
-        from devflow.commands.smart_errors import smart_error
+        from kaira.commands.smart_errors import smart_error
 
         smart_error(
             context=f"Unknown notification type '{notification_type}'.",
@@ -105,7 +105,7 @@ def notify_generate(
             guide_topic="notify",
         )
 
-    from devflow.config import get_config
+    from kaira.config import get_config
 
     cfg = get_config()
     output_root = Path.cwd() / cfg.output_dir
@@ -223,7 +223,7 @@ def notify_test(
 @app.command("list")
 def notify_list() -> None:
     """List all generated notification classes."""
-    from devflow.config import get_config
+    from kaira.config import get_config
 
     cfg = get_config()
     output_root = Path.cwd() / cfg.output_dir

@@ -15,7 +15,28 @@ from rate_limit import limiter
 async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting up FastAPI application...")
-    
+
+    # ── Resolve & record which database we are on (Phase 6, Features 3 & 4) ────
+    # Resolved once here; every surface (banner, /health, X-Kaira-DB-Mode header,
+    # kaira status) reads these values without re-probing.
+    from core.db_mode import resolve_binding, mask_url
+
+    _binding = resolve_binding()
+    app.state.db_mode = _binding.mode
+    app.state.db_online = _binding.online
+    app.state.db_engine_name = _binding.engine
+    app.state.db_name = _binding.name
+    if _binding.online:
+        logger.info(
+            f"database   {_binding.engine} · {_binding.name} · online "
+            f"({mask_url(_binding.url)})"
+        )
+    else:
+        logger.warning(
+            f"primary unreachable — starting in OFFLINE mode · "
+            f"{_binding.engine} · {_binding.name} · offline"
+        )
+
     {% if db_type == "mongodb" %}
     # Initialize Beanie and MongoDB connection
     # Handlers for model import are done dynamically by generator
@@ -90,5 +111,17 @@ def root() -> dict:
 
 @app.get("/health", tags=["HealthCheck"])
 def health_check() -> dict:
-    """Return API health status."""
-    return {"status": "ok", "version": app.version}
+    """Return API health status, including which database is bound and its mode.
+
+    Reports engine, database name, and mode only — never the connection string
+    (no DSN leakage). Values come from the single startup resolution.
+    """
+    return {
+        "status": "ok",
+        "version": app.version,
+        "database": {
+            "engine": getattr(app.state, "db_engine_name", "unknown"),
+            "name": getattr(app.state, "db_name", ""),
+            "mode": getattr(app.state, "db_mode", "online"),
+        },
+    }

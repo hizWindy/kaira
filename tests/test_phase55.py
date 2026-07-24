@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from devflow.main import app
+from kaira.main import app
 
 runner = CliRunner()
 
@@ -36,7 +36,7 @@ def _write_config(path: Path, **overrides) -> None:
         "generated_models": [],
     }
     data.update(overrides)
-    (path / ".devflow.json").write_text(json.dumps(data), encoding="utf-8")
+    (path / ".kaira.json").write_text(json.dumps(data), encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------
@@ -52,7 +52,7 @@ class TestCredentialMasking:
         monkeypatch.setenv("DATABASE_URL", url)
 
         # Force the real login check to raise an error embedding the DSN.
-        from devflow.commands import db_cmd
+        from kaira.commands import db_cmd
 
         def _boom(db_type, raw_url):
             return False, f"auth failed for {raw_url}"
@@ -65,7 +65,7 @@ class TestCredentialMasking:
         assert "***" in result.output
 
     def test_mask_credentials_handles_asyncpg_scheme(self):
-        from devflow.commands.ux_helpers import mask_credentials
+        from kaira.commands.ux_helpers import mask_credentials
 
         masked = mask_credentials("postgresql+asyncpg://user:pw123@host:5432/db")
         assert "pw123" not in masked
@@ -93,7 +93,7 @@ class TestMigrateGuard:
         # sqlite should pass the guard (it may still fail later on missing alembic,
         # but the guard itself must not raise the "not supported" error).
         _write_config(project, db_type="sqlite")
-        from devflow.commands.migrate import _guard_relational_db
+        from kaira.commands.migrate import _guard_relational_db
 
         _guard_relational_db()  # should not raise
 
@@ -110,7 +110,7 @@ class TestSettingsAstParsing:
             "class Settings:\n    DATABASE_URL: str = 'sqlite+aiosqlite:///./app.db'\n",
             encoding="utf-8",
         )
-        from devflow.commands.db_cmd import _extract_setting_default
+        from kaira.commands.db_cmd import _extract_setting_default
 
         assert _extract_setting_default(settings, "DATABASE_URL") == (
             "sqlite+aiosqlite:///./app.db"
@@ -119,21 +119,21 @@ class TestSettingsAstParsing:
     def test_plain_module_assignment(self, tmp_path):
         settings = tmp_path / "settings.py"
         settings.write_text('DATABASE_URL = "postgresql://x"\n', encoding="utf-8")
-        from devflow.commands.db_cmd import _extract_setting_default
+        from kaira.commands.db_cmd import _extract_setting_default
 
         assert _extract_setting_default(settings, "DATABASE_URL") == "postgresql://x"
 
     def test_missing_key_returns_none(self, tmp_path):
         settings = tmp_path / "settings.py"
         settings.write_text("OTHER = 1\n", encoding="utf-8")
-        from devflow.commands.db_cmd import _extract_setting_default
+        from kaira.commands.db_cmd import _extract_setting_default
 
         assert _extract_setting_default(settings, "DATABASE_URL") is None
 
     def test_syntax_error_returns_none(self, tmp_path):
         settings = tmp_path / "settings.py"
         settings.write_text("def (:\n", encoding="utf-8")
-        from devflow.commands.db_cmd import _extract_setting_default
+        from kaira.commands.db_cmd import _extract_setting_default
 
         assert _extract_setting_default(settings, "DATABASE_URL") is None
 
@@ -228,7 +228,7 @@ class TestSyncModel:
         runner.invoke(
             app, ["sync", "model", "User", "--fields", "phone:str", "--force"]
         )
-        snap = json.loads((project / ".devflow.json").read_text())
+        snap = json.loads((project / ".kaira.json").read_text())
         names = [f["name"] for f in snap["generated_models"][0]["fields"]]
         assert "phone" in names
 

@@ -14,7 +14,7 @@ from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
 from rich.table import Table
 
-from devflow.console import console
+from kaira.console import console
 
 app = typer.Typer(help="Dependency management — check, update, audit, tree, add, remove.")
 
@@ -33,7 +33,7 @@ def _pip(*args: str, capture: bool = True) -> subprocess.CompletedProcess:
     Returns:
         CompletedProcess result.
     """
-    from devflow.config import get_venv_python
+    from kaira.config import get_venv_python
     python_exe = get_venv_python()
     cmd = [python_exe, "-m", "pip", *args]
     return subprocess.run(
@@ -191,7 +191,7 @@ def deps_audit() -> None:
         raise typer.Exit(1)
 
     console.print("[cyan]Running dependency audit...[/cyan]")
-    from devflow.config import get_venv_python
+    from kaira.config import get_venv_python
     python_exe = get_venv_python()
     result = subprocess.run(
         [python_exe, "-m", "pip_audit", "--format", "json"],
@@ -247,7 +247,7 @@ def _try_pip_audit_module() -> bool:
     Returns:
         True if pip_audit module is available.
     """
-    from devflow.config import get_venv_python
+    from kaira.config import get_venv_python
     python_exe = get_venv_python()
     if python_exe != sys.executable:
         try:
@@ -299,7 +299,7 @@ def deps_add(
         package: Package name or pinned spec (e.g. 'httpx' or 'httpx>=0.27.0').
         dev: If True, add to [project.optional-dependencies].dev instead.
     """
-    from devflow.commands.project import install_packages
+    from kaira.commands.project import install_packages
 
     console.print(f"[cyan]Installing {package}...[/cyan]")
     installed, failed, skipped = install_packages([package])

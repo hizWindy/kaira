@@ -7,8 +7,8 @@ from typing import Optional
 import typer
 from rich.panel import Panel
 
-from devflow.console import console
-from devflow.commands.ux_helpers import suggest_did_you_mean
+from kaira.console import console
+from kaira.commands.ux_helpers import suggest_did_you_mean
 
 
 def smart_error(
@@ -98,7 +98,7 @@ def error_invalid_field_type(field_name: str, field_type: str) -> None:
         field_name: The field whose type is invalid.
         field_type: The invalid type string.
     """
-    from devflow.config import SUPPORTED_FIELD_TYPES
+    from kaira.config import SUPPORTED_FIELD_TYPES
 
     smart_error(
         context=f"Unsupported field type '{field_type}' for field '{field_name}'.",
@@ -169,10 +169,10 @@ def error_migrate_on_document_db(db_type: str) -> None:
     )
 
 
-def error_missing_devflow_json() -> None:
-    """Report that .devflow.json is missing for a project-scoped command."""
+def error_missing_kaira_json() -> None:
+    """Report that .kaira.json is missing for a project-scoped command."""
     smart_error(
-        context="This command requires a Kaira project (.devflow.json not found).",
+        context="This command requires a Kaira project (.kaira.json not found).",
         fix_cmd="kaira init <project-name>",
         guide_topic="init",
     )

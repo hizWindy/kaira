@@ -35,7 +35,7 @@ def generate_fallback_module(provider: str) -> Path:
         FileNotFoundError: If the template file is missing.
         OSError: If the output directory cannot be created or written.
     """
-    from devflow.config import get_config
+    from kaira.config import get_config
 
     cfg = get_config()
     output_root = Path.cwd() / cfg.output_dir

@@ -9,7 +9,11 @@ from __future__ import annotations
 
 from motor.motor_asyncio import AsyncIOMotorClient
 
-from config.settings import settings
+from core.db_mode import resolve_binding
+
+# Resolve online/offline binding once at startup (Phase 6, Feature 3). For a
+# Mongo project the offline store is a local MongoDB namespace, never SQLite.
+BINDING = resolve_binding()
 
 _client: AsyncIOMotorClient | None = None
 
@@ -37,7 +41,7 @@ async def init_db(document_models: list) -> None:
     global _client
     from beanie import init_beanie  # lazy import — only installed for MongoDB projects
 
-    _client = AsyncIOMotorClient(settings.DATABASE_URL)
+    _client = AsyncIOMotorClient(BINDING.url)
     db = _client.get_default_database()
     await init_beanie(database=db, document_models=document_models)
 

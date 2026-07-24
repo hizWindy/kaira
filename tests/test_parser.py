@@ -1,10 +1,10 @@
-"""Tests for devflow.core.parser."""
+"""Tests for kaira.core.parser."""
 
 from __future__ import annotations
 
 import pytest
 
-from devflow.core.parser import (
+from kaira.core.parser import (
     FieldDef,
     RelationDef,
     camel_to_snake,

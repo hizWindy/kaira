@@ -15,8 +15,8 @@ from jinja2 import Environment, FileSystemLoader
 from rich.panel import Panel
 from rich.table import Table
 
-from devflow.console import console
-from devflow.commands.ux_helpers import typed_confirmation
+from kaira.console import console
+from kaira.commands.ux_helpers import typed_confirmation
 
 TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
 
@@ -44,7 +44,7 @@ def _get_env_loader() -> Environment:
 
 def _run_checklist() -> list[tuple[str, bool, str]]:
     """Evaluate all deploy checklist items."""
-    from devflow.config import get_config
+    from kaira.config import get_config
     cfg = get_config()
     output_root = Path.cwd() / cfg.output_dir
     items: list[tuple[str, bool, str]] = []
@@ -96,18 +96,18 @@ def _run_checklist() -> list[tuple[str, bool, str]]:
 
     # Check cloud config
     import json as _json
-    devflow_cfg_path = Path(".devflow.json")
+    kaira_cfg_path = Path(".kaira.json")
     is_cloud = False
-    if devflow_cfg_path.exists():
+    if kaira_cfg_path.exists():
         try:
-            raw = _json.loads(devflow_cfg_path.read_text(encoding="utf-8"))
+            raw = _json.loads(kaira_cfg_path.read_text(encoding="utf-8"))
             is_cloud = bool(raw.get("cloud"))
         except Exception:
             pass
 
     if is_cloud:
         # Check fallback write queue is empty before deploy
-        write_queue = Path(".devflow") / "fallback" / "write_queue.jsonl"
+        write_queue = Path(".kaira") / "fallback" / "write_queue.jsonl"
         queue_empty = True
         if write_queue.exists():
             try:
@@ -157,7 +157,7 @@ def deploy_generate(
 ) -> None:
     """Generate a platform-specific deployment configuration file."""
     if platform not in _PLATFORMS:
-        from devflow.commands.smart_errors import smart_error
+        from kaira.commands.smart_errors import smart_error
         smart_error(
             context=f"Unknown platform '{platform}'.",
             typed=platform,

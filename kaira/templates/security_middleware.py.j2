@@ -52,6 +52,12 @@ def register_security_middleware(app: FastAPI) -> None:
         response.headers["X-XSS-Protection"] = "1; mode=block"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         response.headers["Permissions-Policy"] = "geolocation=(), microphone=()"
+        # Which database this app is serving from — online or offline (Phase 6,
+        # Feature 4). Read from the single startup resolution in app.state; never
+        # the DSN. Defaults to "online" before the lifespan handler has run.
+        response.headers["X-Kaira-DB-Mode"] = getattr(
+            request.app.state, "db_mode", "online"
+        )
         if settings.APP_ENV == "production":
             response.headers["Strict-Transport-Security"] = (
                 "max-age=63072000; includeSubDomains; preload"

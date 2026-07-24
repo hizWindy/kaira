@@ -12,7 +12,7 @@ import typer
 from rich.panel import Panel
 from rich.table import Table
 
-from devflow.console import console
+from kaira.console import console
 
 app = typer.Typer(help="Show live project status snapshot.")
 
@@ -75,12 +75,12 @@ def _pending_migrations(output_root: Path) -> str:
 
 
 def _last_action() -> str:
-    """Read the most recent command from .devflow/history.jsonl.
+    """Read the most recent command from .kaira/history.jsonl.
 
     Returns:
         Display string of the last command, or 'None'.
     """
-    history_path = Path.cwd() / ".devflow" / "history.jsonl"
+    history_path = Path.cwd() / ".kaira" / "history.jsonl"
     if not history_path.exists():
         return "[dim]None[/dim]"
     try:
@@ -108,13 +108,13 @@ def status_command() -> None:
     Shows: project/env info, DB connection, pending migrations,
     dev server status, model/route counts, auth status, last action.
     """
-    from devflow.config import find_config_path, DevFlowConfig
+    from kaira.config import find_config_path, KairaConfig
 
     config_path = find_config_path()
     if not config_path.exists():
         console.print(
             Panel(
-                "[yellow]No .devflow.json found. Run [bold]kaira init <name>[/bold] first.[/yellow]",
+                "[yellow]No .kaira.json found. Run [bold]kaira init <name>[/bold] first.[/yellow]",
                 border_style="yellow",
             )
         )
@@ -122,10 +122,10 @@ def status_command() -> None:
 
     try:
         raw = json.loads(config_path.read_text(encoding="utf-8"))
-        cfg = DevFlowConfig.from_dict(raw)
+        cfg = KairaConfig.from_dict(raw)
     except Exception:
         raw = {}
-        cfg = DevFlowConfig()
+        cfg = KairaConfig()
 
     project_name = raw.get("project", raw.get("project_name", Path.cwd().name))
     db_type = raw.get("database", cfg.db_type)
@@ -144,6 +144,15 @@ def status_command() -> None:
             if port and _ping_host("localhost", port, timeout=1.0)
             else "[red]❌ Unreachable[/red]"
         )
+
+    # Resolved online/offline mode (Phase 6, Feature 4) — from the single source
+    # in .kaira.json, never re-probed here.
+    db_name = raw.get("db_name", "") or cfg.db_name
+    db_mode = raw.get("db_mode", "") or cfg.db_mode or "online"
+    if db_mode == "offline":
+        mode_badge = "[bold yellow]⚠️ offline (SQLite)[/bold yellow]"
+    else:
+        mode_badge = "[bold green]✅ online[/bold green]"
 
     # Counts
     models_dir = output_root / cfg.models_dir
@@ -174,7 +183,10 @@ def status_command() -> None:
 
     table.add_row("Project", f"[bold]{project_name}[/bold]")
     table.add_row("Environment", f"[bold]{app_env}[/bold]")
-    table.add_row("Database", f"[bold]{db_type}[/bold]  {db_conn}")
+    db_label = f"[bold]{db_type}[/bold]"
+    if db_name:
+        db_label += f" [dim]·[/dim] {db_name}"
+    table.add_row("Database", f"{db_label}  [dim]·[/dim]  {mode_badge}  {db_conn}")
     table.add_row("Auth", f"[bold]{auth_type}[/bold]  {auth_status}")
     table.add_row("Migrations", mig_status)
     table.add_row("Dev Server", dev_server)

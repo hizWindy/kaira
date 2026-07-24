@@ -17,7 +17,7 @@ from jinja2 import Environment, FileSystemLoader
 from rich.panel import Panel
 from rich.table import Table
 
-from devflow.console import console
+from kaira.console import console
 
 TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
 
@@ -60,7 +60,7 @@ def _update_env_files(key: str, value: str) -> None:
 @app.command("init")
 def task_init() -> None:
     """Initialise Celery for this project."""
-    from devflow.config import get_config
+    from kaira.config import get_config
     cfg = get_config()
     output_root = Path.cwd() / cfg.output_dir
     tasks_dir = output_root / "tasks"
@@ -119,7 +119,7 @@ def task_generate(
         console.print("[red]❌ Task name must be PascalCase, e.g. SendEmail[/red]")
         raise typer.Exit(1)
 
-    from devflow.config import get_config
+    from kaira.config import get_config
     cfg = get_config()
     output_root = Path.cwd() / cfg.output_dir
     tasks_dir = output_root / "tasks"
@@ -162,7 +162,7 @@ def task_generate(
 @app.command("list")
 def task_list() -> None:
     """List all generated Celery task files."""
-    from devflow.config import get_config
+    from kaira.config import get_config
     cfg = get_config()
     output_root = Path.cwd() / cfg.output_dir
     tasks_dir = output_root / "tasks"

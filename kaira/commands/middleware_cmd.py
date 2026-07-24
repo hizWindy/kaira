@@ -17,7 +17,7 @@ from jinja2 import Environment, FileSystemLoader
 from rich.panel import Panel
 from rich.table import Table
 
-from devflow.console import console
+from kaira.console import console
 
 TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
 
@@ -72,7 +72,7 @@ def middleware_add(
         )
         raise typer.Exit(1)
 
-    from devflow.config import get_config
+    from kaira.config import get_config
     cfg = get_config()
     output_root = Path.cwd() / cfg.output_dir
     mw_dir = output_root / "middleware"
@@ -102,7 +102,7 @@ def middleware_add(
 @app.command("list")
 def middleware_list() -> None:
     """List all middleware files registered in the project."""
-    from devflow.config import get_config
+    from kaira.config import get_config
     cfg = get_config()
     output_root = Path.cwd() / cfg.output_dir
 
@@ -142,7 +142,7 @@ def middleware_remove(
         )
         raise typer.Exit(1)
 
-    from devflow.config import get_config
+    from kaira.config import get_config
     cfg = get_config()
     output_root = Path.cwd() / cfg.output_dir
     snake = re.sub(r"(?<!^)(?=[A-Z])", "_", name).lower()

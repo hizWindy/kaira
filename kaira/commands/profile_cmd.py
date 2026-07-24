@@ -17,12 +17,12 @@ import typer
 from rich.panel import Panel
 from rich.table import Table
 
-from devflow.console import console
+from kaira.console import console
 
 app = typer.Typer(help="Route profiling and latency measurement.")
 
 _BASE_URL = "http://127.0.0.1:8000"
-_RESULTS_FILE = Path(".devflow") / "profile_results.json"
+_RESULTS_FILE = Path(".kaira") / "profile_results.json"
 _SERVER_DOWN_MSG = (
     "⏸️ Server not running.\nStart it with: [bold cyan]kaira run[/bold cyan]"
 )
@@ -65,7 +65,7 @@ def profile_run(
 ) -> None:
     """Profile a route by sending N requests and measuring latency.
 
-    Results are saved to .devflow/profile_results.json for use with
+    Results are saved to .kaira/profile_results.json for use with
     'kaira profile report'.
 
     Args:
@@ -123,7 +123,7 @@ def profile_run(
 
 @app.command("report")
 def profile_report() -> None:
-    """Display the last profile run results from .devflow/profile_results.json."""
+    """Display the last profile run results from .kaira/profile_results.json."""
     if not _RESULTS_FILE.exists():
         console.print(
             "[yellow]No profile results found. Run: kaira profile run <METHOD> <route>[/yellow]"

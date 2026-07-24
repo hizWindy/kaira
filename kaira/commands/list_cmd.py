@@ -7,8 +7,8 @@ from pathlib import Path
 import typer
 from rich.table import Table
 
-from devflow.config import get_config
-from devflow.console import console
+from kaira.config import get_config
+from kaira.console import console
 
 app = typer.Typer(help="List generated resources.")
 
@@ -34,7 +34,7 @@ def list_models() -> None:
         return
 
     from rich import box
-    from devflow.core.theme import Theme
+    from kaira.core.theme import Theme
 
     table = Table(
         title=f"Models in [cyan]{models_dir}[/cyan]",
@@ -79,7 +79,7 @@ def list_routes() -> None:
     api_prefix = f"/api/{api_version}"
 
     from rich import box
-    from devflow.core.theme import Theme
+    from kaira.core.theme import Theme
 
     table = Table(
         title="Kaira — Registered API Routes",
