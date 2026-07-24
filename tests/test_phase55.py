@@ -5,7 +5,7 @@ Covers:
 - FIX 3  migrate short-circuit on MongoDB / Firestore
 - FIX 4  AST-based settings.py parsing
 - FEATURE A  env audit / env prune
-- devflow sync model  per-layer cascade
+- kaira sync model  per-layer cascade
 """
 
 from __future__ import annotations
@@ -191,7 +191,7 @@ class TestEnvAuditPrune:
 
 
 # ---------------------------------------------------------------------------
-# devflow sync model
+# kaira sync model
 # ---------------------------------------------------------------------------
 
 

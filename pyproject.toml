@@ -79,7 +79,7 @@ cloud = [
 ]
 
 [project.scripts]
-devflow = "devflow.main:app"
+kaira = "devflow.main:app"
 
 [tool.setuptools.packages.find]
 where = ["."]

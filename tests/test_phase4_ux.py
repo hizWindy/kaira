@@ -58,7 +58,7 @@ def test_print_next_steps_with_items():
     """print_next_steps should print a panel with provided steps."""
     from devflow.commands.ux_helpers import print_next_steps
     with patch("devflow.commands.ux_helpers.console") as mock_console:
-        print_next_steps(["devflow migrate init", "devflow test generate User"])
+        print_next_steps(["kaira migrate init", "kaira test generate User"])
         assert mock_console.print.called
 
 

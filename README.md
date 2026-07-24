@@ -1,12 +1,12 @@
-# DevFlow ⚡
+# Kaira ⚡
 
 **Automated FastAPI scaffolding CLI** — generate complete 5-layer backend pipelines from model definitions.
 
 ```
-devflow generate model User --fields "username:str, email:str, age:int"
+kaira generate model User --fields "username:str, email:str, age:int"
 ```
 
-In one command, DevFlow generates:
+In one command, Kaira generates:
 
 | Layer | File | Description |
 |-------|------|-------------|
@@ -29,14 +29,14 @@ In one command, DevFlow generates:
 
 ```bash
 # Clone or unzip the project
-cd DevFlow
+cd Kaira
 
 # Install in editable mode — registers the `devflow` command globally
 pip install -e .
 
 # Verify installation
-devflow --version
-devflow --help
+kaira --version
+kaira --help
 ```
 
 ---
@@ -45,24 +45,24 @@ devflow --help
 
 ```bash
 # 1. Initialize a new FastAPI project in the current directory
-devflow init
+kaira init
 
 # 2. (Optional) Initialize with JWT auth boilerplate
-devflow init --with-auth
+kaira init --with-auth
 
 # 3. Generate a complete 5-layer pipeline
-devflow generate model User --fields "username:str, email:str, age:int"
+kaira generate model User --fields "username:str, email:str, age:int"
 
 # 4. Generate another model
-devflow generate model Post --fields "title:str, body:str, published:bool"
+kaira generate model Post --fields "title:str, body:str, published:bool"
 
 # 5. Add a relationship
-devflow add relation Post --has-many Comment --cascade "all, delete-orphan"
+kaira add relation Post --has-many Comment --cascade "all, delete-orphan"
 
 # 6. Initialize Alembic and run migrations
-devflow migrate init
-devflow migrate make "initial migration"
-devflow migrate run
+kaira migrate init
+kaira migrate make "initial migration"
+kaira migrate run
 
 # 7. Start the server
 uvicorn main:app --reload
@@ -72,7 +72,7 @@ uvicorn main:app --reload
 
 ## All Commands
 
-### `devflow init`
+### `kaira init`
 
 Scaffold a full FastAPI project structure:
 
@@ -92,29 +92,29 @@ project/
 ├── .gitignore
 ├── Dockerfile
 ├── requirements.txt
-└── .devflow.json     # DevFlow project config
+└── .devflow.json     # Kaira project config
 ```
 
 ```bash
-devflow init
-devflow init --with-auth    # Adds auth.py with JWT boilerplate
+kaira init
+kaira init --with-auth    # Adds auth.py with JWT boilerplate
 ```
 
 ---
 
 ## Phase 3: Project Wizard, Database Modes, and Security Defaults
 
-Phase 3 expands `devflow init` into a named project scaffold with database-aware templates,
+Phase 3 expands `kaira init` into a named project scaffold with database-aware templates,
 auth boilerplate, Docker/CI options, logging, security middleware, and generated project docs.
 
 ```bash
 # Interactive wizard
-devflow init
+kaira init
 
 # Non-interactive project creation
-devflow init myproject --db sqlite --auth jwt --docker --ci github
-devflow init myproject --db postgresql --auth none --no-docker --ci none
-devflow init myproject --db mongodb --auth api-key --docker --ci gitlab
+kaira init myproject --db sqlite --auth jwt --docker --ci github
+kaira init myproject --db postgresql --auth none --no-docker --ci none
+kaira init myproject --db mongodb --auth api-key --docker --ci gitlab
 ```
 
 Supported database modes:
@@ -144,54 +144,54 @@ Phase 3 projects include:
 - `.env`, `.env.development`, `.env.staging`, `.env.production`, and `.env.example`
 - generated `pyproject.toml`, `README.md`, `.gitignore`, and optional Docker/CI files
 
-### `devflow guide`
+### `kaira guide`
 
 Use the built-in guides for copy-pasteable examples:
 
 ```bash
-devflow guide
-devflow guide init
-devflow guide generate
-devflow guide db
-devflow guide config
+kaira guide
+kaira guide init
+kaira guide generate
+kaira guide db
+kaira guide config
 ```
 
 ### Database-aware generation
 
-`devflow generate` reads `.devflow.json` and switches templates based on `db_type`:
+`kaira generate` reads `.devflow.json` and switches templates based on `db_type`:
 
 - `sqlite`, `postgresql`, `mysql` use SQLAlchemy models plus async repositories.
 - `mongodb` uses Beanie document models plus MongoDB repositories.
 
 ```bash
-devflow config set db_type postgresql
-devflow config set auth_type jwt
-devflow config set api_version v2
-devflow generate model User --fields "username:str, email:str"
+kaira config set db_type postgresql
+kaira config set auth_type jwt
+kaira config set api_version v2
+kaira generate model User --fields "username:str, email:str"
 ```
 
 Routers generated inside a Phase 3 project are registered in `main.py` under the configured API prefix.
 
 ---
 
-### `devflow generate`
+### `kaira generate`
 
 #### Generate full pipeline
 
 ```bash
-devflow generate model <ModelName> --fields "<field_definitions>"
+kaira generate model <ModelName> --fields "<field_definitions>"
 
 # Examples
-devflow generate model User --fields "username:str, email:str, age:int"
-devflow generate model Product --fields "name:str, price:float, in_stock:bool"
-devflow generate model Event --fields "title:str, start_at:datetime, description:Optional[str]"
+kaira generate model User --fields "username:str, email:str, age:int"
+kaira generate model Product --fields "name:str, price:float, in_stock:bool"
+kaira generate model Event --fields "title:str, start_at:datetime, description:Optional[str]"
 
 # Complexity tiers
-devflow generate model User --fields "name:str" --tier simple   # model + schema + router only
-devflow generate model User --fields "name:str" --tier full     # all 5 layers (default)
+kaira generate model User --fields "name:str" --tier simple   # model + schema + router only
+kaira generate model User --fields "name:str" --tier full     # all 5 layers (default)
 
 # Force overwrite without prompting
-devflow generate model User --fields "name:str" --force
+kaira generate model User --fields "name:str" --force
 ```
 
 #### Supported field types
@@ -212,17 +212,17 @@ devflow generate model User --fields "name:str" --force
 #### Generate single layers
 
 ```bash
-devflow generate router User --fields "name:str"
-devflow generate service User --fields "name:str"
-devflow generate schema User --fields "name:str"
-devflow generate repository User --fields "name:str"
+kaira generate router User --fields "name:str"
+kaira generate service User --fields "name:str"
+kaira generate schema User --fields "name:str"
+kaira generate repository User --fields "name:str"
 ```
 
 #### Bulk generation from JSON
 
 ```bash
-devflow generate bulk models.json
-devflow generate bulk models.json --force
+kaira generate bulk models.json
+kaira generate bulk models.json --force
 ```
 
 **models.json format:**
@@ -253,52 +253,52 @@ devflow generate bulk models.json --force
 
 ---
 
-### `devflow add`
+### `kaira add`
 
 #### Add relationships
 
 ```bash
 # One-to-many (Post has many Comments)
-devflow add relation Post --has-many Comment --cascade "all, delete-orphan"
+kaira add relation Post --has-many Comment --cascade "all, delete-orphan"
 
 # Many-to-one (Post belongs to User)
-devflow add relation Post --has-one User
+kaira add relation Post --has-one User
 
 # Many-to-many (Post has many Tags)
-devflow add relation Post --many-to-many Tag
+kaira add relation Post --many-to-many Tag
 ```
 
 Appends the relationship code directly to the existing model file.
 
 ---
 
-### `devflow migrate`
+### `kaira migrate`
 
 ```bash
-devflow migrate make "msg"    # New migration (runs: alembic revision --autogenerate -m "msg")
-devflow migrate run           # Apply migrations (runs: alembic upgrade head)
-devflow migrate rollback      # Revert last migration (runs: alembic downgrade -1)
-devflow migrate init          # Initialize Alembic (runs: alembic init alembic)
+kaira migrate make "msg"    # New migration (runs: alembic revision --autogenerate -m "msg")
+kaira migrate run           # Apply migrations (runs: alembic upgrade head)
+kaira migrate rollback      # Revert last migration (runs: alembic downgrade -1)
+kaira migrate init          # Initialize Alembic (runs: alembic init alembic)
 ```
 
-> **Note:** DevFlow provides a **zero-configuration** migration workflow. You do not need to run `devflow migrate init` or manually configure `alembic/env.py`. Running any migration command (`make`, `run`, or `rollback`) automatically initializes and pre-configures Alembic behind the scenes if it hasn't been set up yet.
+> **Note:** Kaira provides a **zero-configuration** migration workflow. You do not need to run `kaira migrate init` or manually configure `alembic/env.py`. Running any migration command (`make`, `run`, or `rollback`) automatically initializes and pre-configures Alembic behind the scenes if it hasn't been set up yet.
 
 ---
 
-### `devflow db`
+### `kaira db`
 
 Database verification, diagnostics, and schema/table structure inspection:
 
 ```bash
-devflow db status             # Display active DB type, connection URL, and login status
-devflow db connect            # Perform a real database login check & verification query
-devflow db info               # List all tables & column counts (or collections & doc counts)
-devflow db shell              # Launch an interactive database shell (psql, mysql, sqlite3)
-devflow db backup             # Backup active database to a SQL dump/file
-devflow db restore <file>     # Restore active database from a SQL dump/file
-devflow db reset              # Drop and recreate the database (destructive)
-devflow db switch <type>      # Switch DB type (routes cloud providers to cloud connect)
-devflow db benchmark          # Time connection/query latency
+kaira db status             # Display active DB type, connection URL, and login status
+kaira db connect            # Perform a real database login check & verification query
+kaira db info               # List all tables & column counts (or collections & doc counts)
+kaira db shell              # Launch an interactive database shell (psql, mysql, sqlite3)
+kaira db backup             # Backup active database to a SQL dump/file
+kaira db restore <file>     # Restore active database from a SQL dump/file
+kaira db reset              # Drop and recreate the database (destructive)
+kaira db switch <type>      # Switch DB type (routes cloud providers to cloud connect)
+kaira db benchmark          # Time connection/query latency
 ```
 
 *(9 commands total.)*
@@ -307,15 +307,15 @@ devflow db benchmark          # Time connection/query latency
 
 ---
 
-### `devflow sync model`
+### `kaira sync model`
 
 Cascade a model's field changes across all five layers — the *continuous* half of continuous scaffolding. Add a field once and schema + router regenerate to match; the service layer is flagged (never auto-rewritten):
 
 ```bash
-devflow sync model User --fields "phone:str, verified:bool"   # add fields inline
-devflow sync model User                                       # detect hand-edits to models/user.py
-devflow sync model User --dry-run                             # preview the per-layer plan
-devflow sync model --all                                      # sync every registered model
+kaira sync model User --fields "phone:str, verified:bool"   # add fields inline
+kaira sync model User                                       # detect hand-edits to models/user.py
+kaira sync model User --dry-run                             # preview the per-layer plan
+kaira sync model --all                                      # sync every registered model
 ```
 
 | Layer | Action |
@@ -326,79 +326,79 @@ devflow sync model --all                                      # sync every regis
 | Repository | Untouched |
 | Service | Flagged for manual review — never auto-rewritten |
 
-> Removed fields require a typed confirmation (never silently dropped). After a relational sync, run `devflow migrate make "sync <model>"`.
+> Removed fields require a typed confirmation (never silently dropped). After a relational sync, run `kaira migrate make "sync <model>"`.
 
 ---
 
-### `devflow env audit` / `devflow env prune`
+### `kaira env audit` / `kaira env prune`
 
 Keep `.env` files lean — audit every key against enabled features, then prune the ones for features you never turned on:
 
 ```bash
-devflow env audit    # table: key · owning feature · referenced in code? · keep/unused
-devflow env prune    # remove unused-feature keys from all .env.* files (typed confirm)
+kaira env audit    # table: key · owning feature · referenced in code? · keep/unused
+kaira env prune    # remove unused-feature keys from all .env.* files (typed confirm)
 ```
 
 > Core keys (`DATABASE_URL`, `APP_ENV`, …) and any key referenced in your code are never pruned. `env prune` is blocked when `APP_ENV=production`.
 
 ---
 
-### `devflow info`
+### `kaira info`
 
 Show current project configuration and all tracked models:
 
 ```bash
-devflow info
+kaira info
 ```
 
 ---
 
-### `devflow check`
+### `kaira check`
 
 Show what files would be overwritten without writing anything:
 
 ```bash
-devflow check
+kaira check
 ```
 
 ---
 
-### `devflow diff`
+### `kaira diff`
 
 Show a colored unified diff between existing and freshly generated files:
 
 ```bash
-devflow diff User
-devflow diff User --layer router
-devflow diff User --fields "username:str, email:str, bio:Optional[str]"
+kaira diff User
+kaira diff User --layer router
+kaira diff User --fields "username:str, email:str, bio:Optional[str]"
 ```
 
 ---
 
-### `devflow list`
+### `kaira list`
 
 ```bash
-devflow list models    # List all files in models/
-devflow list routes    # List all router files and their endpoints
+kaira list models    # List all files in models/
+kaira list routes    # List all router files and their endpoints
 ```
 
 ---
 
-### `devflow docs`
+### `kaira docs`
 
 AI-powered documentation generation (requires API key):
 
 ```bash
-devflow docs generate              # Generate docs for all models → docs/api.md
-devflow docs generate User         # Generate docs for one model → docs/User.md
+kaira docs generate              # Generate docs for all models → docs/api.md
+kaira docs generate User         # Generate docs for one model → docs/User.md
 ```
 
 **Configure AI provider:**
 
 ```bash
-devflow config set ai_provider openai      # or: anthropic
-devflow config set ai_model gpt-4o
-devflow config set ai_api_key_env OPENAI_API_KEY
+kaira config set ai_provider openai      # or: anthropic
+kaira config set ai_model gpt-4o
+kaira config set ai_api_key_env OPENAI_API_KEY
 ```
 
 Set your API key in `.env`:
@@ -409,17 +409,17 @@ OPENAI_API_KEY=sk-...
 ANTHROPIC_API_KEY=sk-ant-...
 ```
 
-If no API key is set, DevFlow generates a basic Markdown doc without AI.
+If no API key is set, Kaira generates a basic Markdown doc without AI.
 
 ---
 
-### `devflow config`
+### `kaira config`
 
 ```bash
-devflow config show                         # Display full config
-devflow config get default_tier             # Get a value
-devflow config set default_tier simple      # Set a value
-devflow config set models_dir app/models    # Change output directories
+kaira config show                         # Display full config
+kaira config get default_tier             # Get a value
+kaira config set default_tier simple      # Set a value
+kaira config set models_dir app/models    # Change output directories
 ```
 
 **Settable keys:**
@@ -443,56 +443,56 @@ devflow config set models_dir app/models    # Change output directories
 
 Phase 4 adds 87 new commands across 14 new functional areas:
 
-### ⚡ Caching (`devflow cache`)
+### ⚡ Caching (`kaira cache`)
 Redis cache management and route caching:
-- `devflow cache init` — Scaffold `core/cache.py` and register in settings
-- `devflow cache add GET <route> [--ttl 300]` — Add GET route caching
-- `devflow cache clear [<route> | --all]` — Clear cached routes
-- `devflow cache status` — View Redis status and keys
+- `kaira cache init` — Scaffold `core/cache.py` and register in settings
+- `kaira cache add GET <route> [--ttl 300]` — Add GET route caching
+- `kaira cache clear [<route> | --all]` — Clear cached routes
+- `kaira cache status` — View Redis status and keys
 
-### ⚡ Background Tasks (`devflow task`)
+### ⚡ Background Tasks (`kaira task`)
 Scaffold background tasks via Celery:
-- `devflow task init` — Scaffolds celery configurations
-- `devflow task generate <TaskName> [--schedule "<cron>"]` — Scaffolds background task
-- `devflow task list` — List all Celery tasks
-- `devflow task run <TaskName>` — Run background task immediately
-- `devflow task monitor` — Open Flower dashboard
+- `kaira task init` — Scaffolds celery configurations
+- `kaira task generate <TaskName> [--schedule "<cron>"]` — Scaffolds background task
+- `kaira task list` — List all Celery tasks
+- `kaira task run <TaskName>` — Run background task immediately
+- `kaira task monitor` — Open Flower dashboard
 
-### ⚡ Third-Party Integrations (`devflow integrate`)
+### ⚡ Third-Party Integrations (`kaira integrate`)
 Scaffold 15 integration providers across 6 categories:
-- `devflow integrate --provider <category>/<provider>` (e.g. `email/sendgrid`, `payment/stripe`, `storage/s3`, `monitor/sentry`, etc.)
-- `devflow integrate list` — View all available integration options
+- `kaira integrate --provider <category>/<provider>` (e.g. `email/sendgrid`, `payment/stripe`, `storage/s3`, `monitor/sentry`, etc.)
+- `kaira integrate list` — View all available integration options
 
-### ⚡ API Inspection & client generation (`devflow api`)
-- `devflow api export [--format json|yaml]` — Save OpenAPI spec
-- `devflow api validate` — Validate local OpenAPI spec
-- `devflow api list` — List all endpoints
-- `devflow api test <METHOD> <route>` — Send test request to local server
-- `devflow api postman` — Generate Postman collection
-- `devflow api client [--lang typescript|javascript]` — Scaffolds client SDK
+### ⚡ API Inspection & client generation (`kaira api`)
+- `kaira api export [--format json|yaml]` — Save OpenAPI spec
+- `kaira api validate` — Validate local OpenAPI spec
+- `kaira api list` — List all endpoints
+- `kaira api test <METHOD> <route>` — Send test request to local server
+- `kaira api postman` — Generate Postman collection
+- `kaira api client [--lang typescript|javascript]` — Scaffolds client SDK
 
-### ⚡ Profiling & Loadtesting (`devflow profile` & `devflow loadtest`)
-- `devflow profile run <METHOD> <route>` — Trace route response latency (p50/p95/p99)
-- `devflow profile report` — View last profile run
-- `devflow loadtest run <METHOD> <route>` — Perform concurrent load test (localhost-only safety lock)
+### ⚡ Profiling & Loadtesting (`kaira profile` & `kaira loadtest`)
+- `kaira profile run <METHOD> <route>` — Trace route response latency (p50/p95/p99)
+- `kaira profile report` — View last profile run
+- `kaira loadtest run <METHOD> <route>` — Perform concurrent load test (localhost-only safety lock)
 
-### ⚡ Deployment Configs (`devflow deploy`)
-- `devflow deploy generate --platform <platform>` — Scaffold Render/Railway/Fly/VPS configs
-- `devflow deploy checklist` / `devflow deploy check` — Deploy readiness audit
-- `devflow deploy run --platform <platform>` — Trigger deployment (requires passing checklist)
+### ⚡ Deployment Configs (`kaira deploy`)
+- `kaira deploy generate --platform <platform>` — Scaffold Render/Railway/Fly/VPS configs
+- `kaira deploy checklist` / `kaira deploy check` — Deploy readiness audit
+- `kaira deploy run --platform <platform>` — Trigger deployment (requires passing checklist)
 
-### ⚡ Scaffolding Layers (`devflow middleware`, `devflow event`, `devflow flags`, `devflow health-endpoint`)
-- `devflow middleware add <MiddlewareName>` — Scaffold Starlette middleware
-- `devflow event generate <startup|shutdown>` — Scaffold lifespan hooks
-- `devflow flags add <flag_name>` — Scaffold feature flag toggle
-- `devflow health-endpoint generate` — Scaffold unauthenticated /health route
+### ⚡ Scaffolding Layers (`kaira middleware`, `kaira event`, `kaira flags`, `kaira health-endpoint`)
+- `kaira middleware add <MiddlewareName>` — Scaffold Starlette middleware
+- `kaira event generate <startup|shutdown>` — Scaffold lifespan hooks
+- `kaira flags add <flag_name>` — Scaffold feature flag toggle
+- `kaira health-endpoint generate` — Scaffold unauthenticated /health route
 
 ---
 
 
 ## Change Detection
 
-DevFlow **never silently overwrites** files. When a file already exists:
+Kaira **never silently overwrites** files. When a file already exists:
 
 ```
 ┌─ File Conflict ──────────────────────────────────────────────────┐
@@ -551,7 +551,7 @@ my-api/
 ```bash
 pip install -e ".[dev]"
 pytest tests/ -v
-pytest tests/ --cov=devflow --cov-report=term-missing
+pytest tests/ --cov=kaira --cov-report=term-missing
 ```
 
 ---

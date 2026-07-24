@@ -1,0 +1,48 @@
+# {{ project_name }} — Kaira-generated convenience targets.
+# Usage: make <target>   (Windows users: install `make`, or run the raw commands in README.md)
+
+PY := python
+
+.PHONY: help venv install db run dev migrate test clean
+
+help:
+	@echo "Available targets:"
+	@echo "  make install   Create .venv and install dependencies"
+	@echo "  make db        Start the database (Docker){% if db_type == 'sqlite' %} — SQLite needs nothing{% endif %}"
+	@echo "  make dev       Run the dev server with hot-reload (fastapi dev)"
+	@echo "  make run       Run the production server (fastapi run)"
+	@echo "  make migrate   Apply database migrations (alembic upgrade head)"
+	@echo "  make test      Run the test suite"
+
+venv:
+	$(PY) -m venv .venv
+
+install: venv
+	.venv/bin/python -m pip install --upgrade pip
+	.venv/bin/python -m pip install -r requirements.txt
+
+db:
+{% if db_type == "sqlite" -%}
+	@echo "SQLite is file-based — no database server required."
+{% else -%}
+	docker compose up -d db
+{% endif %}
+
+dev:
+	.venv/bin/python -m fastapi dev main.py
+
+run:
+	.venv/bin/python -m fastapi run main.py
+
+migrate:
+{% if db_type == "mongodb" -%}
+	@echo "MongoDB is schemaless — no migrations needed."
+{% else -%}
+	.venv/bin/python -m alembic upgrade head
+{% endif %}
+
+test:
+	.venv/bin/python -m pytest
+
+clean:
+	rm -rf .venv __pycache__ .pytest_cache .ruff_cache

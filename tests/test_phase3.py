@@ -5,22 +5,24 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import pytest
-from typer.testing import CliRunner
+from click.testing import CliRunner
+from typer.main import get_command
 
 from devflow.main import app
 
-runner = CliRunner(mix_stderr=False)
+runner = CliRunner()
+cli = get_command(app)
 
 def run(*args):
-    """Invoke the devflow CLI with the given arguments."""
-    return runner.invoke(app, list(args))
+    """Invoke the kaira CLI with the given arguments."""
+    return runner.invoke(cli, list(args))
 
 class TestPhase3Commands:
     def test_guide_index(self):
         result = run("guide")
         assert result.exit_code == 0
         assert "Available guides:" in result.output
-        assert "devflow guide init" in result.output
+        assert "kaira guide init" in result.output
 
     def test_guide_subcommands(self):
         sub_guides = ["init", "generate", "auth", "migrate", "security", "test", "docker", "ci", "env", "db", "config"]

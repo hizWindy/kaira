@@ -202,7 +202,7 @@ class TestQueuedWriteResponse:
         assert degraded_status_code == HTTPStatus.ACCEPTED.value
 
     def test_x_devflow_mode_header_format(self):
-        """X-DevFlow-Mode header value must match mode name (lowercase)."""
+        """X-Kaira-Mode header value must match mode name (lowercase)."""
         mode_header_map = {
             "CLOUD": "cloud",
             "DEGRADED": "degraded",

@@ -1,0 +1,129 @@
+# {{ project_name }} ⚡
+
+Secure FastAPI backend application scaffolded with **Kaira**.
+
+## Technology Stack
+
+- **Framework**: [FastAPI](https://fastapi.tiangolo.com/) (installed as `fastapi[standard]`)
+- **Database**: {{ db_type }}
+{% if db_type == "mongodb" %}
+- **ORM/ODM**: Beanie (MongoDB ODM)
+{% else %}
+- **ORM/ODM**: SQLAlchemy Async 2.0 + Alembic
+{% endif %}
+- **Security & Middleware**: Rate limiting (Slowapi), CORS protection, secure headers
+- **Logging**: Loguru (structured logs)
+- **Authentication**: {{ auth_type }}
+
+## Directory Structure
+
+```text
+├── models/             # Database ORM/ODM Models
+├── repositories/       # Data-access repository layers
+├── schemas/            # Pydantic v2 validation schemas
+├── services/           # Business logic service layers
+├── routers/            # FastAPI Endpoint Routers
+├── auth/               # Authentication handlers & tokens
+├── config/             # Environment settings class
+├── core/               # Database connection and logger configuration
+├── middleware/         # Security and exception-handling middleware
+├── tests/              # Pytest unit & integration suites
+├── main.py             # App entrypoint
+├── requirements.txt    # Pinned dependencies (mirrors pyproject.toml)
+├── pyproject.toml      # Project metadata & dependencies
+└── Makefile            # Convenience commands
+```
+
+> This project is **self-contained** — Kaira is **not** required to run it. A fresh clone only needs Python 3.10+ (and Docker if you don't use SQLite).
+
+## Quick Start
+
+```bash
+# 1. Clone and enter
+git clone <your-repo-url> && cd {{ project_slug }}
+
+# 2. Environment variables
+cp .env.example .env
+{% if db_type != "sqlite" %}
+# 3. Start the database (Docker)
+docker compose up -d db
+{% endif %}
+# 4. Install dependencies (into a virtual environment)
+python -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+{% if db_type != "mongodb" %}
+# 5. Apply database migrations
+alembic upgrade head
+{% endif %}
+# 6. Run the server (dev mode, hot-reload)
+fastapi dev main.py
+```
+
+Interactive API docs: **http://localhost:8000/docs**
+
+### One-liner with Make
+
+If you have `make` installed:
+
+```bash
+make install    # create .venv + install deps
+make db         # start the database{% if db_type == "sqlite" %} (no-op for SQLite){% endif %}
+make migrate    # apply migrations
+make dev        # run with hot-reload
+```
+
+## Detailed Setup
+
+### 1. Environment Variables
+
+Copy the example file and adjust values (especially `DATABASE_URL` and `JWT_SECRET_KEY`):
+
+```bash
+cp .env.example .env
+```
+{% if db_type == "sqlite" %}
+The default `DATABASE_URL` uses a local SQLite file (`app.db`) — the app runs with **no external database** out of the box.
+{% endif %}
+### 2. Install Dependencies
+
+```bash
+python -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
+pip install -r requirements.txt  # or: pip install -e .
+```
+
+### 3. Database
+{% if db_type == "sqlite" %}
+SQLite is file-based — nothing to start.
+{% else %}
+Start the database with Docker (recommended, no local install needed):
+
+```bash
+docker compose up -d db
+```
+
+Or point `DATABASE_URL` in `.env` at your own {{ db_type }} instance.
+{% endif %}
+### 4. Migrations
+
+{% if db_type == "mongodb" %}
+Not applicable for MongoDB (schemaless).
+{% else %}
+```bash
+alembic revision --autogenerate -m "initial schema"   # create a migration
+alembic upgrade head                                   # apply migrations
+```
+{% endif %}
+### 5. Run the Server
+
+```bash
+fastapi dev main.py    # development (hot-reload)
+fastapi run main.py    # production
+```
+
+## Running Tests
+
+```bash
+pytest
+```

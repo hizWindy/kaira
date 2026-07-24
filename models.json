@@ -1,0 +1,120 @@
+[
+  {
+    "name": "User",
+    "fields": {
+      "full_name": "str",
+      "email": "str",
+      "password": "str",
+      "role": "str"
+    },
+    "relations": [
+      {
+        "type": "one-to-many",
+        "target": "AuditLog"
+      }
+    ]
+  },
+  {
+    "name": "Cooperative",
+    "fields": {
+      "registration_number": "str",
+      "cooperative_name": "str",
+      "chairperson": "Optional[str]",
+      "type": "Optional[str]",
+      "municipality": "str",
+      "province": "str",
+      "date_issued": "Optional[datetime]",
+      "registration_status": "str",
+      "renewal_date": "Optional[datetime]"
+    },
+    "relations": [
+      {
+        "type": "one-to-many",
+        "target": "Participant"
+      },
+      {
+        "type": "one-to-many",
+        "target": "Training"
+      },
+      {
+        "type": "one-to-many",
+        "target": "Machinery"
+      },
+      {
+        "type": "one-to-many",
+        "target": "FinancialAssistance"
+      }
+    ]
+  },
+  {
+    "name": "Participant",
+    "fields": {
+      "participants_name": "str",
+      "participants_address": "Optional[str]",
+      "participants_age": "Optional[int]"
+    },
+    "relations": [
+      {
+        "type": "many-to-one",
+        "target": "Cooperative"
+      }
+    ]
+  },
+  {
+    "name": "Training",
+    "fields": {
+      "training_title": "str",
+      "date": "Optional[datetime]",
+      "facilitator": "Optional[str]",
+      "remarks": "Optional[str]"
+    },
+    "relations": [
+      {
+        "type": "many-to-one",
+        "target": "Cooperative"
+      }
+    ]
+  },
+  {
+    "name": "Machinery",
+    "fields": {
+      "machine_type": "str",
+      "quantity": "int",
+      "date_released": "Optional[datetime]"
+    },
+    "relations": [
+      {
+        "type": "many-to-one",
+        "target": "Cooperative"
+      }
+    ]
+  },
+  {
+    "name": "FinancialAssistance",
+    "fields": {
+      "amount": "float",
+      "program": "Optional[str]",
+      "date_released": "Optional[datetime]"
+    },
+    "relations": [
+      {
+        "type": "many-to-one",
+        "target": "Cooperative"
+      }
+    ]
+  },
+  {
+    "name": "AuditLog",
+    "fields": {
+      "action": "str",
+      "log_date": "datetime",
+      "log_time": "str"
+    },
+    "relations": [
+      {
+        "type": "many-to-one",
+        "target": "User"
+      }
+    ]
+  }
+]

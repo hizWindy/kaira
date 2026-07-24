@@ -1,2 +1,0 @@
-[console_scripts]
-devflow = devflow.main:app

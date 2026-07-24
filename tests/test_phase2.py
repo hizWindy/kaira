@@ -4,22 +4,24 @@ from __future__ import annotations
 
 from pathlib import Path
 import pytest
-from typer.testing import CliRunner
+from click.testing import CliRunner
+from typer.main import get_command
 
 from devflow.main import app
 
-runner = CliRunner(mix_stderr=False)
+runner = CliRunner()
+cli = get_command(app)
 
 def run(*args):
-    """Invoke the devflow CLI with the given arguments."""
-    return runner.invoke(app, list(args))
+    """Invoke the kaira CLI with the given arguments."""
+    return runner.invoke(cli, list(args))
 
 class TestPhase2Commands:
     def test_health_command(self, tmp_path):
         with runner.isolated_filesystem(temp_dir=tmp_path):
             result = run("health")
             assert result.exit_code == 0
-            assert "DevFlow Health Check" in result.output
+            assert "Kaira Health Check" in result.output
             assert "Security Score" in result.output
 
     def test_auth_generate_jwt(self, tmp_path):

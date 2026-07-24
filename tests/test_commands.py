@@ -7,11 +7,13 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-from typer.testing import CliRunner
+from click.testing import CliRunner
+from typer.main import get_command
 
 from devflow.main import app
 
-runner = CliRunner(mix_stderr=False)
+runner = CliRunner()
+cli = get_command(app)
 
 
 # ---------------------------------------------------------------------------
@@ -19,8 +21,8 @@ runner = CliRunner(mix_stderr=False)
 # ---------------------------------------------------------------------------
 
 def run(*args):
-    """Invoke the devflow CLI with the given arguments."""
-    return runner.invoke(app, list(args))
+    """Invoke the kaira CLI with the given arguments."""
+    return runner.invoke(cli, list(args))
 
 
 # ---------------------------------------------------------------------------
@@ -36,7 +38,7 @@ class TestVersionAndHelp:
     def test_version_command(self):
         result = run("version")
         assert result.exit_code == 0
-        assert "DevFlow" in result.output
+        assert "Kaira" in result.output
 
     def test_help(self):
         result = run("--help")
@@ -52,7 +54,7 @@ class TestVersionAndHelp:
 
 
 # ---------------------------------------------------------------------------
-# devflow generate model
+# kaira generate model
 # ---------------------------------------------------------------------------
 
 class TestGenerateModel:
@@ -110,7 +112,7 @@ class TestGenerateModel:
 
 
 # ---------------------------------------------------------------------------
-# devflow generate (single layer)
+# kaira generate (single layer)
 # ---------------------------------------------------------------------------
 
 class TestGenerateSingleLayer:
@@ -136,7 +138,7 @@ class TestGenerateSingleLayer:
 
 
 # ---------------------------------------------------------------------------
-# devflow generate bulk
+# kaira generate bulk
 # ---------------------------------------------------------------------------
 
 class TestGenerateBulk:
@@ -169,7 +171,7 @@ class TestGenerateBulk:
 
 
 # ---------------------------------------------------------------------------
-# devflow config
+# kaira config
 # ---------------------------------------------------------------------------
 
 class TestConfigCommands:
@@ -194,7 +196,7 @@ class TestConfigCommands:
 
 
 # ---------------------------------------------------------------------------
-# devflow info
+# kaira info
 # ---------------------------------------------------------------------------
 
 class TestInfoCommand:
@@ -212,7 +214,7 @@ class TestInfoCommand:
 
 
 # ---------------------------------------------------------------------------
-# devflow check
+# kaira check
 # ---------------------------------------------------------------------------
 
 class TestCheckCommand:
@@ -230,7 +232,7 @@ class TestCheckCommand:
 
 
 # ---------------------------------------------------------------------------
-# devflow list
+# kaira list
 # ---------------------------------------------------------------------------
 
 class TestListCommands:
@@ -254,7 +256,7 @@ class TestListCommands:
 
 
 # ---------------------------------------------------------------------------
-# devflow diff
+# kaira diff
 # ---------------------------------------------------------------------------
 
 class TestDiffCommand:
