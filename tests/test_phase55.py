@@ -256,6 +256,62 @@ class TestSyncModel:
         assert "+ age" in result.output
         assert "age" in (project / "schemas" / "user_schema.py").read_text()
 
+    def test_hand_edited_model_with_enums_and_union_types_detected(self, project):
+        """Sync must detect hand-edited fields even if Enum classes precede User class or str | None union syntax is used."""
+        self._generate_user(project, fields="user_name:str, password:str")
+        model_path = project / "models" / "user.py"
+
+        # Prepend an Enum class and add str | None and int fields to User model
+        edited_model = (
+            "from enum import Enum\n\n"
+            "class UserRole(str, Enum):\n"
+            "    ADMIN = 'admin'\n"
+            "    USER = 'user'\n\n"
+            + model_path.read_text().replace(
+                "    uuid: Mapped[str]",
+                "    phone: Mapped[str | None] = mapped_column(String(255), nullable=True)\n"
+                "    age: Mapped[int] = mapped_column(Integer, nullable=False)\n"
+                "    uuid: Mapped[str]",
+                1,
+            )
+        )
+        model_path.write_text(edited_model)
+
+        result = runner.invoke(app, ["sync", "model", "User"])
+        assert result.exit_code == 0
+
+        schema_code = (project / "schemas" / "user_schema.py").read_text()
+        assert "user_name" in schema_code
+        assert "password" in schema_code
+        assert "phone: Optional[str]" in schema_code
+        assert "age: int" in schema_code
+
+    def test_sync_detects_legacy_column_syntax_and_qualified_types(self, project):
+        """Sync must detect fields defined via legacy Column(...) syntax or qualified typing.Optional annotations."""
+        self._generate_user(project, fields="user_name:str")
+        model_path = project / "models" / "user.py"
+
+        legacy_code = (
+            "import typing\n"
+            "from sqlalchemy import Column, String, Integer\n"
+            "from core.database import Base\n\n"
+            "class User(Base):\n"
+            "    user_name = Column(String(255), nullable=False)\n"
+            "    phone = Column(String(20), nullable=True)\n"
+            "    age = Column(Integer)\n"
+            "    notes: typing.Optional[str] = None\n"
+        )
+        model_path.write_text(legacy_code)
+
+        result = runner.invoke(app, ["sync", "model", "User"])
+        assert result.exit_code == 0
+
+        schema_code = (project / "schemas" / "user_schema.py").read_text()
+        assert "user_name: str" in schema_code or "user_name:" in schema_code
+        assert "phone: Optional[str]" in schema_code
+        assert "age: int" in schema_code
+        assert "notes: Optional[str]" in schema_code
+
     def test_unknown_model_errors(self, project):
         _write_config(project)
         result = runner.invoke(app, ["sync", "model", "Ghost"])
@@ -270,3 +326,173 @@ class TestSyncModel:
         assert result.exit_code == 0
         assert "User" in result.output
         assert "Post" in result.output
+
+    def test_sync_without_force_applies_cascade(self, project):
+        """Task 1: sync without --force must update cascade layers on disk."""
+        self._generate_user(project, fields="name:str")
+        result = runner.invoke(
+            app, ["sync", "model", "User", "--fields", "phone:str"]
+        )
+        assert result.exit_code == 0
+
+        model_code = (project / "models" / "user.py").read_text()
+        schema_code = (project / "schemas" / "user_schema.py").read_text()
+        router_code = (project / "routers" / "user_router.py").read_text()
+
+        assert "phone" in model_code
+        assert "phone: str" in schema_code or "phone: str = Field" in schema_code
+        assert "phone: Optional[str]" in schema_code
+        assert "UserResponse" in router_code
+
+    def test_sync_cascades_existing_seed(self, project):
+        """Task 2: sync updates an existing seed script to include added fields."""
+        self._generate_user(project, fields="name:str")
+        # Generate seed script first
+        gen_seed_res = runner.invoke(app, ["seed", "generate", "User"])
+        assert gen_seed_res.exit_code == 0
+        seed_path = project / "seeds" / "seed_user.py"
+        assert seed_path.exists()
+        assert "phone" not in seed_path.read_text()
+
+        # Sync model with new field
+        sync_res = runner.invoke(app, ["sync", "model", "User", "--fields", "phone:str"])
+        assert sync_res.exit_code == 0
+        assert "phone" in seed_path.read_text()
+
+    def test_sync_does_not_create_missing_seed(self, project):
+        """Task 2: sync does NOT create a seed script if none existed before."""
+        self._generate_user(project, fields="name:str")
+        seed_path = project / "seeds" / "seed_user.py"
+        assert not seed_path.exists()
+
+        sync_res = runner.invoke(app, ["sync", "model", "User", "--fields", "phone:str"])
+        assert sync_res.exit_code == 0
+        assert not seed_path.exists()
+
+
+def test_sql_seed_base_time_timezone_alignment():
+    """Task 3: verify SQL seed template and ORM model template timestamp timezone alignment."""
+    from kaira.core.generator import TEMPLATES_DIR
+
+    model_tmpl = (TEMPLATES_DIR / "model.py.j2").read_text(encoding="utf-8")
+    seed_tmpl = (TEMPLATES_DIR / "seed_model_sql.py.j2").read_text(encoding="utf-8")
+
+    # ORM model emits DateTime(timezone=True)
+    assert "DateTime(timezone=True)" in model_tmpl
+    # Seed template uses timezone-aware BASE_TIME (timezone.utc)
+    assert "BASE_TIME = datetime(2026, 1, 1, tzinfo=timezone.utc)" in seed_tmpl
+
+
+def test_delete_endpoint_response_schema(tmp_path, monkeypatch):
+    """Task 4: delete endpoint has response_model=MessageResponse and message_schema.py is created."""
+    monkeypatch.chdir(tmp_path)
+    _write_config(tmp_path)
+
+    result = runner.invoke(app, ["generate", "model", "User", "--fields", "name:str", "--force"])
+    assert result.exit_code == 0
+
+    message_schema_path = tmp_path / "schemas" / "message_schema.py"
+    assert message_schema_path.exists()
+    assert "class MessageResponse(BaseModel):" in message_schema_path.read_text()
+
+    router_path = tmp_path / "routers" / "user_router.py"
+    router_code = router_path.read_text()
+    assert "from schemas.message_schema import MessageResponse" in router_code
+    assert "response_model=MessageResponse" in router_code
+    assert "-> MessageResponse:" in router_code
+
+
+def test_create_schema_excludes_server_managed_fields(tmp_path, monkeypatch):
+    """Task 5: Create and Base schemas exclude server-managed fields like uuid, created_at, updated_at."""
+    monkeypatch.chdir(tmp_path)
+    _write_config(tmp_path)
+
+    result = runner.invoke(
+        app,
+        [
+            "generate",
+            "model",
+            "Item",
+            "--fields",
+            "title:str, uuid:str, created_at:datetime",
+            "--force",
+        ],
+    )
+    assert result.exit_code == 0
+
+    schema_code = (tmp_path / "schemas" / "item_schema.py").read_text()
+
+    # Extract class definitions
+    base_idx = schema_code.find("class ItemBase")
+    create_idx = schema_code.find("class ItemCreate")
+    update_idx = schema_code.find("class ItemUpdate")
+    response_idx = schema_code.find("class ItemResponse")
+
+    base_code = schema_code[base_idx:create_idx]
+    create_code = schema_code[create_idx:update_idx]
+    response_code = schema_code[response_idx:]
+
+    # ItemBase / ItemCreate must only contain title, NOT uuid or created_at
+    assert "title: str" in base_code or "title:" in base_code
+    assert "uuid:" not in base_code
+    assert "created_at:" not in base_code
+
+    assert "title: str" in create_code or "title:" in create_code
+    assert "uuid:" not in create_code
+
+    # ItemResponse must contain uuid, created_at, updated_at explicitly once
+    assert "uuid: str" in response_code
+    assert "created_at: datetime" in response_code
+    assert "updated_at: datetime" in response_code
+
+
+def test_openapi_generation_succeeds_without_pydantic_user_error(tmp_path, monkeypatch):
+    """Verify FastAPI can build openapi.json without PydanticUserError on UserUpdate / schemas."""
+    monkeypatch.chdir(tmp_path)
+    _write_config(tmp_path)
+
+    result = runner.invoke(
+        app,
+        ["generate", "model", "User", "--fields", "username:str, email:str, phone:Optional[str]", "--force"],
+    )
+    assert result.exit_code == 0
+
+    import importlib
+    import sys
+
+    sys.path.insert(0, str(tmp_path))
+    try:
+        schema_mod = importlib.import_module("schemas.user_schema")
+        # This module uses `from __future__ import annotations`, so the endpoint
+        # annotation below is a *string* that FastAPI resolves against this
+        # module's globals. A dotted `schema_mod.UserUpdate` would resolve
+        # against a function local and always fail as an unresolvable
+        # ForwardRef — masking whether the generated schema is actually valid.
+        # Publishing the bare name here is what makes the annotation resolvable.
+        globals()["UserUpdate"] = schema_mod.UserUpdate
+
+        from fastapi import FastAPI
+
+        fastapi_app = FastAPI()
+
+        @fastapi_app.put("/users/{uuid}")
+        def update_user(data: UserUpdate):
+            return data
+
+        openapi_schema = fastapi_app.openapi()
+        assert "paths" in openapi_schema
+        assert "/users/{uuid}" in openapi_schema["paths"]
+
+        # The model must be fully defined, not a pydantic mock. A schema whose
+        # `Optional` never resolved still yields a path entry but no usable
+        # body definition — that is the shape of the /docs failure.
+        assert "UserUpdate" in openapi_schema["components"]["schemas"]
+        body_props = openapi_schema["components"]["schemas"]["UserUpdate"]["properties"]
+        assert {"username", "email", "phone"} <= set(body_props)
+    finally:
+        if str(tmp_path) in sys.path:
+            sys.path.remove(str(tmp_path))
+        globals().pop("UserUpdate", None)
+        sys.modules.pop("schemas.user_schema", None)
+
+

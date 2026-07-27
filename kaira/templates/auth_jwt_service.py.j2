@@ -1,3 +1,108 @@
+{% if db_type == "mongodb" %}
+"""JWT Authentication Service (MongoDB)."""
+
+from datetime import datetime, timedelta, timezone
+import secrets
+from typing import Optional
+from jose import jwt, JWTError
+
+from config.settings import settings
+from auth.utils import verify_password
+
+try:
+    from models.blacklisted_token import BlacklistedToken
+except ImportError:
+    BlacklistedToken = None
+
+
+class AuthService:
+    @staticmethod
+    def create_access_token(user_id: str, role: str = "user") -> str:
+        expire = datetime.now(timezone.utc) + timedelta(minutes=settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES)
+        to_encode = {
+            "sub": str(user_id),
+            "role": role,
+            "exp": expire,
+            "iat": datetime.now(timezone.utc),
+            "nbf": datetime.now(timezone.utc),
+        }
+        return jwt.encode(to_encode, settings.JWT_SECRET_KEY, algorithm="HS256")
+
+    @staticmethod
+    def create_refresh_token(user_id: str) -> str:
+        expire = datetime.now(timezone.utc) + timedelta(days=settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS)
+        to_encode = {
+            "sub": str(user_id),
+            "exp": expire,
+            "iat": datetime.now(timezone.utc),
+            "jti": secrets.token_urlsafe(16)
+        }
+        return jwt.encode(to_encode, settings.JWT_SECRET_KEY, algorithm="HS256")
+
+    @staticmethod
+    def validate_access_token(token: str, db: Optional[object] = None) -> Optional[dict]:
+        try:
+            payload = jwt.decode(
+                token, 
+                settings.JWT_SECRET_KEY, 
+                algorithms=["HS256"],
+                options={"require_exp": True, "require_iat": True, "require_nbf": True}
+            )
+            return payload
+        except JWTError:
+            return None
+
+    @staticmethod
+    async def authenticate_user(username: str, password_raw: str, db: Optional[object] = None) -> Optional[dict]:
+        try:
+            from models.user import User
+            user = await User.find_one(User.username == username)
+            if user and verify_password(password_raw, user.password):
+                user_id = getattr(user, "uuid", str(user.id))
+                access = AuthService.create_access_token(user_id)
+                refresh = AuthService.create_refresh_token(user_id)
+                return {"access_token": access, "refresh_token": refresh, "token_type": "bearer"}
+        except Exception:
+            pass
+        return None
+
+    @staticmethod
+    async def refresh_access_token(refresh_token: str, db: Optional[object] = None) -> Optional[dict]:
+        try:
+            payload = jwt.decode(refresh_token, settings.JWT_SECRET_KEY, algorithms=["HS256"])
+            jti = payload.get("jti")
+            user_id = payload.get("sub")
+            if not jti or not user_id:
+                return None
+            
+            if BlacklistedToken is not None:
+                exists = await BlacklistedToken.find_one(BlacklistedToken.token == refresh_token)
+                if exists:
+                    return None
+            
+            await AuthService.blacklist_token(refresh_token)
+            
+            new_access = AuthService.create_access_token(user_id)
+            new_refresh = AuthService.create_refresh_token(user_id)
+            return {"access_token": new_access, "refresh_token": new_refresh, "token_type": "bearer"}
+        except JWTError:
+            return None
+
+    @staticmethod
+    async def blacklist_token(token: str, db: Optional[object] = None) -> bool:
+        if BlacklistedToken is None:
+            return False
+        try:
+            exists = await BlacklistedToken.find_one(BlacklistedToken.token == token)
+            if exists:
+                return False
+            
+            blacklisted = BlacklistedToken(token=token)
+            await blacklisted.insert()
+            return True
+        except Exception:
+            return False
+{% else %}
 """JWT Authentication Service."""
 
 from datetime import datetime, timedelta, timezone
@@ -10,10 +115,6 @@ from sqlalchemy.orm import Session
 from config.settings import settings
 from auth.utils import verify_password
 
-# Import a hypothetical User model or mock check. In scaffolded projects, we check database tables.
-# For JWT Token Blacklist:
-# We require a BlacklistedToken table. The CLI migration generates this table.
-# Let's import it safely.
 try:
     from models.blacklisted_token import BlacklistedToken
 except ImportError:
@@ -59,14 +160,10 @@ class AuthService:
 
     @staticmethod
     def authenticate_user(username: str, password_raw: str, db: Session) -> Optional[dict]:
-        # To avoid timing attacks, we run a query and check passwords using secrets.compare_digest
-        # In a real app, query User table. Here is a secure check logic:
-        # Since User might not be generated yet, we use a dynamic lookup or mock.
         try:
             from models.user import User
             user = db.execute(select(User).where(User.username == username)).scalar_one_or_none()
             if user and verify_password(password_raw, user.password):
-                # Double safety digest comparison (if comparing token strings directly)
                 access = AuthService.create_access_token(user.uuid)
                 refresh = AuthService.create_refresh_token(user.uuid)
                 return {"access_token": access, "refresh_token": refresh, "token_type": "bearer"}
@@ -116,3 +213,4 @@ class AuthService:
             return True
         except Exception:
             return False
+{% endif %}

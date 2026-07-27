@@ -1,0 +1,9 @@
+"""Shared lightweight response schemas used across all generated routers."""
+
+from pydantic import BaseModel
+
+
+class MessageResponse(BaseModel):
+    """Generic message-only response (e.g. delete confirmations)."""
+
+    detail: str

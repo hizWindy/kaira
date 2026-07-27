@@ -16,6 +16,8 @@ from rich.table import Table
 
 from kaira.console import console
 from kaira.commands.ux_helpers import mask_credentials, typed_confirmation
+from kaira.core.drivers import get_engine_driver
+from kaira.core.stats import build_stats_table, collect_db_stats
 
 app = typer.Typer(help="Database connection, status, and management commands.")
 
@@ -40,21 +42,46 @@ _DB_DRIVERS: dict[str, list[str]] = {
 _RELATIONAL = {"postgresql", "mysql", "sqlite"}
 
 
-def _get_database_url() -> str:
-    """Read DATABASE_URL from environment, active .env, or fallback to config/settings.py.
+def _read_env_file_value(env_file: Path, key: str) -> str:
+    """Read an uncommented ``KEY=value`` assignment from a dotenv file.
+
+    Args:
+        env_file: Path to the dotenv file.
+        key: Variable name to look up.
 
     Returns:
-        Connection URL string.
+        The value, or an empty string when absent or commented out.
+    """
+    if not env_file.exists():
+        return ""
+    for line in env_file.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if stripped.startswith("#") or not stripped.startswith(f"{key}="):
+            continue
+        return stripped.split("=", 1)[1].strip().strip('"').strip("'")
+    return ""
+
+
+def _get_database_url() -> str:
+    """Resolve DATABASE_URL the same way the generated project's Settings does.
+
+    Precedence mirrors ``config/settings.py``'s ``model_config`` — process
+    environment, then ``.env``, then the ``.env.<APP_ENV>`` profile file, then
+    the literal default in ``config/settings.py``. Reading only ``.env`` misses
+    projects whose URL lives in the profile file, which is where ``kaira init``
+    writes it.
+
+    Returns:
+        Connection URL string, or an empty string when nothing is configured.
     """
     raw = os.environ.get("DATABASE_URL", "")
+
     if not raw:
-        # Try reading from .env
-        env_file = Path.cwd() / ".env"
-        if env_file.exists():
-            for line in env_file.read_text(encoding="utf-8").splitlines():
-                if line.startswith("DATABASE_URL="):
-                    raw = line.split("=", 1)[1].strip().strip('"').strip("'")
-                    break
+        app_env = os.getenv("APP_ENV", "development")
+        for candidate in (Path.cwd() / ".env", Path.cwd() / f".env.{app_env}"):
+            raw = _read_env_file_value(candidate, "DATABASE_URL")
+            if raw:
+                break
 
     if not raw:
         # Try reading from config/settings.py default fallback
@@ -151,6 +178,26 @@ def _update_env_files(key: str, value: str) -> None:
             pass
 
 
+def _ensure_driver_installed(package_name: str) -> bool:
+    """Auto-install missing database driver package into active Python environment."""
+    import sys
+    import subprocess
+    try:
+        console.print(f"[cyan]📦 Auto-installing missing database driver '[bold]{package_name}[/bold]'...[/cyan]")
+        res = subprocess.run(
+            [sys.executable, "-m", "pip", "install", package_name],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        if res.returncode == 0:
+            console.print(f"[green]✓ Successfully installed [bold]{package_name}[/bold]![/green]")
+            return True
+        return False
+    except Exception:
+        return False
+
+
 def _test_connection_real(db_type: str, raw_url: str) -> tuple[bool, str]:
     """Perform a real login and query connection check, returning (success, error_msg)."""
     if db_type == "sqlite":
@@ -161,19 +208,45 @@ def _test_connection_real(db_type: str, raw_url: str) -> tuple[bool, str]:
 
     async def check_conn():
         if db_type == "mongodb":
-            from motor.motor_asyncio import AsyncIOMotorClient
+            try:
+                from motor.motor_asyncio import AsyncIOMotorClient
+            except (ImportError, ModuleNotFoundError):
+                if _ensure_driver_installed("motor"):
+                    from motor.motor_asyncio import AsyncIOMotorClient
+                else:
+                    return False, (
+                        "Driver 'motor' is missing and auto-install failed.\n"
+                        "👉 Run 'pip install motor' or activate your project's virtual environment (.venv)."
+                    )
 
             client = AsyncIOMotorClient(raw_url, serverSelectionTimeoutMS=2000)
             await client.admin.command("ping")
             return True, ""
         else:
-            from sqlalchemy.ext.asyncio import create_async_engine
-            from sqlalchemy import text
+            req_pkg = "asyncpg" if db_type == "postgresql" else ("aiomysql" if db_type == "mysql" else "aiosqlite")
+            try:
+                from sqlalchemy.ext.asyncio import create_async_engine
+                from sqlalchemy import text
+            except (ImportError, ModuleNotFoundError):
+                _ensure_driver_installed("sqlalchemy")
+                from sqlalchemy.ext.asyncio import create_async_engine
+                from sqlalchemy import text
 
-            # Parse engine and test a simple query
-            engine = create_async_engine(
-                raw_url, connect_args={"timeout": 3} if db_type == "postgresql" else {}
-            )
+            try:
+                engine = create_async_engine(
+                    raw_url, connect_args={"timeout": 3} if db_type == "postgresql" else {}
+                )
+            except Exception as exc:
+                if any(pkg in str(exc) for pkg in ["asyncpg", "aiomysql", "aiosqlite", "No module named"]):
+                    if _ensure_driver_installed(req_pkg):
+                        engine = create_async_engine(
+                            raw_url, connect_args={"timeout": 3} if db_type == "postgresql" else {}
+                        )
+                    else:
+                        raise exc
+                else:
+                    raise exc
+
             async with engine.connect() as conn:
                 await conn.execute(text("SELECT 1"))
             await engine.dispose()
@@ -559,6 +632,176 @@ def db_status() -> None:
     console.print(table)
 
 
+_PROVISION_DOC_SCRIPT = """
+import asyncio
+
+from core.database import (
+    BINDING,
+    close_db,
+    discover_document_models,
+    init_db,
+    resolve_db_name,
+)
+from motor.motor_asyncio import AsyncIOMotorClient
+
+
+def collection_name(model):
+    settings = getattr(model, "Settings", None)
+    return getattr(settings, "name", None) or model.__name__.lower()
+
+
+async def main():
+    models = discover_document_models()
+    if not models:
+        print("NO_MODELS")
+        return
+
+    # Registering with Beanie builds each document's declared indexes.
+    await init_db(models)
+
+    client = AsyncIOMotorClient(BINDING.url)
+    try:
+        db = client[resolve_db_name()]
+        existing = set(await db.list_collection_names())
+        for model in models:
+            name = collection_name(model)
+            if name in existing:
+                print(f"EXISTS {name}")
+                continue
+            # MongoDB is lazy: an unpopulated collection does not exist until it
+            # is created explicitly, so it would never appear in Compass.
+            await db.create_collection(name)
+            print(f"CREATED {name}")
+        print(f"DB {resolve_db_name()}")
+    finally:
+        client.close()
+        await close_db()
+
+
+asyncio.run(main())
+"""
+
+_PROVISION_SQL_SCRIPT = """
+import asyncio
+import importlib
+import pathlib
+import pkgutil
+
+from sqlalchemy import inspect
+
+from core.database import Base, engine
+
+# Importing every model module populates Base.metadata before create_all.
+models_dir = pathlib.Path("models")
+if models_dir.is_dir():
+    for mod in pkgutil.iter_modules([str(models_dir)]):
+        if not mod.name.startswith("_"):
+            importlib.import_module(f"models.{mod.name}")
+
+
+def existing_tables(sync_conn):
+    return set(inspect(sync_conn).get_table_names())
+
+
+async def main():
+    declared = set(Base.metadata.tables)
+    if not declared:
+        print("NO_MODELS")
+        return
+
+    async with engine.begin() as conn:
+        before = await conn.run_sync(existing_tables)
+        await conn.run_sync(Base.metadata.create_all)
+    await engine.dispose()
+
+    for name in sorted(declared):
+        print(f"EXISTS {name}" if name in before else f"CREATED {name}")
+
+
+asyncio.run(main())
+"""
+
+
+@app.command("init")
+def db_init() -> None:
+    """Provision tables/collections from your models without inserting data.
+
+    For MongoDB this is the counterpart to `kaira migrate run`: collections are
+    created explicitly and indexes are built, so the database becomes visible in
+    clients such as MongoDB Compass while still empty.
+    """
+    from kaira.config import get_config, save_config
+    from kaira.core.project_runner import run_project_script
+
+    config = get_config()
+    db_type = _get_db_type_from_config()
+    driver = get_engine_driver(db_type)
+    output_root = Path.cwd() / config.output_dir
+
+    if not (output_root / "core" / "database.py").exists():
+        console.print(
+            Panel(
+                "[red]No generated project found (core/database.py is missing).\n"
+                "Run [bold]kaira init[/bold] first.[/red]",
+                border_style="red",
+            )
+        )
+        raise typer.Exit(1)
+
+    label = "collections" if driver.is_document_db else "tables"
+    console.print(f"[cyan]⚡ Provisioning {label} for [bold]{db_type}[/bold]...[/cyan]")
+
+    script = _PROVISION_DOC_SCRIPT if driver.is_document_db else _PROVISION_SQL_SCRIPT
+    result = run_project_script(script, output_root)
+
+    if result.returncode != 0:
+        console.print(
+            Panel(
+                f"[red]❌ Provisioning failed:[/red]\n{mask_credentials(result.stderr.strip())}",
+                border_style="red",
+            )
+        )
+        raise typer.Exit(1)
+
+    created: list[str] = []
+    existing: list[str] = []
+    db_name = ""
+    for line in result.stdout.splitlines():
+        if line.startswith("CREATED "):
+            created.append(line.removeprefix("CREATED "))
+        elif line.startswith("EXISTS "):
+            existing.append(line.removeprefix("EXISTS "))
+        elif line.startswith("DB "):
+            db_name = line.removeprefix("DB ")
+        elif line.strip() == "NO_MODELS":
+            console.print(
+                "[yellow]No models found. Run [bold]kaira generate model <Name> "
+                "--fields \"...\"[/bold] first.[/yellow]"
+            )
+            raise typer.Exit(1)
+
+    for name in created:
+        console.print(f"  [green bold]✓[/green bold]  Created: [cyan]{name}[/cyan]")
+    for name in existing:
+        console.print(f"  [dim]•  Already present: {name}[/dim]")
+
+    summary = f"{len(created)} created, {len(existing)} already present"
+    target = f" in [cyan]{db_name}[/cyan]" if db_name else ""
+    console.print(
+        Panel(
+            f"[green]✅ {label.capitalize()} provisioned{target} — {summary}.[/green]\n"
+            "[dim]Refresh MongoDB Compass to see them.[/dim]"
+            if driver.is_document_db
+            else f"[green]✅ {label.capitalize()} provisioned — {summary}.[/green]",
+            border_style="green",
+        )
+    )
+
+    if created and not config.db_provisioned:
+        config.db_provisioned = True
+        save_config(config)
+
+
 @app.command("info")
 def db_info() -> None:
     """Display information about tables/collections in the database."""
@@ -577,63 +820,8 @@ def db_info() -> None:
     masked = mask_credentials(raw_url)
     console.print(f"[cyan]Retrieving database information from:[/cyan] {masked}\n")
 
-    import asyncio
-
-    async def fetch_info():
-        if db_type == "mongodb":
-            from motor.motor_asyncio import AsyncIOMotorClient
-
-            client = AsyncIOMotorClient(raw_url, serverSelectionTimeoutMS=3000)
-            db_name = raw_url.split("/")[-1]
-            if "?" in db_name:
-                db_name = db_name.split("?")[0]
-            if not db_name:
-                db_name = "admin"
-            db = client[db_name]
-            collections = await db.list_collection_names()
-            data = []
-            for coll_name in collections:
-                count = await db[coll_name].count_documents({})
-                data.append({"name": coll_name, "count": count})
-            return db_name, data
-        else:
-            from sqlalchemy.ext.asyncio import create_async_engine
-
-            engine = create_async_engine(raw_url)
-
-            def get_inspector_info(sync_conn):
-                from sqlalchemy import inspect, text
-
-                inspector = inspect(sync_conn)
-                table_names = inspector.get_table_names()
-                tables_data = []
-                for t_name in table_names:
-                    columns = inspector.get_columns(t_name)
-                    try:
-                        row_count = sync_conn.execute(text(f"SELECT COUNT(*) FROM {t_name}")).scalar()
-                    except Exception:
-                        row_count = 0
-                    tables_data.append({"name": t_name, "columns": len(columns), "rows": row_count})
-                return tables_data
-
-            async with engine.connect() as conn:
-                tables = await conn.run_sync(get_inspector_info)
-            await engine.dispose()
-
-            db_name = raw_url.split("/")[-1]
-            if "?" in db_name:
-                db_name = db_name.split("?")[0]
-            if not db_name:
-                db_name = "local"
-            return db_name, tables
-
     try:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            db_name, items = loop.run_until_complete(fetch_info())
-        finally:
-            loop.close()
+        db_name, items = collect_db_stats(db_type, raw_url)
     except Exception as exc:
         console.print(
             Panel(
@@ -643,27 +831,15 @@ def db_info() -> None:
         )
         raise typer.Exit(1)
 
-    table = Table(
-        title=f"⚡ Kaira — Database Info ({db_type.upper()}: [cyan]{db_name}[/cyan])",
-        border_style="cyan",
-    )
+    console.print(build_stats_table(db_type, db_name, items))
 
-    if db_type == "mongodb":
-        table.add_column("Collection", style="bold cyan")
-        table.add_column("Documents", justify="right", style="green")
-        for item in items:
-            table.add_row(item["name"], str(item["count"]))
-        item_label = "collection"
-    else:
-        table.add_column("Table", style="bold cyan")
-        table.add_column("Columns", justify="right", style="yellow")
-        table.add_column("Rows", justify="right", style="green")
-        for item in items:
-            table.add_row(item["name"], str(item["columns"]), str(item["rows"]))
-        item_label = "table"
-
-    console.print(table)
+    item_label = "collection" if db_type == "mongodb" else "table"
     console.print(f"\n[dim]Total: {len(items)} {item_label}(s) found.[/dim]")
+    if not items:
+        console.print(
+            "[dim]Nothing provisioned yet — run [bold]kaira db init[/bold] to create "
+            f"{item_label}s from your models.[/dim]"
+        )
 
 
 @app.command("reset")

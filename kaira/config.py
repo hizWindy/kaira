@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Any, Optional
@@ -22,6 +21,10 @@ SUPPORTED_FIELD_TYPES = {
     "Optional[bool]",
     "Optional[datetime]",
 }
+
+# Fields auto-managed by the database / ORM — never exposed in Create schemas
+# and excluded from user-field introspection in sync / seed.
+SERVER_MANAGED_FIELDS = {"id", "uuid", "created_at", "updated_at"}
 
 SQLALCHEMY_TYPE_MAP = {
     "str": "String",

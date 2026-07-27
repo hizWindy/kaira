@@ -13,7 +13,7 @@ from typing import Optional
 {% endif %}
 
 from beanie import Document
-from pydantic import Field
+from pydantic import ConfigDict, Field
 
 
 class {{ model_name }}(Document):
@@ -53,7 +53,13 @@ class {{ model_name }}(Document):
         name = "{{ table_name }}"   # MongoDB collection name
         use_revision = False
 
-    class Config:
-        """Pydantic config."""
-
-        populate_by_name = True
+    # extra="allow" keeps keys that exist in the stored document but are not
+    # declared above. Without it pydantic drops them on load, and the next
+    # save writes the document back *without* them — silent data loss whenever
+    # anything else writes to this collection (an older release, a migration,
+    # a field removed from models.json). A document store is expected to hold
+    # heterogeneous documents, so preserving unknown keys is the safe default.
+    #
+    # This affects the stored document only. The Create/Update request schemas
+    # stay strict, so clients still cannot inject arbitrary fields.
+    model_config = ConfigDict(populate_by_name=True, extra="allow")

@@ -63,7 +63,7 @@ class {{ model_name }}Service:
             {% set log_val = "data." + field.name %}
           {% endif %}
         {% endfor %}
-        logger.info(f"POST /{{ snake_name }}s → creating {{ snake_name }}: { {{"{}"}} }".format({{ log_val }}))
+        logger.debug(f"POST /{{ snake_name }}s → creating {{ snake_name }}: { {{"{}"}} }".format({{ log_val }}))
         
         try:
             # Ensure password hashing on creation
@@ -77,10 +77,10 @@ class {{ model_name }}Service:
             {% endfor %}
             
             obj = await self._repo.create(data)
-            logger.success(f"POST /{{ snake_name }}s → {{ snake_name }} created: uuid={obj.uuid}")
+            logger.success(f"{{ model_name }} created · uuid={obj.uuid}")
             return {{ model_name }}Response.model_validate(obj)
         except Exception as e:
-            logger.error(f"POST /{{ snake_name }}s → failed to create {{ snake_name }}: {e}")
+            logger.error(f"create {{ snake_name }} failed — {type(e).__name__}: {e}")
             raise
 
     # ── Read ─────────────────────────────────────────────────────────────────
@@ -98,7 +98,7 @@ class {{ model_name }}Service:
         Raises:
             HTTPException: 404 if the record does not exist.
         """
-        logger.info(f"GET /{{ snake_name }}s/id/{record_id} → fetching {{ snake_name }}")
+        logger.debug(f"GET /{{ snake_name }}s/id/{record_id} → fetching {{ snake_name }}")
         try:
             {% if db_type == "mongodb" %}
             # Beanie has no auto-increment ID by default, fallback to UUID lookup or raise
@@ -109,18 +109,18 @@ class {{ model_name }}Service:
             {% else %}
             obj = await self._repo.get_by_id(record_id)
             if obj is None:
-                logger.warning(f"GET /{{ snake_name }}s/id/{record_id} → {{ snake_name }} not found")
+                logger.warning(f"{{ model_name }} id={record_id} not found")
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail=f"{{ model_name }} with id={record_id} not found.",
                 )
-            logger.success(f"GET /{{ snake_name }}s/id/{record_id} → {{ snake_name }} found")
+            logger.debug(f"{{ model_name }} id={record_id} found")
             return {{ model_name }}Response.model_validate(obj)
             {% endif %}
         except HTTPException:
             raise
         except Exception as e:
-            logger.error(f"GET /{{ snake_name }}s/id/{record_id} → failed to fetch {{ snake_name }}: {e}")
+            logger.error(f"fetch {{ snake_name }} id={record_id} failed — {type(e).__name__}: {e}")
             raise
 
     async def get_by_uuid(self, uuid_str: str) -> {{ model_name }}Response:
@@ -136,21 +136,21 @@ class {{ model_name }}Service:
         Raises:
             HTTPException: 404 if the record does not exist.
         """
-        logger.info(f"GET /{{ snake_name }}s/{uuid_str} → fetching {{ snake_name }}")
+        logger.debug(f"GET /{{ snake_name }}s/{uuid_str} → fetching {{ snake_name }}")
         try:
             obj = await self._repo.get_by_uuid(uuid_str)
             if obj is None:
-                logger.warning(f"GET /{{ snake_name }}s/{uuid_str} → {{ snake_name }} not found")
+                logger.warning(f"{{ model_name }} uuid={uuid_str} not found")
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail=f"{{ model_name }} with uuid={uuid_str} not found.",
                 )
-            logger.success(f"GET /{{ snake_name }}s/{uuid_str} → {{ snake_name }} found")
+            logger.debug(f"{{ model_name }} uuid={uuid_str} found")
             return {{ model_name }}Response.model_validate(obj)
         except HTTPException:
             raise
         except Exception as e:
-            logger.error(f"GET /{{ snake_name }}s/{uuid_str} → failed to fetch {{ snake_name }}: {e}")
+            logger.error(f"fetch {{ snake_name }} uuid={uuid_str} failed — {type(e).__name__}: {e}")
             raise
 
     async def get_all(self, skip: int = 0, limit: int = 100) -> list[{{ model_name }}Response]:
@@ -164,13 +164,13 @@ class {{ model_name }}Service:
         Returns:
             list[{{ model_name }}Response]: Paginated list of records.
         """
-        logger.info("GET /{{ snake_name }}s → fetching all {{ snake_name }}s")
+        logger.debug("GET /{{ snake_name }}s → fetching all {{ snake_name }}s")
         try:
             objects = await self._repo.get_all(skip=skip, limit=limit)
-            logger.success(f"GET /{{ snake_name }}s → returned {len(objects)} records")
+            logger.debug(f"{{ model_name }} list → {len(objects)} record(s)")
             return [{{ model_name }}Response.model_validate(o) for o in objects]
         except Exception as e:
-            logger.error(f"GET /{{ snake_name }}s → failed to fetch all {{ snake_name }}s: {e}")
+            logger.error(f"list {{ snake_name }}s failed — {type(e).__name__}: {e}")
             raise
 
     # ── Update ───────────────────────────────────────────────────────────────
@@ -189,7 +189,7 @@ class {{ model_name }}Service:
         Raises:
             HTTPException: 404 if the record does not exist.
         """
-        logger.info(f"PUT /{{ snake_name }}s/{uuid_str} → updating {{ snake_name }}")
+        logger.debug(f"PUT /{{ snake_name }}s/{uuid_str} → updating {{ snake_name }}")
         try:
             # Ensure password hashing if updated
             {% for field in fields %}
@@ -203,17 +203,17 @@ class {{ model_name }}Service:
             
             obj = await self._repo.update(uuid_str, data)
             if obj is None:
-                logger.warning(f"PUT /{{ snake_name }}s/{uuid_str} → {{ snake_name }} not found")
+                logger.warning(f"{{ model_name }} uuid={uuid_str} not found — update skipped")
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail=f"{{ model_name }} with uuid={uuid_str} not found.",
                 )
-            logger.success(f"PUT /{{ snake_name }}s/{uuid_str} → {{ snake_name }} updated")
+            logger.success(f"{{ model_name }} updated · uuid={uuid_str}")
             return {{ model_name }}Response.model_validate(obj)
         except HTTPException:
             raise
         except Exception as e:
-            logger.error(f"PUT /{{ snake_name }}s/{uuid_str} → failed to update {{ snake_name }}: {e}")
+            logger.error(f"update {{ snake_name }} uuid={uuid_str} failed — {type(e).__name__}: {e}")
             raise
 
     # ── Delete ───────────────────────────────────────────────────────────────
@@ -231,19 +231,19 @@ class {{ model_name }}Service:
         Raises:
             HTTPException: 404 if the record does not exist.
         """
-        logger.info(f"DELETE /{{ snake_name }}s/{uuid_str} → deleting {{ snake_name }}")
+        logger.debug(f"DELETE /{{ snake_name }}s/{uuid_str} → deleting {{ snake_name }}")
         try:
             deleted = await self._repo.delete(uuid_str)
             if not deleted:
-                logger.warning(f"DELETE /{{ snake_name }}s/{uuid_str} → {{ snake_name }} not found")
+                logger.warning(f"{{ model_name }} uuid={uuid_str} not found — delete skipped")
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail=f"{{ model_name }} with uuid={uuid_str} not found.",
                 )
-            logger.success(f"DELETE /{{ snake_name }}s/{uuid_str} → {{ snake_name }} deleted")
+            logger.success(f"{{ model_name }} deleted · uuid={uuid_str}")
             return {"detail": f"{{ model_name }} {uuid_str} deleted successfully."}
         except HTTPException:
             raise
         except Exception as e:
-            logger.error(f"DELETE /{{ snake_name }}s/{uuid_str} → failed to delete {{ snake_name }}: {e}")
+            logger.error(f"delete {{ snake_name }} uuid={uuid_str} failed — {type(e).__name__}: {e}")
             raise

@@ -17,6 +17,7 @@ from {{ schemas_dir }}.{{ snake_name }}_schema import (
     {{ model_name }}Update,
     {{ model_name }}Response,
 )
+from {{ schemas_dir }}.message_schema import MessageResponse
 from {{ services_dir }}.{{ snake_name }}_service import {{ model_name }}Service
 {% else %}
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,6 +27,7 @@ from {{ schemas_dir }}.{{ snake_name }}_schema import (
     {{ model_name }}Update,
     {{ model_name }}Response,
 )
+from {{ schemas_dir }}.message_schema import MessageResponse
 from {{ services_dir }}.{{ snake_name }}_service import {{ model_name }}Service
 {% endif %}
 {% if has_auth_guard %}
@@ -68,18 +70,25 @@ async def create_{{ snake_name }}(
 ) -> {{ model_name }}Response:
     """Create a new {{ model_name }}."""
     {% if has_auth_guard %}
-    logger.info(f"REQUEST POST /{{ snake_name }}s by user_id={current_user.get('uuid') or current_user.get('id')}")
+    logger.debug(f"router  POST /{{ snake_name }}s by user_id={current_user.get('uuid') or current_user.get('id')}")
     {% else %}
-    logger.info("REQUEST POST /{{ snake_name }}s")
+    logger.debug("router  POST /{{ snake_name }}s")
     {% endif %}
     return await service.create(data)
 
 
 @router.get(
+    "/list",
+    response_model=list[{{ model_name }}Response],
+    summary="List {{ model_name }}s (Unprotected)",
+    description="Retrieve a paginated list of {{ model_name }} records without authentication.",
+)
+@router.get(
     "/",
     response_model=list[{{ model_name }}Response],
-    summary="List {{ model_name }}s",
-    description="Retrieve a paginated list of {{ model_name }} records.",
+    summary="List {{ model_name }}s (Unprotected)",
+    description="Retrieve a paginated list of {{ model_name }} records without authentication.",
+    include_in_schema=False,
 )
 @limiter.limit("60/minute")
 async def list_{{ snake_name }}s(
@@ -87,16 +96,9 @@ async def list_{{ snake_name }}s(
     skip: int = Query(default=0, ge=0, description="Records to skip"),
     limit: int = Query(default=100, ge=1, le=1000, description="Maximum records to return"),
     service: {{ model_name }}Service = Depends(get_service),
-    {% if has_auth_guard %}
-    current_user: dict = Depends(get_current_user),
-    {% endif %}
 ) -> list[{{ model_name }}Response]:
     """Return a paginated list of {{ model_name }} records."""
-    {% if has_auth_guard %}
-    logger.info(f"REQUEST GET /{{ snake_name }}s by user_id={current_user.get('uuid') or current_user.get('id')}")
-    {% else %}
-    logger.info("REQUEST GET /{{ snake_name }}s")
-    {% endif %}
+    logger.debug("router  GET /{{ snake_name }}s/list")
     return await service.get_all(skip=skip, limit=limit)
 
 
@@ -117,9 +119,9 @@ async def get_{{ snake_name }}(
 ) -> {{ model_name }}Response:
     """Return a single {{ model_name }} by UUID."""
     {% if has_auth_guard %}
-    logger.info(f"REQUEST GET /{{ snake_name }}s/{uuid} by user_id={current_user.get('uuid') or current_user.get('id')}")
+    logger.debug(f"router  GET /{{ snake_name }}s/{uuid} by user_id={current_user.get('uuid') or current_user.get('id')}")
     {% else %}
-    logger.info(f"REQUEST GET /{{ snake_name }}s/{uuid}")
+    logger.debug(f"router  GET /{{ snake_name }}s/{uuid}")
     {% endif %}
     return await service.get_by_uuid(uuid)
 
@@ -142,15 +144,16 @@ async def update_{{ snake_name }}(
 ) -> {{ model_name }}Response:
     """Update an existing {{ model_name }} by UUID."""
     {% if has_auth_guard %}
-    logger.info(f"REQUEST PUT /{{ snake_name }}s/{uuid} by user_id={current_user.get('uuid') or current_user.get('id')}")
+    logger.debug(f"router  PUT /{{ snake_name }}s/{uuid} by user_id={current_user.get('uuid') or current_user.get('id')}")
     {% else %}
-    logger.info(f"REQUEST PUT /{{ snake_name }}s/{uuid}")
+    logger.debug(f"router  PUT /{{ snake_name }}s/{uuid}")
     {% endif %}
     return await service.update(uuid, data)
 
 
 @router.delete(
     "/{uuid}",
+    response_model=MessageResponse,
     summary="Delete {{ model_name }}",
     description="Delete a {{ model_name }} record by UUID.",
     status_code=status.HTTP_200_OK,
@@ -163,11 +166,11 @@ async def delete_{{ snake_name }}(
     {% if has_auth_guard %}
     current_user: dict = Depends(get_current_user),
     {% endif %}
-) -> dict:
+) -> MessageResponse:
     """Delete a {{ model_name }} by UUID."""
     {% if has_auth_guard %}
-    logger.info(f"REQUEST DELETE /{{ snake_name }}s/{uuid} by user_id={current_user.get('uuid') or current_user.get('id')}")
+    logger.debug(f"router  DELETE /{{ snake_name }}s/{uuid} by user_id={current_user.get('uuid') or current_user.get('id')}")
     {% else %}
-    logger.info(f"REQUEST DELETE /{{ snake_name }}s/{uuid}")
+    logger.debug(f"router  DELETE /{{ snake_name }}s/{uuid}")
     {% endif %}
     return await service.delete(uuid)

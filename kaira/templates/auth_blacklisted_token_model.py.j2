@@ -1,3 +1,21 @@
+{% if db_type == "mongodb" %}
+"""Blacklisted token Beanie document model."""
+
+from datetime import datetime, timezone
+from beanie import Document
+from pydantic import Field
+
+
+class BlacklistedToken(Document):
+    """Beanie document model for revoked JWT refresh tokens."""
+
+    token: str = Field(..., max_length=500, index=True)
+    blacklisted_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    class Settings:
+        name = "blacklisted_tokens"
+        use_revision = False
+{% else %}
 """Blacklisted token ORM model."""
 
 from datetime import datetime, timezone
@@ -15,3 +33,4 @@ class BlacklistedToken(Base):
     blacklisted_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
     )
+{% endif %}

@@ -1,27 +1,227 @@
 """
 middleware/security.py
 
-Security middleware for {{ project_name }}.
+Security & observability middleware for {{ project_name }}.
 Auto-registered in main.py — provides:
   - CORS protection
   - Security response headers
   - Rate limiting (slowapi)
-  - Global exception handler (no stack-trace leakage)
-  - Request/response logging via loguru
+  - A correlation id per request (``X-Request-ID``)
+  - One status-coloured log line per completed request
+  - Structured, non-leaking error responses for every failure mode
+
+Error contract
+--------------
+Every error response — validation, HTTP, rate limit, or crash — returns the
+same envelope::
+
+    {
+      "detail": <unchanged FastAPI-compatible value>,
+      "error": {
+        "code": "validation_error",
+        "status": 422,
+        "message": "Request validation failed for 2 field(s).",
+        "method": "POST",
+        "path": "/api/v1/users",
+        "request_id": "63cb0206",
+        "fields": [{"field": "body.email", "message": "...", "type": "..."}]
+      }
+    }
+
+``detail`` is kept so existing clients and generated tests keep working; the
+``error`` object is the structured addition. ``request_id`` matches the
+``X-Request-ID`` response header and the id printed in the server log, so a
+reported failure can be found in the terminal without guessing.
 """
 
 from __future__ import annotations
 
+import os
 import time
+import traceback
 import uuid as _uuid
+from pathlib import Path
 
 from fastapi import FastAPI, Request, status
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi.errors import RateLimitExceeded
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from config.settings import settings
-from core.logger import logger
+from core.logger import INDENT, detail, http, is_debug, logger
+
+# starlette renamed HTTP_422_UNPROCESSABLE_ENTITY and emits a DeprecationWarning
+# on the old name; the literal is stable across versions.
+_HTTP_422 = 422
+
+# How many application frames to print for an unhandled exception. The deepest
+# frames are the ones that explain the failure.
+_TRACE_FRAMES = 5
+
+# Project root — used to render traceback frames as short, clickable paths
+# relative to the project instead of absolute site-packages noise.
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+# This file is application code but never the *cause* of a failure, so its own
+# `await call_next(request)` frame is dropped from reported tracebacks.
+_SELF = Path(__file__).resolve()
+
+# Paths that should never produce a log line (health probes, favicon polling).
+# Comma-separated, e.g. KAIRA_LOG_SKIP_PATHS=/health,/metrics
+_SKIP_PATHS = {
+    p.strip() for p in os.getenv("KAIRA_LOG_SKIP_PATHS", "").split(",") if p.strip()
+}
+
+# Whether error responses may carry the exception text. Never in production.
+_EXPOSE_INTERNALS = settings.APP_ENV != "production"
+
+
+# ── Helpers ──────────────────────────────────────────────────────────────────
+
+
+def _request_id(request: Request) -> str:
+    """Return this request's correlation id, or a placeholder if unset."""
+    return getattr(request.state, "request_id", "-")
+
+
+def _client_host(request: Request) -> str:
+    """Return the client host, or ``unknown`` when the scope has no client."""
+    return request.client.host if request.client else "unknown"
+
+
+def _error_response(
+    request: Request,
+    status_code: int,
+    code: str,
+    message: str,
+    detail_value: object | None = None,
+    fields: list[dict] | None = None,
+    extra: dict | None = None,
+) -> JSONResponse:
+    """Build the shared error envelope.
+
+    Args:
+        request: The incoming request, used for method/path/request id.
+        status_code: HTTP status to return.
+        code: Stable machine-readable error code (``validation_error``, ...).
+        message: Human-readable summary, safe to show to an API consumer.
+        detail_value: Value for the legacy ``detail`` key. Defaults to
+            ``message`` so existing clients see no behavioural change.
+        fields: Per-field validation failures, when applicable.
+        extra: Additional keys merged into the ``error`` object.
+
+    Returns:
+        A JSONResponse carrying the envelope and the ``X-Request-ID`` header.
+    """
+    request_id = _request_id(request)
+    error: dict = {
+        "code": code,
+        "status": status_code,
+        "message": message,
+        "method": request.method,
+        "path": request.url.path,
+        "request_id": request_id,
+    }
+    if fields:
+        error["fields"] = fields
+    if extra:
+        error.update(extra)
+
+    return JSONResponse(
+        status_code=status_code,
+        content={
+            "detail": message if detail_value is None else detail_value,
+            "error": error,
+        },
+        headers={"X-Request-ID": request_id},
+    )
+
+
+def _field_errors(exc: RequestValidationError) -> list[dict]:
+    """Flatten pydantic's error list into ``field``/``message``/``type`` rows."""
+    rows = []
+    for err in exc.errors():
+        location = ".".join(str(part) for part in err.get("loc", ())) or "body"
+        rows.append(
+            {
+                "field": location,
+                "message": err.get("msg", "invalid value"),
+                "type": err.get("type", "value_error"),
+            }
+        )
+    return rows
+
+
+def _app_frames(exc: BaseException) -> list[traceback.FrameSummary]:
+    """Return only the traceback frames that live inside this project.
+
+    A FastAPI traceback is mostly starlette/uvicorn/anyio plumbing that is
+    identical for every failure and explains nothing. Dropping those frames
+    leaves the handful of lines the developer actually wrote.
+    """
+    frames = []
+    for frame in traceback.extract_tb(exc.__traceback__):
+        try:
+            absolute = Path(frame.filename).resolve()
+            relative = absolute.relative_to(_PROJECT_ROOT)
+        except (ValueError, OSError):
+            continue
+        if "site-packages" in relative.parts or absolute == _SELF:
+            continue
+        frame.filename = relative.as_posix()
+        frames.append(frame)
+    return frames
+
+
+def _traceback_block(frames: list[traceback.FrameSummary]) -> str:
+    """Render project frames as indented ``path:line in func`` + source lines."""
+    if not frames:
+        return ""
+    lines = ["\n" + INDENT + "traceback (innermost last)"]
+    for frame in frames[-_TRACE_FRAMES:]:
+        lines.append(
+            "\n" + INDENT + "  " + f"{frame.filename}:{frame.lineno} in {frame.name}"
+        )
+        if frame.line:
+            lines.append("\n" + INDENT + "      " + frame.line.strip())
+    return "".join(lines)
+
+
+def _log_unhandled(request: Request, exc: BaseException) -> None:
+    """Print the one diagnostic block for a crashed request.
+
+    Called from the middleware rather than the exception handler so that the
+    block always lands *before* the request line that summarises it — the same
+    order as every other failure, where the handler runs first.
+    Marks the request so the catch-all handler does not log it twice.
+    """
+    if getattr(request.state, "error_logged", False):
+        return
+    request.state.error_logged = True
+
+    frames = _app_frames(exc)
+    rows: dict[str, object] = {
+        "request": _request_id(request),
+        "client": _client_host(request),
+        "reason": " ".join((str(exc) or repr(exc)).split()),
+    }
+    if not frames:
+        rows["where"] = "outside project code"
+
+    summary = (
+        f"Unhandled {type(exc).__name__} on {request.method} {request.url.path}"
+        + detail(**rows)
+    )
+    if is_debug():
+        # --debug wants the unabridged truth: every frame, with local values.
+        logger.opt(exception=exc).error(summary)
+    else:
+        logger.error(summary + _traceback_block(frames))
+
+
+# ── Middleware ───────────────────────────────────────────────────────────────
 
 
 def register_security_middleware(app: FastAPI) -> None:
@@ -39,22 +239,61 @@ def register_security_middleware(app: FastAPI) -> None:
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
         allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
-        expose_headers=["X-Request-ID"],
+        expose_headers=["X-Request-ID", "X-Response-Time"],
     )
 
-    # ── Security headers ──────────────────────────────────────────────────────
+    # ── Observability + security headers ──────────────────────────────────────
+    # Correlation id, timing, logging and response headers live in one
+    # middleware so the id is assigned before anything can fail and every
+    # response — including the ones an exception handler builds — can be traced
+    # back to the same line in the terminal.
     @app.middleware("http")
-    async def add_security_headers(request: Request, call_next):
-        """Inject OWASP-recommended security response headers on every response."""
-        response = await call_next(request)
+    async def observe_request(request: Request, call_next):
+        """Tag, time and log the request, then harden the response headers."""
+        request_id = str(_uuid.uuid4())[:8]
+        request.state.request_id = request_id
+        path = request.url.path
+        quiet = path in _SKIP_PATHS
+
+        if is_debug() and not quiet:
+            logger.debug(
+                f"{request.method} {path} received"
+                + detail(request=request_id, client=_client_host(request))
+            )
+
+        start = time.perf_counter()
+        try:
+            response = await call_next(request)
+        except Exception as exc:
+            # The generic exception handler runs *outside* this middleware, so
+            # without this branch a crashed request would never be logged as a
+            # completed one. Report it here — diagnostic block first, then the
+            # failed request line — and let the handler build the response.
+            duration_ms = (time.perf_counter() - start) * 1000
+            _log_unhandled(request, exc)
+            if not quiet:
+                http(
+                    request.method,
+                    path,
+                    status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    duration_ms,
+                    request_id,
+                    client=_client_host(request),
+                )
+            raise
+
+        duration_ms = (time.perf_counter() - start) * 1000
+
+        response.headers["X-Request-ID"] = request_id
+        response.headers["X-Response-Time"] = f"{duration_ms:.1f}ms"
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["X-XSS-Protection"] = "1; mode=block"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         response.headers["Permissions-Policy"] = "geolocation=(), microphone=()"
-        # Which database this app is serving from — online or offline (Phase 6,
-        # Feature 4). Read from the single startup resolution in app.state; never
-        # the DSN. Defaults to "online" before the lifespan handler has run.
+        # Which database this app is serving from — online or offline. Read from
+        # the single startup resolution in app.state; never the DSN. Defaults to
+        # "online" before the lifespan handler has run.
         response.headers["X-Kaira-DB-Mode"] = getattr(
             request.app.state, "db_mode", "online"
         )
@@ -62,49 +301,116 @@ def register_security_middleware(app: FastAPI) -> None:
             response.headers["Strict-Transport-Security"] = (
                 "max-age=63072000; includeSubDomains; preload"
             )
+
+        if not quiet:
+            http(
+                request.method,
+                path,
+                response.status_code,
+                duration_ms,
+                request_id,
+                client=_client_host(request),
+            )
         return response
 
-    # ── Request logging ───────────────────────────────────────────────────────
-    @app.middleware("http")
-    async def log_requests(request: Request, call_next):
-        """Log every incoming request with a unique request ID and duration."""
-        request_id = str(_uuid.uuid4())[:8]
-        start = time.perf_counter()
-        logger.info(
-            f"--> {request.method} {request.url.path} "
-            f"[req_id={request_id}] [client={request.client.host if request.client else 'unknown'}]"
-        )
-        response = await call_next(request)
-        duration_ms = (time.perf_counter() - start) * 1000
-        logger.info(
-            f"<-- {request.method} {request.url.path} "
-            f"[req_id={request_id}] [status={response.status_code}] [{duration_ms:.1f}ms]"
-        )
-        return response
+
+# ── Exception handlers ───────────────────────────────────────────────────────
 
 
 def register_exception_handlers(app: FastAPI) -> None:
     """
     Register global exception handlers to prevent stack-trace leakage.
 
+    Each handler returns the shared envelope and logs exactly one event, so a
+    failure reads as: the request line (status-coloured), then one indented
+    block explaining what went wrong and where.
+
     Args:
         app: The FastAPI application instance.
     """
 
+    @app.exception_handler(RequestValidationError)
+    async def validation_handler(request: Request, exc: RequestValidationError):
+        """Return 422 with a per-field breakdown instead of a raw pydantic dump."""
+        fields = _field_errors(exc)
+        shown = fields[:8]
+        rows = [(row["field"], row["message"]) for row in shown]
+        if len(fields) > len(shown):
+            rows.append(("…", f"{len(fields) - len(shown)} more field(s)"))
+
+        logger.warning(
+            f"{request.method} {request.url.path} rejected — "
+            f"{len(fields)} invalid field(s)"
+            + detail(*rows, request=_request_id(request))
+        )
+        return _error_response(
+            request,
+            _HTTP_422,
+            "validation_error",
+            f"Request validation failed for {len(fields)} field(s).",
+            # Preserve FastAPI's default `detail` payload for existing clients.
+            detail_value=jsonable_encoder(exc.errors()),
+            fields=fields,
+        )
+
     @app.exception_handler(RateLimitExceeded)
     async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
-        """Return 429 with a safe message when rate limit is exceeded."""
-        logger.warning(f"Rate limit exceeded: {request.url.path} [client={request.client.host if request.client else 'unknown'}]")
-        return JSONResponse(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            content={"detail": "Too many requests. Please slow down."},
+        """Return 429 with a safe message when the rate limit is exceeded."""
+        limit = getattr(exc, "detail", "") or "rate limit"
+        logger.warning(
+            f"{request.method} {request.url.path} rate limited"
+            + detail(
+                limit=limit,
+                client=_client_host(request),
+                request=_request_id(request),
+            )
+        )
+        return _error_response(
+            request,
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            "rate_limited",
+            "Too many requests. Please slow down.",
+            extra={"limit": str(limit)},
+        )
+
+    @app.exception_handler(StarletteHTTPException)
+    async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+        """Return a deliberate HTTP error (404, 401, ...) in the shared envelope."""
+        message = exc.detail if isinstance(exc.detail, str) else "Request failed."
+        if exc.status_code >= 500:
+            logger.error(
+                f"{request.method} {request.url.path} failed with {exc.status_code}"
+                + detail(reason=message, request=_request_id(request))
+            )
+        else:
+            # The request line already shows method, path and status in colour —
+            # repeating it at INFO would double every 404.
+            logger.debug(
+                f"{request.method} {request.url.path} -> {exc.status_code}: {message}"
+            )
+        return _error_response(
+            request,
+            exc.status_code,
+            "http_error",
+            message,
+            detail_value=exc.detail,
         )
 
     @app.exception_handler(Exception)
     async def generic_exception_handler(request: Request, exc: Exception):
-        """Catch-all handler — logs full traceback internally, returns safe message."""
-        logger.error(f"Unhandled exception on {request.method} {request.url.path}: {exc!r}")
-        return JSONResponse(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            content={"detail": "An internal error occurred. Please try again later."},
+        """Catch-all — returns a safe message, never a stack trace."""
+        # Normally already logged by the middleware; this covers an exception
+        # raised above it, which would otherwise vanish.
+        _log_unhandled(request, exc)
+        extra = (
+            {"exception": type(exc).__name__, "reason": str(exc)}
+            if _EXPOSE_INTERNALS
+            else None
+        )
+        return _error_response(
+            request,
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            "internal_error",
+            "An internal error occurred. Please try again later.",
+            extra=extra,
         )

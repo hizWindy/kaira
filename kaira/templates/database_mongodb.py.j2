@@ -7,6 +7,12 @@ Uses Motor (async driver) + Beanie (ODM).
 
 from __future__ import annotations
 
+import importlib
+import inspect
+import pkgutil
+from pathlib import Path
+from urllib.parse import urlsplit
+
 from motor.motor_asyncio import AsyncIOMotorClient
 
 from core.db_mode import resolve_binding
@@ -15,22 +21,71 @@ from core.db_mode import resolve_binding
 # Mongo project the offline store is a local MongoDB namespace, never SQLite.
 BINDING = resolve_binding()
 
+# Fallback namespace when the URI carries no path, e.g. "mongodb://localhost:27017"
+# — Motor's get_default_database() raises ConfigurationError in that case.
+DEFAULT_DB_NAME = "{{ project_slug }}"
+
+MODELS_PACKAGE = "models"
+
 _client: AsyncIOMotorClient | None = None
 
 
-async def init_db(document_models: list) -> None:
+def resolve_db_name(url: str = "") -> str:
+    """Return the database name for a Mongo URI, falling back to the project slug.
+
+    Args:
+        url: Connection URI. Defaults to the resolved binding URL.
+
+    Returns:
+        The database name to bind Beanie against.
+    """
+    path = urlsplit(url or BINDING.url).path.lstrip("/")
+    return path.split("?")[0] or DEFAULT_DB_NAME
+
+
+def discover_document_models() -> list:
+    """Import every Beanie ``Document`` subclass defined under ``models/``.
+
+    Beanie requires *all* documents to be registered up front — ``Link`` fields
+    cannot be resolved otherwise — so seeding, migration, and provisioning
+    entrypoints register the full set rather than one model at a time.
+
+    Returns:
+        Beanie Document classes, deduplicated and sorted by class name.
+    """
+    from beanie import Document
+
+    models_dir = Path(__file__).resolve().parent.parent / MODELS_PACKAGE
+    if not models_dir.is_dir():
+        return []
+
+    found: dict[str, type] = {}
+    for mod_info in pkgutil.iter_modules([str(models_dir)]):
+        if mod_info.name.startswith("_"):
+            continue
+        module = importlib.import_module(f"{MODELS_PACKAGE}.{mod_info.name}")
+        for _, obj in inspect.getmembers(module, inspect.isclass):
+            if issubclass(obj, Document) and obj is not Document:
+                found[obj.__name__] = obj
+
+    return [found[name] for name in sorted(found)]
+
+
+async def init_db(document_models: list | None = None) -> None:
     """
     Initialise the MongoDB connection and register Beanie document models.
 
-    This must be called once at application startup, e.g. in a lifespan handler.
+    This must be called once at application startup, e.g. in a lifespan
+    handler. Standalone scripts (seeds, document migrations) may call it with
+    no arguments to auto-register every model under ``models/``.
 
     Args:
-        document_models: List of Beanie Document classes to register.
+        document_models: Beanie Document classes to register. When omitted,
+            they are discovered via :func:`discover_document_models`.
 
     Example::
 
-        from beanie import init_beanie
-        from motor.motor_asyncio import AsyncIOMotorClient
+        from core.database import init_db
         from models.user import User
 
         @asynccontextmanager
@@ -41,8 +96,11 @@ async def init_db(document_models: list) -> None:
     global _client
     from beanie import init_beanie  # lazy import — only installed for MongoDB projects
 
+    if document_models is None:
+        document_models = discover_document_models()
+
     _client = AsyncIOMotorClient(BINDING.url)
-    db = _client.get_default_database()
+    db = _client[resolve_db_name()]
     await init_beanie(database=db, document_models=document_models)
 
 

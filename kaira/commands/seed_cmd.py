@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
+import ast
 import os
-import subprocess
-import sys
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated, Any, Optional
 
 import typer
 from jinja2 import Environment, FileSystemLoader
@@ -14,14 +13,123 @@ from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
 from rich.prompt import Confirm
 
-from kaira.config import get_config
+from kaira.config import get_config, save_config, SUPPORTED_FIELD_TYPES, SERVER_MANAGED_FIELDS
+from kaira.core.parser import infer_column_type, normalize_ast_type
 from kaira.console import console
 from kaira.core.detector import write_with_check
-from kaira.core.parser import camel_to_snake
+from kaira.core.drivers import get_engine_driver
+from kaira.core.parser import camel_to_snake, snake_to_pascal, table_name
+from kaira.core.project_runner import run_project_file, run_project_script
+from kaira.core.stats import build_stats_table, counts_by_name, try_collect_db_stats
 
 TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
 
 app = typer.Typer(help="Database seeding commands.")
+
+_MANAGED_FIELDS = SERVER_MANAGED_FIELDS
+
+
+def _parse_live_model_fields(
+    model_file: Path, target_model_name: Optional[str] = None
+) -> list[dict[str, str]]:
+    """Inspect a generated Python model file via AST and extract active scalar fields.
+
+    Handles both Beanie/Pydantic Document models and SQLAlchemy Mapped models.
+    """
+    if not model_file.exists():
+        return []
+
+    try:
+        tree = ast.parse(model_file.read_text(encoding="utf-8"))
+    except (OSError, SyntaxError):
+        return []
+
+    target_node: Optional[ast.ClassDef] = None
+    if target_model_name:
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ClassDef) and node.name == target_model_name:
+                target_node = node
+                break
+
+    if target_node is None:
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ClassDef):
+                continue
+            if node.name in ("Settings", "Config"):
+                continue
+            is_enum = any(
+                (isinstance(b, ast.Name) and b.id == "Enum")
+                or (isinstance(b, ast.Attribute) and b.attr == "Enum")
+                for b in node.bases
+            )
+            if is_enum:
+                continue
+            target_node = node
+            break
+
+    if target_node is None:
+        return []
+
+    fields: list[dict[str, str]] = []
+    for stmt in target_node.body:
+        name = ""
+        stmt_val: Optional[ast.expr] = None
+
+        if isinstance(stmt, ast.AnnAssign) and isinstance(stmt.target, ast.Name):
+            name = stmt.target.id
+            stmt_val = stmt.value
+        elif (
+            isinstance(stmt, ast.Assign)
+            and len(stmt.targets) == 1
+            and isinstance(stmt.targets[0], ast.Name)
+        ):
+            name = stmt.targets[0].id
+            stmt_val = stmt.value
+
+        if not name or name in _MANAGED_FIELDS or name.startswith("_"):
+            continue
+
+        norm_type: Optional[str] = None
+        if isinstance(stmt, ast.AnnAssign):
+            raw_type = ""
+            try:
+                raw_type = ast.unparse(stmt.annotation).strip().strip('"').strip("'")
+            except Exception:
+                raw_type = ""
+
+            if raw_type.startswith("Mapped[") and raw_type.endswith("]"):
+                raw_type = raw_type[7:-1].strip()
+
+            if raw_type and not any(
+                token in raw_type for token in ("Link[", "relationship", "ForeignKey", "list[", "Dict[")
+            ):
+                norm_type = normalize_ast_type(raw_type)
+
+        if norm_type is None and stmt_val is not None:
+            norm_type = infer_column_type(stmt_val)
+
+        if norm_type and norm_type in SUPPORTED_FIELD_TYPES:
+            fields.append({"name": name, "type": norm_type})
+
+    return fields
+
+
+def _get_model_fields(config: Any, model_name: str, output_root: Path) -> list[dict[str, str]]:
+    """Resolve model fields, preferring live AST inspection of the model file over static config."""
+    snake = camel_to_snake(model_name)
+    model_file = output_root / config.models_dir / f"{snake}.py"
+
+    live_fields = _parse_live_model_fields(model_file, model_name)
+    if live_fields:
+        for m in config.generated_models:
+            if m.get("name") == model_name:
+                m["fields"] = live_fields
+                save_config(config)
+                break
+        return live_fields
+
+    model_entry = next((m for m in config.generated_models if m.get("name") == model_name), None)
+    return model_entry.get("fields", []) if model_entry else []
 
 
 def _get_env() -> Environment:
@@ -31,6 +139,75 @@ def _get_env() -> Environment:
         trim_blocks=True,
         lstrip_blocks=True,
     )
+
+
+def _is_password_field(field: dict[str, Any]) -> bool:
+    """Whether a field is hashed at seed time, requiring bcrypt in the script.
+
+    Must stay in step with the password branch of ``_seed_macros.j2``.
+    """
+    name = str(field.get("name", "")).lower()
+    return name == "password" or name.endswith("_password")
+
+
+def _resolve_database_url() -> str:
+    """Resolve the active DATABASE_URL using the same precedence as `kaira db`."""
+    from kaira.commands.db_cmd import _get_database_url
+
+    return _get_database_url()
+
+
+def _snapshot_counts(db_type: str) -> dict[str, int] | None:
+    """Capture current per-entity row/document counts, or None if unavailable."""
+    url = _resolve_database_url()
+    if not url:
+        return None
+    result = try_collect_db_stats(db_type, url)
+    return counts_by_name(result[1]) if result else None
+
+
+def render_seed(
+    model_name: str,
+    config: Any,
+    output_root: Path,
+    fields_override: list[dict[str, str]] | None = None,
+) -> tuple[str, Path]:
+    """Render a seed script and return ``(content, output_path)``.
+
+    Shared by ``seed generate`` and ``sync`` so the template context
+    assembly lives in exactly one place.
+
+    Args:
+        model_name: PascalCase model name.
+        config: Loaded :class:`KairaConfig`.
+        output_root: Project output root (``cwd / config.output_dir``).
+        fields_override: If given, use these field dicts instead of
+            inspecting the model file / config snapshot.
+
+    Returns:
+        A ``(rendered_source, seed_file_path)`` tuple.
+    """
+    fields = fields_override if fields_override is not None else _get_model_fields(config, model_name, output_root)
+
+    db_type = getattr(config, "db_type", "sqlite")
+    driver = get_engine_driver(db_type)
+
+    env = _get_env()
+    snake = camel_to_snake(model_name)
+    ctx = {
+        "model_name": model_name,
+        "snake_name": snake,
+        "table_name": table_name(model_name),
+        "fields": fields,
+        "models_dir": config.models_dir,
+        "db_type": db_type,
+        "needs_bcrypt": any(_is_password_field(f) for f in fields),
+    }
+
+    tmpl = env.get_template(driver.get_seed_template_name())
+    seeds_dir = output_root / "seeds"
+    out_path = seeds_dir / f"seed_{snake}.py"
+    return tmpl.render(**ctx), out_path
 
 
 @app.command("generate")
@@ -46,34 +223,28 @@ def seed_generate(
     seeds_dir.mkdir(parents=True, exist_ok=True)
     (seeds_dir / "__init__.py").touch(exist_ok=True)
 
-    # Find the model details in config
-    model_entry = next((m for m in config.generated_models if m.get("name") == model_name), None)
-    fields = model_entry.get("fields", []) if model_entry else []
-
-    env = _get_env()
-    snake = camel_to_snake(model_name)
-    ctx = {
-        "model_name": model_name,
-        "snake_name": snake,
-        "fields": fields,
-        "models_dir": config.models_dir,
-    }
-
-    tmpl = env.get_template("seed_model.py.j2")
-    out_path = seeds_dir / f"seed_{snake}.py"
-    write_with_check(out_path, tmpl.render(**ctx), force=force)
-    console.print(f"  [green bold]✓[/green bold]  Written: [cyan]{out_path}[/cyan]")
+    content, out_path = render_seed(model_name, config, output_root)
+    result = write_with_check(out_path, content, force=force)
+    if result == "written":
+        console.print(f"  [green bold]✓[/green bold]  Written: [cyan]{out_path}[/cyan]")
+    else:
+        console.print(f"  [blue]→[/blue]  Skipped: [dim]{out_path}[/dim]")
 
 
 @app.command("run")
 def seed_run(
     model_name: Annotated[Optional[str], typer.Argument(help="Name of the model to seed.")] = None,
     seed_all: Annotated[bool, typer.Option("--all", help="Run all seed scripts.")] = False,
+    count: Annotated[int, typer.Option("--count", help="Records to insert per model.")] = 5,
+    force: Annotated[
+        bool, typer.Option("--force", help="Seed even if the table/collection is non-empty.")
+    ] = False,
+    stats: Annotated[
+        bool, typer.Option("--stats/--no-stats", help="Show table/collection counts afterwards.")
+    ] = True,
 ) -> None:
     """Run database seed scripts (development/staging only)."""
     # Enforce settings APP_ENV safety check
-    # We dynamically load Settings or read .env to check environment
-    # Since settings.py is under config/settings.py in output, we can check it
     app_env = os.getenv("APP_ENV", "development")
     if app_env == "production":
         console.print("[red]Error: Seeding is disabled in production to protect data![/red]")
@@ -82,6 +253,7 @@ def seed_run(
     config = get_config()
     output_root = Path.cwd() / config.output_dir
     seeds_dir = output_root / "seeds"
+    db_type = getattr(config, "db_type", "sqlite")
 
     if not seeds_dir.exists():
         console.print("[yellow]No seeds directory found. Run kaira seed generate <Model> first.[/yellow]")
@@ -89,7 +261,7 @@ def seed_run(
 
     scripts = []
     if seed_all:
-        scripts = list(seeds_dir.glob("seed_*.py"))
+        scripts = sorted(seeds_dir.glob("seed_*.py"))
     elif model_name:
         snake = camel_to_snake(model_name)
         target = seeds_dir / f"seed_{snake}.py"
@@ -101,6 +273,9 @@ def seed_run(
         console.print("[red]Error: Must specify either a model name or --all[/red]")
         raise typer.Exit(1)
 
+    before = _snapshot_counts(db_type) if stats else None
+
+    failures: list[str] = []
     with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
@@ -110,54 +285,182 @@ def seed_run(
     ) as progress:
         task = progress.add_task("[cyan]Running seeds...", total=len(scripts))
         for script in scripts:
+            # Auto-sync live model fields into seed script if model definition evolved
+            sname = script.stem.replace("seed_", "")
+            model_pascal = snake_to_pascal(sname)
+            model_file = output_root / config.models_dir / f"{sname}.py"
+            live_fields = _parse_live_model_fields(model_file, model_pascal)
+            if live_fields:
+                script_text = script.read_text(encoding="utf-8")
+                missing = [
+                    f["name"] for f in live_fields
+                    if f"'{f['name']}':" not in script_text and f'"{f["name"]}":' not in script_text
+                ]
+                if missing:
+                    driver = get_engine_driver(db_type)
+                    env = _get_env()
+                    ctx = {
+                        "model_name": model_pascal,
+                        "snake_name": sname,
+                        "table_name": table_name(model_pascal),
+                        "fields": live_fields,
+                        "models_dir": config.models_dir,
+                        "db_type": db_type,
+                        "needs_bcrypt": any(_is_password_field(f) for f in live_fields),
+                    }
+                    tmpl = env.get_template(driver.get_seed_template_name())
+                    write_with_check(script, tmpl.render(**ctx), force=True, non_interactive=True)
+                    console.print(f"  [cyan]ℹ Auto-synced {script.name} with updated model fields: {', '.join(missing)}[/cyan]")
+
             progress.update(task, description=f"[cyan]  {script.name}...")
-            try:
-                from kaira.config import get_venv_python
-                python_exe = get_venv_python()
-                env = os.environ.copy()
-                env["PYTHONPATH"] = str(output_root) + os.pathsep + env.get("PYTHONPATH", "")
-                subprocess.run([python_exe, str(script)], check=True, env=env)
-                console.print(f"  [green bold]✓[/green bold]  Seeded successfully: {script.name}")
-            except Exception as e:
-                console.print(f"[red]Error seeding {script.name}: {e}[/red]")
-                raise typer.Exit(1)
+            args = ["--count", str(count)] + (["--force"] if force else [])
+            result = run_project_file(script, output_root, args=args)
+
+            if result.returncode == 0:
+                for line in result.stdout.splitlines():
+                    if line.strip():
+                        console.print(f"  [green bold]✓[/green bold]  {line.strip()}")
+            else:
+                failures.append(script.name)
+                detail = (result.stderr or result.stdout).strip().splitlines()
+                tail = "\n".join(detail[-6:]) if detail else "no output"
+                console.print(f"  [red bold]✗[/red bold]  {script.name} failed:\n[dim]{tail}[/dim]")
             progress.advance(task)
+
+    if stats:
+        _print_seed_stats(db_type, before)
+
+    if failures:
+        console.print(
+            Panel(
+                f"[red]❌ {len(failures)} of {len(scripts)} seed script(s) failed: "
+                f"{', '.join(failures)}[/red]",
+                border_style="red",
+            )
+        )
+        raise typer.Exit(1)
+
+
+def _print_seed_stats(db_type: str, before: dict[str, int] | None) -> None:
+    """Render post-seed table/collection counts, with a delta when available."""
+    url = _resolve_database_url()
+    if not url:
+        console.print("[dim]Skipping stats: DATABASE_URL is not configured.[/dim]")
+        return
+
+    result = try_collect_db_stats(db_type, url)
+    if result is None:
+        console.print("[dim]Skipping stats: could not read the database.[/dim]")
+        return
+
+    db_name, rows = result
+    if not rows:
+        console.print("[dim]No tables or collections found yet.[/dim]")
+        return
+
+    label = "collection" if get_engine_driver(db_type).is_document_db else "table"
+    console.print()
+    console.print(
+        build_stats_table(
+            db_type,
+            db_name,
+            rows,
+            before=before,
+            title=f"⚡ Kaira — After Seeding ({db_type.upper()}: [cyan]{db_name}[/cyan])",
+        )
+    )
+    total = sum(row.get("count", 0) for row in rows)
+    console.print(f"\n[dim]{len(rows)} {label}(s), {total} record(s) total.[/dim]")
+
+
+_CLEAR_DOC_SCRIPT = """
+import asyncio
+
+from core.database import BINDING, close_db, discover_document_models, init_db, resolve_db_name
+from motor.motor_asyncio import AsyncIOMotorClient
+
+
+async def main():
+    await init_db(discover_document_models())
+    client = AsyncIOMotorClient(BINDING.url)
+    try:
+        db = client[resolve_db_name()]
+        for name in await db.list_collection_names():
+            # delete_many keeps the collection (and its indexes) visible in
+            # Compass; dropping it would hide the schema again.
+            result = await db[name].delete_many({})
+            print(f"{name}: removed {result.deleted_count} document(s)")
+    finally:
+        client.close()
+        await close_db()
+
+
+asyncio.run(main())
+"""
+
+_CLEAR_SQL_SCRIPT = """
+import asyncio
+import importlib
+import pathlib
+import pkgutil
+
+from core.database import Base, engine
+
+models_dir = pathlib.Path("models")
+if models_dir.is_dir():
+    for mod in pkgutil.iter_modules([str(models_dir)]):
+        if not mod.name.startswith("_"):
+            importlib.import_module(f"models.{mod.name}")
+
+
+async def main():
+    async with engine.begin() as conn:
+        # Delete rather than drop so the schema survives; reverse order respects
+        # foreign keys.
+        for table in reversed(Base.metadata.sorted_tables):
+            await conn.execute(table.delete())
+            print(f"{table.name}: cleared")
+    await engine.dispose()
+
+
+asyncio.run(main())
+"""
 
 
 @app.command("clear")
-def seed_clear() -> None:
-    """Clear all data from generated database tables (requires confirmation)."""
+def seed_clear(
+    force: Annotated[bool, typer.Option("--force", help="Skip the confirmation prompt.")] = False,
+) -> None:
+    """Clear all data from generated database tables or collections (requires confirmation)."""
     app_env = os.getenv("APP_ENV", "development")
     if app_env == "production":
         console.print("[red]Error: Database clearing is disabled in production![/red]")
         raise typer.Exit(1)
 
-    confirm = Confirm.ask("[yellow]⚠  Are you sure you want to clear all data from database tables?[/yellow]")
-    if not confirm:
+    if not force and not Confirm.ask(
+        "[yellow]⚠  Are you sure you want to clear all data from database tables/collections?[/yellow]"
+    ):
         console.print("Operation cancelled.")
         return
 
     config = get_config()
     output_root = Path.cwd() / config.output_dir
-    
-    # We dynamically load and drop tables, or run sql clear
-    # Let's run a simple python script to drop and recreate all tables
-    console.print("[cyan]Clearing database tables...[/cyan]")
-    clear_script = (
-        "from database import engine, Base\n"
-        "Base.metadata.reflect(bind=engine)\n"
-        "Base.metadata.drop_all(bind=engine)\n"
-        "Base.metadata.create_all(bind=engine)\n"
-        "print('Database tables cleared and recreated successfully.')\n"
-    )
-    
-    try:
-        from kaira.config import get_venv_python
-        python_exe = get_venv_python()
-        env = os.environ.copy()
-        env["PYTHONPATH"] = str(output_root) + os.pathsep + env.get("PYTHONPATH", "")
-        subprocess.run([python_exe, "-c", clear_script], check=True, env=env)
-        console.print("[green]✔ Database cleared successfully![/green]")
-    except Exception as e:
-        console.print(f"[red]Error clearing database: {e}[/red]")
+    db_type = getattr(config, "db_type", "sqlite")
+    driver = get_engine_driver(db_type)
+
+    console.print("[cyan]Clearing database data...[/cyan]")
+    script = _CLEAR_DOC_SCRIPT if driver.is_document_db else _CLEAR_SQL_SCRIPT
+    result = run_project_script(script, output_root)
+
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout).strip().splitlines()
+        tail = "\n".join(detail[-6:]) if detail else "no output"
+        console.print(
+            Panel(f"[red]Error clearing database:[/red]\n[dim]{tail}[/dim]", border_style="red")
+        )
         raise typer.Exit(1)
+
+    for line in result.stdout.splitlines():
+        if line.strip():
+            console.print(f"  [dim]{line.strip()}[/dim]")
+    console.print("[green]✔ Database cleared successfully![/green]")

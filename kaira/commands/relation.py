@@ -17,6 +17,9 @@ from kaira.core.detector import file_exists
 app = typer.Typer(help="Add relationships between models.")
 
 
+from kaira.core.drivers import get_engine_driver
+
+
 def _append_relation_block(model_file: Path, relation_block: str) -> None:
     """Append a relationship block to an existing model file."""
     content = model_file.read_text(encoding="utf-8")
@@ -37,8 +40,21 @@ def _build_relation_block(
     relation_type: str,
     target: str,
     cascade: Optional[str],
+    embedded: bool = False,
+    db_type: str = "sqlite",
 ) -> str:
     """Build a relationship code block to append to the source model."""
+    driver = get_engine_driver(db_type)
+    if driver.is_document_db:
+        snippet = driver.get_relation_snippet(
+            source_model=model_name,
+            target_model=target,
+            relation_type=relation_type,
+            cascade=cascade or "",
+            embedded=embedded,
+        )
+        return snippet["field_code"] + "\n"
+
     snake_self = camel_to_snake(model_name)
     snake_target = camel_to_snake(target)
 
@@ -80,6 +96,7 @@ def add_relation(
     has_one: Annotated[Optional[str], typer.Option("--has-one", help="Target model for many-to-one")] = None,
     many_to_many: Annotated[Optional[str], typer.Option("--many-to-many", help="Target model for many-to-many")] = None,
     cascade: Annotated[Optional[str], typer.Option("--cascade", help='Cascade option e.g. "all, delete-orphan"')] = None,
+    embedded: Annotated[bool, typer.Option("--embedded", help="Embed child sub-document schema (NoSQL / MongoDB)")] = False,
 ) -> None:
     """Add a relationship to MODEL_A's model file.
 
@@ -88,6 +105,7 @@ def add_relation(
     kaira add relation Post --has-many Comment --cascade "all, delete-orphan"
     kaira add relation Post --has-one User
     kaira add relation Post --many-to-many Tag
+    kaira add relation User --has-many Order --embedded  # NoSQL embedded document
     """
     # Validate model A
     try:
@@ -119,6 +137,7 @@ def add_relation(
 
     # Find the model file
     config = get_config()
+    db_type = getattr(config, "db_type", "sqlite")
     model_file = resolve_output_path("model", model_a, config, Path.cwd())
 
     if not file_exists(model_file):
@@ -128,7 +147,7 @@ def add_relation(
         )
         raise typer.Exit(1)
 
-    rel_block = _build_relation_block(model_a, relation_type, target, cascade)
+    rel_block = _build_relation_block(model_a, relation_type, target, cascade, embedded=embedded, db_type=db_type)
 
     console.print(
         Panel(

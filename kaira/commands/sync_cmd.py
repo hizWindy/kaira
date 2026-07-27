@@ -28,6 +28,7 @@ from typing import Annotated, Optional
 import typer
 
 from kaira.config import (
+    SERVER_MANAGED_FIELDS,
     SUPPORTED_FIELD_TYPES,
     KairaConfig,
     get_config,
@@ -37,9 +38,13 @@ from kaira.config import (
 from kaira.console import console
 from kaira.core.detector import write_with_check
 from kaira.core.generator import generate_layer, resolve_output_path
+from kaira.commands.seed_cmd import render_seed
 from kaira.core.parser import (
     FieldDef,
     RelationDef,
+    camel_to_snake,
+    infer_column_type,
+    normalize_ast_type,
     parse_fields,
     parse_relations_from_json,
     validate_model_name,
@@ -52,7 +57,7 @@ from kaira.commands.ux_helpers import require_project, typed_confirmation
 app = typer.Typer(help="Synchronise model field changes across all layers.")
 
 # Columns the generator manages itself — never treated as user fields.
-_MANAGED_FIELDS = {"id", "uuid", "created_at", "updated_at"}
+_MANAGED_FIELDS = SERVER_MANAGED_FIELDS
 
 # Layers regenerated mechanically from the model's fields.
 _CASCADE_LAYERS = ("model", "schema", "router")
@@ -70,17 +75,20 @@ _DOCUMENT_DB_TYPES = {"mongodb", "atlas", "firebase", "firestore"}
 def _mapped_inner_type(annotation: ast.expr) -> Optional[str]:
     """Return the inner type of a ``Mapped[...]`` annotation, or ``None``.
 
-    Example: ``Mapped[Optional[str]]`` → ``"Optional[str]"``.
+    Example: ``Mapped[Optional[str]]`` or ``sqlalchemy.orm.Mapped[str]``.
     """
-    if (
-        isinstance(annotation, ast.Subscript)
-        and isinstance(annotation.value, ast.Name)
-        and annotation.value.id == "Mapped"
-    ):
-        try:
-            return ast.unparse(annotation.slice).strip().strip('"').strip("'")
-        except Exception:
-            return None
+    if isinstance(annotation, ast.Subscript):
+        val = annotation.value
+        name = ""
+        if isinstance(val, ast.Name):
+            name = val.id
+        elif isinstance(val, ast.Attribute):
+            name = val.attr
+        if name == "Mapped":
+            try:
+                return ast.unparse(annotation.slice).strip().strip('"').strip("'")
+            except Exception:
+                return None
     return None
 
 
@@ -107,33 +115,90 @@ def _is_relationship_or_fk(value: Optional[ast.expr]) -> bool:
     return False
 
 
-def _parse_model_fields(model_path: Path) -> Optional[list[FieldDef]]:
+def _parse_model_fields(
+    model_path: Path, target_model_name: Optional[str] = None
+) -> Optional[list[FieldDef]]:
     """Read user-defined scalar fields back from a generated model file via AST.
 
-    Returns a list of :class:`FieldDef`, or ``None`` if the file cannot be parsed
-    (in which case the caller falls back to the ``.kaira.json`` snapshot).
+    Handles both SQLAlchemy ``Mapped[T]`` annotations and plain Beanie/Pydantic
+    annotations (``name: str``).  Returns a list of :class:`FieldDef`, or
+    ``None`` if the file cannot be parsed.
     """
     try:
         tree = ast.parse(model_path.read_text(encoding="utf-8"))
     except (OSError, SyntaxError):
         return None
 
+    target_node: Optional[ast.ClassDef] = None
+    if target_model_name:
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ClassDef) and node.name == target_model_name:
+                target_node = node
+                break
+
+    if target_node is None:
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ClassDef):
+                continue
+            if node.name in ("Settings", "Config"):
+                continue
+            is_enum = any(
+                (isinstance(b, ast.Name) and b.id == "Enum")
+                or (isinstance(b, ast.Attribute) and b.attr == "Enum")
+                for b in node.bases
+            )
+            if is_enum:
+                continue
+            target_node = node
+            break
+
+    if target_node is None:
+        return []
+
     fields: list[FieldDef] = []
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.ClassDef):
-            continue
-        for stmt in node.body:
-            if not isinstance(stmt, ast.AnnAssign) or not isinstance(
-                stmt.target, ast.Name
-            ):
-                continue
+    for stmt in target_node.body:
+        name = ""
+        stmt_val: Optional[ast.expr] = None
+
+        if isinstance(stmt, ast.AnnAssign) and isinstance(stmt.target, ast.Name):
             name = stmt.target.id
-            if name in _MANAGED_FIELDS or _is_relationship_or_fk(stmt.value):
-                continue
+            stmt_val = stmt.value
+        elif (
+            isinstance(stmt, ast.Assign)
+            and len(stmt.targets) == 1
+            and isinstance(stmt.targets[0], ast.Name)
+        ):
+            name = stmt.targets[0].id
+            stmt_val = stmt.value
+
+        if not name or name in _MANAGED_FIELDS or name.startswith("_"):
+            continue
+        if _is_relationship_or_fk(stmt_val):
+            continue
+
+        norm_type: Optional[str] = None
+        if isinstance(stmt, ast.AnnAssign):
             raw_type = _mapped_inner_type(stmt.annotation)
-            if raw_type in SUPPORTED_FIELD_TYPES:
-                fields.append(FieldDef(name=name, raw_type=raw_type))  # type: ignore[arg-type]
-        break  # Only the first class (the model itself).
+            if raw_type is None:
+                try:
+                    raw_type = (
+                        ast.unparse(stmt.annotation).strip().strip('"').strip("'")
+                    )
+                except Exception:
+                    raw_type = None
+
+            if raw_type and not any(
+                tok in raw_type
+                for tok in ("Link[", "relationship", "ForeignKey", "list[", "Dict[")
+            ):
+                norm_type = normalize_ast_type(raw_type)
+
+        if norm_type is None and stmt_val is not None:
+            norm_type = infer_column_type(stmt_val)
+
+        if norm_type and norm_type in SUPPORTED_FIELD_TYPES:
+            fields.append(FieldDef(name=name, raw_type=norm_type))  # type: ignore[arg-type]
+
     return fields
 
 
@@ -255,7 +320,7 @@ def _sync_one(
 
     # ── Resolve current + target field sets ────────────────────────────────
     model_path = resolve_output_path("model", model_name, config, base)
-    file_fields = _parse_model_fields(model_path) if model_path.exists() else None
+    file_fields = _parse_model_fields(model_path, model_name) if model_path.exists() else None
 
     if entry is not None:
         old_fields = _snapshot_fields(entry)
@@ -318,7 +383,7 @@ def _sync_one(
     for layer in _CASCADE_LAYERS:
         content = generate_layer(layer, model_name, target_fields, relations, config)
         out_path = resolve_output_path(layer, model_name, config, base)
-        result = write_with_check(out_path, content, force=force, non_interactive=False)
+        result = write_with_check(out_path, content, force=True, non_interactive=False)
         ok, arrow = sym("OK"), sym("ARROW")
         if result == "written":
             console.print(
@@ -326,6 +391,9 @@ def _sync_one(
             )
         else:
             console.print(f"  {arrow} {layer}: [{Theme.MUTED}]skipped[/{Theme.MUTED}]")
+
+    # ── Regenerate seed script if one already exists ───────────────────────
+    _sync_seed_if_exists(model_name, target_fields, config, base)
 
     # ── Flag the service layer (never auto-rewritten) ──────────────────────
     if added:
@@ -390,3 +458,33 @@ def _flag_service_layer(
         f"({', '.join(added)}) may need handling.[/{Theme.WARNING}]\n"
         f"    [{Theme.MUTED}]Review manually: added to schema/model but not to any service method.[/{Theme.MUTED}]"
     )
+
+
+def _sync_seed_if_exists(
+    model_name: str,
+    target_fields: list[FieldDef],
+    config: KairaConfig,
+    base: Path,
+) -> None:
+    """Regenerate the seed script when one already exists on disk.
+
+    Sync should not *create* seed scripts for models that never had one,
+    but if a seed exists it must stay in step with the model's fields.
+    """
+    snake = camel_to_snake(model_name)
+    output_root = base / config.output_dir
+    seed_path = output_root / "seeds" / f"seed_{snake}.py"
+    if not seed_path.exists():
+        return
+
+    # FieldDef → dict format that seed templates expect.
+    fields_as_dicts = [{"name": f.name, "type": f.raw_type} for f in target_fields]
+    content, out_path = render_seed(model_name, config, output_root, fields_override=fields_as_dicts)
+    result = write_with_check(out_path, content, force=True, non_interactive=False)
+    ok, arrow = sym("OK"), sym("ARROW")
+    if result == "written":
+        console.print(
+            f"  {ok} seed: [{Theme.PRIMARY}]{out_path}[/{Theme.PRIMARY}]"
+        )
+    else:
+        console.print(f"  {arrow} seed: [{Theme.MUTED}]skipped[/{Theme.MUTED}]")

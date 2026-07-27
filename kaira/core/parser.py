@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import ast
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 
-from kaira.config import SUPPORTED_FIELD_TYPES, SQLALCHEMY_TYPE_MAP, PYTHON_TYPE_MAP
+from kaira.config import SQLALCHEMY_TYPE_MAP, PYTHON_TYPE_MAP
 
 
 @dataclass
@@ -92,10 +93,99 @@ _OPTIONAL_RE = re.compile(r"^Optional\[(.+)\]$")
 _VALID_BASE_TYPES = {"str", "int", "float", "bool", "datetime"}
 
 
+def normalize_ast_type(raw_type: str) -> Optional[str]:
+    """Normalize raw type annotations (e.g. 'str | None', 'typing.Optional[int]') to canonical forms."""
+    raw = raw_type.strip().strip('"').strip("'")
+    if raw.startswith("typing."):
+        raw = raw[7:]
+    raw = raw.replace("typing.", "")
+
+    if " | None" in raw or "None | " in raw:
+        clean = raw.replace(" | None", "").replace("None | ", "").strip()
+        if clean in _VALID_BASE_TYPES:
+            return f"Optional[{clean}]"
+    if raw.startswith("Union[") and "None" in raw:
+        for b in _VALID_BASE_TYPES:
+            if b in raw:
+                return f"Optional[{b}]"
+    if raw in _VALID_BASE_TYPES:
+        return raw
+    if raw.startswith("Optional["):
+        inner = raw[9:-1].strip()
+        if inner in _VALID_BASE_TYPES:
+            return f"Optional[{inner}]"
+    return None
+
+
+def infer_column_type(value: Optional[ast.expr]) -> Optional[str]:
+    """Infer field type from Column(...) or mapped_column(...) AST call arguments."""
+    if value is None or not isinstance(value, ast.Call):
+        return None
+
+    func = value.func
+    fname = (
+        func.id
+        if isinstance(func, ast.Name)
+        else func.attr
+        if isinstance(func, ast.Attribute)
+        else ""
+    )
+    if fname not in ("Column", "mapped_column"):
+        return None
+
+    if not value.args:
+        return None
+
+    arg = value.args[0]
+    col_type_name = ""
+    if isinstance(arg, ast.Call):
+        col_type_name = (
+            arg.func.id
+            if isinstance(arg.func, ast.Name)
+            else arg.func.attr
+            if isinstance(arg.func, ast.Attribute)
+            else ""
+        )
+    elif isinstance(arg, ast.Name):
+        col_type_name = arg.id
+    elif isinstance(arg, ast.Attribute):
+        col_type_name = arg.attr
+
+    mapping = {
+        "String": "str",
+        "Text": "str",
+        "VARCHAR": "str",
+        "Integer": "int",
+        "BigInteger": "int",
+        "SmallInteger": "int",
+        "Float": "float",
+        "Numeric": "float",
+        "Boolean": "bool",
+        "DateTime": "datetime",
+        "Date": "datetime",
+        "Timestamp": "datetime",
+    }
+    base = mapping.get(col_type_name)
+    if not base:
+        return None
+
+    nullable = False
+    for kw in value.keywords:
+        if (
+            kw.arg == "nullable"
+            and isinstance(kw.value, ast.Constant)
+            and kw.value.value is True
+        ):
+            nullable = True
+            break
+
+    return f"Optional[{base}]" if nullable else base
+
+
 def _normalize_type(raw: str) -> str:
     """Normalize a raw type string to a canonical form."""
-    raw = raw.strip()
-    m = _OPTIONAL_RE.match(raw)
+    raw_str = raw.strip()
+    m = _OPTIONAL_RE.match(raw_str)
     if m:
         inner = m.group(1).strip()
         if inner not in _VALID_BASE_TYPES:
@@ -104,12 +194,13 @@ def _normalize_type(raw: str) -> str:
                 f"Supported: {sorted(_VALID_BASE_TYPES)}"
             )
         return f"Optional[{inner}]"
-    if raw not in _VALID_BASE_TYPES:
+    norm = normalize_ast_type(raw_str)
+    if norm is None:
         raise ValueError(
-            f"Unsupported field type '{raw}'. "
+            f"Unsupported field type '{raw_str}'. "
             f"Supported: {sorted(_VALID_BASE_TYPES)} or Optional[<type>]"
         )
-    return raw
+    return norm
 
 
 def parse_fields(fields_str: str) -> list[FieldDef]:

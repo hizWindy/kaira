@@ -1,19 +1,18 @@
 """Pydantic v2 schemas for {{ model_name }}."""
 
-from __future__ import annotations
-
 from datetime import datetime
-{% if needs_optional %}
+# Always imported: the Update schema makes every field Optional for PATCH
+# semantics, regardless of whether the model declares any optional fields.
 from typing import Optional
-{% endif %}
 
 from pydantic import BaseModel, ConfigDict, Field
 
 
 class {{ model_name }}Base(BaseModel):
     """Shared fields for {{ model_name }} schemas."""
-{% if fields %}
-{% for field in fields %}
+{% set user_fields = fields | rejectattr('name', 'in', server_managed_fields) | list %}
+{% if user_fields %}
+{% for field in user_fields %}
   {% if field.name == 'email' %}
     {{ field.name }}: str = Field(..., max_length=255, pattern=r'^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$')
   {% elif field.name == 'phone' %}
@@ -38,7 +37,27 @@ class {{ model_name }}Base(BaseModel):
 class {{ model_name }}Create({{ model_name }}Base):
     """Schema for creating a new {{ model_name }}."""
 
+{% if user_fields %}
+{% for field in user_fields %}
+  {% if field.name == 'email' %}
+    {{ field.name }}: str = Field(..., max_length=255, pattern=r'^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$')
+  {% elif field.name == 'phone' %}
+    {{ field.name }}: str = Field(..., max_length=20, pattern=r'^\+?[1-9]\d{1,14}$')
+  {% elif field.name == 'password' %}
+    {{ field.name }}: str = Field(..., min_length=8, max_length=128)
+  {% elif field.name == 'username' %}
+    {{ field.name }}: str = Field(..., min_length=3, max_length=50, pattern=r'^[a-zA-Z0-9_]+$')
+  {% elif field.python_type == 'str' %}
+    {{ field.name }}: str = Field(..., max_length=255)
+  {% elif field.python_type == 'Optional[str]' %}
+    {{ field.name }}: Optional[str] = Field(None, max_length=255)
+  {% else %}
+    {{ field.name }}: {{ field.python_type }}
+  {% endif %}
+{% endfor %}
+{% else %}
     pass
+{% endif %}
 
 
 class {{ model_name }}Update(BaseModel):
@@ -46,8 +65,8 @@ class {{ model_name }}Update(BaseModel):
 
     All fields are optional to support partial updates (PATCH semantics).
     """
-{% if fields %}
-{% for field in fields %}
+{% if user_fields %}
+{% for field in user_fields %}
   {% if field.name == 'email' %}
     {{ field.name }}: Optional[str] = Field(None, max_length=255, pattern=r'^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$')
   {% elif field.name == 'phone' %}
@@ -72,7 +91,7 @@ class {{ model_name }}Response(BaseModel):
 
     uuid: str
 {% for field in fields %}
-  {% if field.name != 'password' %}
+  {% if field.name != 'password' and field.name not in server_managed_fields %}
     {% if field.python_type == 'str' %}
     {{ field.name }}: str = Field(..., max_length=255)
     {% elif field.python_type == 'Optional[str]' %}
@@ -86,4 +105,10 @@ class {{ model_name }}Response(BaseModel):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True, str_strip_whitespace=True)
+
+
+{{ model_name }}Base.model_rebuild()
+{{ model_name }}Create.model_rebuild()
+{{ model_name }}Update.model_rebuild()
+{{ model_name }}Response.model_rebuild()
 

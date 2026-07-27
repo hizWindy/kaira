@@ -57,6 +57,9 @@ from kaira.commands.cloud_cmd import app as cloud_app  # noqa: F401 — register
 # ── Phase 5.5 command apps ────────────────────────────────────────────────────
 from kaira.commands.sync_cmd import app as sync_app
 
+# ── Phase 7 command apps ──────────────────────────────────────────────────────
+from kaira.commands.doc_migrate_cmd import app as doc_migrate_app
+
 # ── Import standalone command functions ───────────────────────────────────────
 from kaira.commands.project import init_command
 from kaira.commands.info import info_command
@@ -170,6 +173,14 @@ app.add_typer(
 
 app.add_typer(
     sync_app, name="sync", help="Cascade model field changes across all 5 layers."
+)
+
+# ── Sub-command groups — Phase 7 ──────────────────────────────────────────────
+
+app.add_typer(
+    doc_migrate_app,
+    name="migrate-docs",
+    help="NoSQL document migration and schema evolution.",
 )
 
 

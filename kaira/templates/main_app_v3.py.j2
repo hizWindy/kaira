@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from config.settings import settings
-from core.logger import logger
+from core.logger import detail, logger
 from middleware.security import register_security_middleware, register_exception_handlers
 from rate_limit import limiter
 
@@ -14,7 +14,10 @@ from rate_limit import limiter
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
-    logger.info("Starting up FastAPI application...")
+    #
+    # Every fact worth knowing at boot is collected here and printed as one
+    # aligned block at the end, rather than as a scatter of individual lines.
+    logger.debug("Starting up FastAPI application...")
 
     # ── Resolve & record which database we are on (Phase 6, Features 3 & 4) ────
     # Resolved once here; every surface (banner, /health, X-Kaira-DB-Mode header,
@@ -26,16 +29,20 @@ async def lifespan(app: FastAPI):
     app.state.db_online = _binding.online
     app.state.db_engine_name = _binding.engine
     app.state.db_name = _binding.name
+
+    _summary: dict[str, object] = {"environment": settings.APP_ENV}
     if _binding.online:
-        logger.info(
-            f"database   {_binding.engine} · {_binding.name} · online "
-            f"({mask_url(_binding.url)})"
+        _summary["database"] = (
+            f"{_binding.engine} · {_binding.name} · online ({mask_url(_binding.url)})"
         )
     else:
+        # Loud on its own line — a silent fallback to a local copy is exactly the
+        # kind of thing that gets noticed three hours too late.
         logger.warning(
-            f"primary unreachable — starting in OFFLINE mode · "
-            f"{_binding.engine} · {_binding.name} · offline"
+            "primary database unreachable — starting in OFFLINE mode"
+            + detail(engine=_binding.engine, database=_binding.name, mode="offline")
         )
+        _summary["database"] = f"{_binding.engine} · {_binding.name} · offline"
 
     {% if db_type == "mongodb" %}
     # Initialize Beanie and MongoDB connection
@@ -55,21 +62,24 @@ async def lifespan(app: FastAPI):
             if isinstance(item, type) and issubclass(item, Document) and item is not Document:
                 document_models.append(item)
                 
-    logger.info(f"Registering MongoDB Beanie models: {[m.__name__ for m in document_models]}")
     await init_db(document_models)
+    _summary["models"] = ", ".join(sorted(m.__name__ for m in document_models)) or "none"
     {% else %}
     # Relational database setup (SQLite/PostgreSQL/MySQL)
     # Automatically create tables in development environment if needed
     if settings.APP_ENV == "development":
         from core.database import create_tables
-        logger.info("Ensuring database tables are created...")
+        logger.debug("Ensuring database tables are created...")
         await create_tables()
     {% endif %}
-    
+
+    _summary["docs"] = "disabled" if settings.APP_ENV == "production" else "/docs"
+    logger.success("{{ project_name }} ready" + detail(**_summary))
+
     yield
-    
+
     # Shutdown
-    logger.info("Shutting down FastAPI application...")
+    logger.info("Shutting down {{ project_name }}...")
     {% if db_type == "mongodb" %}
     from core.database import close_db
     await close_db()

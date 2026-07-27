@@ -10,11 +10,12 @@ from jinja2 import Environment, FileSystemLoader, StrictUndefined
 from kaira.config import (
     KairaConfig,
     TIER_LAYERS,
-    LAYER_DIRS,
     LAYER_SUFFIX,
+    SERVER_MANAGED_FIELDS,
     get_config,
 )
 from kaira.core.parser import FieldDef, RelationDef, camel_to_snake, table_name
+from kaira.core.drivers import get_engine_driver
 
 
 # ---------------------------------------------------------------------------
@@ -87,6 +88,8 @@ def _build_context(
         "has_auth_guard": getattr(config, "auth_type", "none") != "none",
         # Helper: snake_case of a model name (callable from templates)
         "to_snake": camel_to_snake,
+        # Server-managed fields excluded from Create schemas
+        "server_managed_fields": SERVER_MANAGED_FIELDS,
     }
 
 
@@ -121,18 +124,13 @@ def generate_layer(
 
     env = _get_jinja_env()
     
-    # Select template based on database type configuration
     db_type = getattr(config, "db_type", "sqlite")
+    driver = get_engine_driver(db_type)
+    
     if layer == "model":
-        if db_type == "mongodb":
-            template_name = "model_mongodb.py.j2"
-        else:
-            template_name = "model.py.j2"
+        template_name = driver.get_model_template_name()
     elif layer == "repository":
-        if db_type == "mongodb":
-            template_name = "repository_mongodb.py.j2"
-        else:
-            template_name = "repository_async.py.j2"
+        template_name = driver.get_repository_template_name()
     else:
         template_name = f"{layer}.py.j2"
 

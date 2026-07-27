@@ -1,0 +1,54 @@
+{#
+  Shared sample-value generation for seed templates.
+
+  Imported by seed_model_doc.py.j2 and seed_model_sql.py.j2 so per-type sample
+  data lives in exactly one place. Every emitted expression may reference the
+  loop variable `i` (1-based record index) from the enclosing builder function.
+
+  Type coverage is deliberately limited to kaira.config.SUPPORTED_FIELD_TYPES —
+  str, int, float, bool, datetime, and their Optional[...] forms — because that
+  is what kaira.core.parser accepts. Branches for types the parser rejects would
+  be unreachable, so name-based heuristics (password, email) carry the remaining
+  realistic cases instead.
+
+  Import-requirement flags (needs_bcrypt) are computed in seed_cmd.py rather than
+  here: deriving booleans from macro output depends on incidental whitespace and
+  breaks quietly.
+#}
+
+{%- macro base_type(field) -%}
+{{ (field.type | default('str')) | replace('Optional[', '') | replace(']', '') | trim | lower }}
+{%- endmacro -%}
+
+{%- macro sample_value(field) -%}
+{%- set t = base_type(field) | trim -%}
+{%- set name = field.name | lower -%}
+{%- if name == 'password' or name.endswith('_password') -%}
+bcrypt.hashpw(f'password{i}'.encode(), bcrypt.gensalt()).decode('utf-8')
+{%- elif t == 'str' and (name == 'email' or name.endswith('_email')) -%}
+f'user{i}@example.com'
+{%- elif t == 'int' -%}
+i
+{%- elif t == 'float' -%}
+float(i)
+{%- elif t == 'bool' -%}
+i % 2 == 1
+{%- elif t == 'datetime' -%}
+BASE_TIME + timedelta(days=i)
+{%- else -%}
+f'sample_{{ field.name }}_{i}'
+{%- endif -%}
+{%- endmacro -%}
+
+{#-
+  Emit the record-dict entries shared by both paradigms, at `indent` spaces.
+  Newlines are emitted explicitly: the seed environment sets trim_blocks, which
+  swallows the newline following a block tag and would collapse every entry onto
+  a single line. The last entry omits its newline so the caller's closing brace
+  is not preceded by a blank line.
+-#}
+{%- macro record_dict(fields, indent) -%}
+{%- for field in fields -%}
+{{ indent }}'{{ field.name }}': {{ sample_value(field) }},{{ "\n" if not loop.last else "" }}
+{%- endfor -%}
+{%- endmacro -%}

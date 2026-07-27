@@ -9,7 +9,7 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class {{ model_name }}Document(BaseModel):
@@ -28,15 +28,22 @@ class {{ model_name }}Document(BaseModel):
 
 {% endfor %}
 
-    class Config:
-        """Pydantic v2 config."""
-
-        populate_by_name = True
-        json_schema_extra = {
+    # extra="allow" keeps keys present in the stored document but not declared
+    # above. Without it pydantic drops them on load and the next write persists
+    # the document without them — silent data loss. Firestore is schemaless by
+    # design, so preserving unknown keys is the safe default.
+    #
+    # This affects the stored document only. The Create/Update request schemas
+    # stay strict, so clients still cannot inject arbitrary fields.
+    model_config = ConfigDict(
+        populate_by_name=True,
+        extra="allow",
+        json_schema_extra={
             "example": {
                 "document_id": "550e8400-e29b-41d4-a716-446655440000",
 {% for field in fields %}
                 "{{ field.name }}": {{ field.example }},
 {% endfor %}
             }
-        }
+        },
+    )

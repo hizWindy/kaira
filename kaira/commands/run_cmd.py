@@ -136,6 +136,14 @@ def run_command(
         bool,
         typer.Option("--sql", "--verbose", help="Show SQL echo for this run (KAIRA_SQL_ECHO=1)."),
     ] = False,
+    debug: Annotated[
+        bool,
+        typer.Option("--debug", "-d", help="Verbose logs: per-layer traces, request ids, server lifecycle."),
+    ] = False,
+    access_log: Annotated[
+        bool,
+        typer.Option("--access-log", help="Also print uvicorn's own access log line per request."),
+    ] = False,
 ) -> None:
     """Start the FastAPI server using 'fastapi dev' or 'fastapi run'.
 
@@ -280,6 +288,12 @@ def run_command(
         )
     if sql:
         info_table.add_row("SQL echo", "[yellow]on[/yellow]")
+    info_table.add_row(
+        "Logs",
+        "[yellow]debug[/yellow]  [dim]per-layer traces, request ids[/dim]"
+        if debug
+        else "[white]info[/white]  [dim]one line per request — add --debug for detail[/dim]",
+    )
     info_table.add_row("URL",        f"[bold cyan]http://{host}:{port}[/bold cyan]")
     info_table.add_row("Docs",       f"[dim]http://{host}:{port}/docs[/dim]")
     info_table.add_row("ReDoc",      f"[dim]http://{host}:{port}/redoc[/dim]")
@@ -325,13 +339,21 @@ def run_command(
     # SQL echo is off by default; `--sql`/`--verbose` opts in for this run only.
     if sql:
         env["KAIRA_SQL_ECHO"] = "1"
+    # Log verbosity is read by the generated core/logger.py at import time.
+    if debug:
+        env["KAIRA_LOG_LEVEL"] = "DEBUG"
+    if access_log:
+        env["KAIRA_ACCESS_LOG"] = "1"
 
+    interrupted = False
+    exit_code = 0
     try:
-        subprocess.run(cmd, cwd=str(cwd), env=env)
+        exit_code = subprocess.run(cmd, cwd=str(cwd), env=env).returncode
     except KeyboardInterrupt:
-        pass
-    finally:
-        console.print()
+        interrupted = True
+
+    console.print()
+    if interrupted or exit_code == 0:
         console.print(
             Panel(
                 "[bold]Server stopped.[/bold]  "
@@ -340,3 +362,36 @@ def run_command(
                 padding=(0, 2),
             )
         )
+        return
+
+    # Non-zero exit — the server never started, or it crashed. The traceback is
+    # already above; this panel names the likely cause so the developer does not
+    # have to read it to know what to do next.
+    console.print(
+        Panel(
+            _crash_hint(exit_code, host, port),
+            title=f"[red]x  Server exited with code {exit_code}[/red]",
+            border_style="red",
+            padding=(0, 2),
+        )
+    )
+    raise typer.Exit(exit_code)
+
+
+def _crash_hint(exit_code: int, host: str, port: int) -> str:
+    """Return a short, actionable diagnosis for a non-zero server exit."""
+    lines = [
+        "[dim]The server process ended unexpectedly. "
+        "The traceback above is the authority — most common causes:[/dim]",
+        "",
+        f"  [bold]Port in use[/bold]        another process already holds "
+        f"[cyan]{host}:{port}[/cyan]  "
+        f"[dim]→ kaira run --port {port + 1}[/dim]",
+        "  [bold]Import error[/bold]       a module in the entry file failed to import  "
+        "[dim]→ check the last frame above[/dim]",
+        "  [bold]Missing package[/bold]    a dependency is not installed in this venv  "
+        "[dim]→ pip install -r requirements.txt[/dim]",
+        "  [bold]Database refused[/bold]   the configured DATABASE_URL is unreachable  "
+        "[dim]→ kaira db info[/dim]",
+    ]
+    return "\n".join(lines)

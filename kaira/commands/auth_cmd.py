@@ -42,7 +42,11 @@ def auth_generate(
     (auth_dir / "__init__.py").touch(exist_ok=True)
 
     env = _get_env()
-    ctx: dict = {"project_name": Path.cwd().name}
+    db_type = getattr(config, "db_type", "sqlite")
+    ctx: dict = {
+        "project_name": Path.cwd().name,
+        "db_type": db_type,
+    }
 
     if auth_type == "jwt":
         _generate_jwt(env, ctx, auth_dir, output_root, force)
@@ -162,11 +166,9 @@ def auth_add_guard(
             # Find closing paren and add dependency before it
             pass  # We'll use a simpler approach: inject into Depends chain
 
-    # Simpler: add current_user to all endpoint functions by adding a parameter
-    modified = "\n".join(lines)
-    # Pattern: find function signatures ending with ) -> and add current_user param
+    # Add current_user to mutation/lookup endpoint functions except list endpoints (def list_...)
     modified = re.sub(
-        r"(def \w+\([^)]*)(service: [^)]+= Depends\(get_service\))",
+        r"(def (?!list_)\w+\([^)]*)(service: [^)]+= Depends\(get_service\))",
         r"\1\2,\n    current_user: dict = Depends(get_current_user)",
         modified,
     )

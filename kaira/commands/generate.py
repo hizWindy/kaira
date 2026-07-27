@@ -11,14 +11,12 @@ from typing import Annotated, Optional
 import typer
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
-from rich.table import Table
 
 from kaira.console import console
 from kaira.commands.ux_helpers import print_next_steps
 
 from kaira.config import (
     TIER_LAYERS,
-    LAYER_DIRS,
     get_config,
     save_config,
     register_model,
@@ -31,8 +29,29 @@ from kaira.core.parser import (
     FieldDef,
     RelationDef,
 )
-from kaira.core.generator import generate_layer, generate_all, resolve_output_path
+from kaira.core.generator import generate_layer, resolve_output_path, TEMPLATES_DIR
 from kaira.core.detector import write_with_check
+
+
+def _ensure_message_schema(config, base: Path) -> None:
+    """Write the shared ``MessageResponse`` schema once if it does not exist.
+
+    Every generated router imports this schema for the delete response, so
+    it must be present before the first router is used.
+    """
+    schemas_dir = base / config.schemas_dir
+    target = schemas_dir / "message_schema.py"
+    if target.exists():
+        return
+    schemas_dir.mkdir(parents=True, exist_ok=True)
+    (schemas_dir / "__init__.py").touch(exist_ok=True)
+    from jinja2 import Environment, FileSystemLoader
+    env = Environment(
+        loader=FileSystemLoader(str(TEMPLATES_DIR)),
+        keep_trailing_newline=True,
+    )
+    tmpl = env.get_template("message_schema.py.j2")
+    target.write_text(tmpl.render(), encoding="utf-8")
 
 def _ruff_format(path: Path) -> None:
     """Run ruff check --fix and ruff format on the given file path."""
@@ -119,6 +138,7 @@ def _generate_and_write(
             _print_success(out_path)
             if layer == "router":
                 _register_router_in_main(model_name, base, config)
+                _ensure_message_schema(config, base)
         else:
             _print_skipped(out_path)
 
@@ -213,6 +233,9 @@ def generate_model(
             else:
                 _print_skipped(out_path)
             progress.advance(task)
+
+    # Ensure the shared MessageResponse schema exists alongside model schemas.
+    _ensure_message_schema(config, base)
 
     # Persist model to .kaira.json
     register_model(
@@ -342,8 +365,6 @@ def generate_bulk(
     if not isinstance(models_data, list):
         console.print("[bold red]✗[/bold red]  JSON root must be an array of model definitions.")
         raise typer.Exit(1)
-
-    config = get_config()
 
     with Progress(
         SpinnerColumn(),
