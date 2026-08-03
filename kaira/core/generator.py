@@ -55,6 +55,11 @@ def _build_context(
     needs_optional = any(f.optional for f in fields)
     has_relations = bool(relations)
 
+    # Embedded documents each need an import in every layer that names them.
+    # Deduplicated and sorted so regenerating an unchanged model is a no-op diff.
+    embedded_fields = [f for f in fields if f.is_embedded]
+    embedded_imports = sorted({f.embedded_model for f in embedded_fields})
+
     # Categorize relations
     one_to_many = [r for r in relations if r.relation_type == "one-to-many"]
     many_to_one = [r for r in relations if r.relation_type == "many-to-one"]
@@ -69,6 +74,10 @@ def _build_context(
         "fields": fields,
         "needs_datetime": needs_datetime,
         "needs_optional": needs_optional,
+        # Embedded (nested) documents
+        "embedded_fields": embedded_fields,
+        "embedded_imports": embedded_imports,
+        "has_embedded": bool(embedded_fields),
         # Relations
         "relations": relations,
         "has_relations": has_relations,
@@ -142,6 +151,26 @@ def generate_layer(
         ) from exc
 
     ctx = _build_context(model_name, fields, relations, config)
+    return template.render(**ctx)
+
+
+def generate_embedded_model(
+    model_name: str,
+    fields: list[FieldDef],
+    config: Optional[KairaConfig] = None,
+) -> str:
+    """Render the source for an embedded (nested) document type.
+
+    Embedded models are a single pydantic ``BaseModel`` — no repository,
+    service or router, because they are values inside another document rather
+    than a collection of their own.
+    """
+    if config is None:
+        config = get_config()
+
+    env = _get_jinja_env()
+    template = env.get_template("embedded_model.py.j2")
+    ctx = _build_context(model_name, fields, [], config)
     return template.render(**ctx)
 
 

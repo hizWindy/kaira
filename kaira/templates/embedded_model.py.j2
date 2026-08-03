@@ -1,0 +1,43 @@
+"""
+{{ models_dir }}/{{ snake_name }}.py
+
+Embedded document model for {{ model_name }}.
+
+This is a nested value object, not a collection of its own: it has no id and no
+table/collection. It is stored inline on whichever model declares it as a field
+— as a sub-document on MongoDB/Firestore, and inside a JSON column on SQL.
+"""
+
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Optional
+
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class {{ model_name }}(BaseModel):
+    """Nested {{ model_name }} value object."""
+
+{% if fields %}
+{% for field in fields %}
+{% if field.name == 'email' %}
+    {{ field.name }}: {% if field.optional %}Optional[str] = Field(None{% else %}str = Field(...{% endif %}, max_length=255, pattern=r'^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$')
+{% elif field.name == 'phone' %}
+    {{ field.name }}: {% if field.optional %}Optional[str] = Field(None{% else %}str = Field(...{% endif %}, max_length=20, pattern=r'^\+?[1-9]\d{1,14}$')
+{% elif field.python_type == 'str' %}
+    {{ field.name }}: str = Field(..., max_length=255)
+{% elif field.python_type == 'Optional[str]' %}
+    {{ field.name }}: Optional[str] = Field(None, max_length=255)
+{% else %}
+    {{ field.name }}: {{ field.python_type }}{% if field.optional %} = None{% endif %}
+
+{% endif %}
+{% endfor %}
+{% else %}
+    pass
+{% endif %}
+
+    # Mirrors the parent document: keys present in stored data but not declared
+    # here stay readable and survive a full-document write.
+    model_config = ConfigDict(populate_by_name=True, extra="allow")

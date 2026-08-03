@@ -1,0 +1,31 @@
+    # [KAIRA_EXPORT_METHOD]
+    async def export(self, fmt: str) -> AsyncIterator[bytes]:
+        """
+        Serialize {{ model_name }} records into a downloadable file.
+
+        The document is written to a temporary file before the first byte is
+        handed back, so a failure surfaces here — while the HTTP status can
+        still be changed — rather than truncating a 200 response mid-download.
+        Rows reach the writer in batches, so the table is never fully resident.
+
+        Args:
+            fmt: One of the formats the router's ``Literal`` permits.
+
+        Returns:
+            AsyncIterator[bytes]: The file's bytes. The temporary file is
+            deleted as the iterator is drained.
+        """
+        logger.debug(f"GET /{{ snake_name }}s/export → exporting {{ snake_name }}s as {fmt}")
+        rows = fetch_rows(
+            "{{ model_name }}",
+{% if is_document_db %}
+            collection={{ model_name }}.get_motor_collection(),
+{% else %}
+            db=self._db,
+{% endif %}
+            table="{{ table_name }}",
+        )
+        path = await serialize_to_temp(rows, fmt, "{{ model_name }} export")
+        logger.success(f"{{ model_name }} export ready · format={fmt}")
+        return iter_temp_file(path)
+    # [/KAIRA_EXPORT_METHOD]

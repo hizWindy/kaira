@@ -1,0 +1,45 @@
+# [KAIRA_EXPORT_ROUTE]
+@router.get(
+    "/export",
+    summary="Export {{ model_name }}s",
+    description="Download {{ model_name }} records as a file. Requires authentication.",
+    response_class=StreamingResponse,
+)
+@limiter.limit({{ rate_limit_setting }})
+async def export_{{ snake_name }}s(
+    request: Request,
+    format: Literal[{{ format_literal }}] = "{{ default_format }}",
+    service: {{ model_name }}Service = Depends(get_service),
+    current_user: dict = Depends(get_current_user),
+) -> StreamingResponse:
+    """Export {{ model_name }} records as a downloadable file.
+
+    Streams the result — never buffers the full table in memory.
+
+    Sensitive fields (password, token, secret, api_key) are removed by
+    ``core.export`` before serialization and cannot be requested back.
+    """
+    logger.debug(
+        f"router  GET /{{ snake_name }}s/export format={format} "
+        f"by user_id={current_user.get('uuid') or current_user.get('id')}"
+    )
+    try:
+        stream = await service.export(format)
+    except Exception as exc:
+        # Driver and serialization errors carry table names, SQL fragments and
+        # temp paths. The operator gets all of it; the client gets none of it.
+        logger.error(f"export {{ snake_name }}s failed — {type(exc).__name__}: {exc}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Export failed. Please try again later.",
+        ) from None
+
+    return StreamingResponse(
+        stream,
+        media_type=EXPORT_MEDIA_TYPES[format],
+        headers={
+            "Content-Disposition": f"attachment; filename={{ snake_name }}s.{format}",
+            "X-Kaira-Export-Format": format,
+        },
+    )
+# [/KAIRA_EXPORT_ROUTE]

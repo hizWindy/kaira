@@ -13,6 +13,14 @@ from rich.panel import Panel
 from kaira.config import get_config
 from kaira.console import console
 from kaira.core.detector import write_with_check, file_exists
+from kaira.core.wiring import register_router_in_main
+
+# Auth types that expose an APIRouter, mapped to the module holding it.
+# ``api-key`` is intentionally absent — it ships a dependency, not routes.
+ROUTER_MODULES = {
+    "jwt": ("auth/router.py", "auth.router"),
+    "oauth2": ("auth/oauth2.py", "auth.oauth2"),
+}
 
 TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
 
@@ -46,6 +54,9 @@ def auth_generate(
     ctx: dict = {
         "project_name": Path.cwd().name,
         "db_type": db_type,
+        # The auth router is mounted under the versioned prefix, so OAuth2's
+        # tokenUrl has to match or Swagger's Authorize button posts to a 404.
+        "api_version": getattr(config, "api_version", "v1"),
     }
 
     if auth_type == "jwt":
@@ -71,6 +82,12 @@ def auth_generate(
         title="Kaira — Auth",
         border_style="green",
     ))
+
+    if auth_type in ROUTER_MODULES:
+        console.print(
+            "\n[dim]Next:[/dim] mount the auth routes in main.py with "
+            "[cyan]kaira auth register[/cyan]"
+        )
 
 
 def _generate_jwt(env: Environment, ctx: dict, auth_dir: Path, output_root: Path, force: bool) -> None:
@@ -113,6 +130,101 @@ def _generate_api_key(env: Environment, ctx: dict, auth_dir: Path, force: bool) 
     out_path = auth_dir / "api_key.py"
     write_with_check(out_path, tmpl.render(**ctx), force=force)
     console.print(f"  [green bold]✓[/green bold]  Written: [cyan]{out_path}[/cyan]")
+
+
+@app.command("register")
+def auth_register(
+    auth_type: Annotated[
+        Optional[str],
+        typer.Option("--type", help="Auth type to register: jwt or oauth2. Auto-detected when omitted."),
+    ] = None,
+    no_version_prefix: Annotated[
+        bool,
+        typer.Option("--no-version-prefix", help="Mount at /auth instead of /api/<version>/auth."),
+    ] = False,
+) -> None:
+    """Register the generated auth router in main.py."""
+    config = get_config()
+    output_root = Path.cwd() / config.output_dir
+
+    if auth_type is None:
+        detected = [t for t, (rel, _) in ROUTER_MODULES.items() if (output_root / rel).exists()]
+        if not detected:
+            console.print(
+                "[yellow]⚠  No auth router found.[/yellow]\n"
+                "  Run [bold]kaira auth generate --type jwt[/bold] first."
+            )
+            raise typer.Exit(1)
+        if len(detected) > 1:
+            console.print(
+                f"[yellow]⚠  Multiple auth routers found ({', '.join(detected)}).[/yellow]\n"
+                "  Pick one with [bold]kaira auth register --type <jwt|oauth2>[/bold]."
+            )
+            raise typer.Exit(1)
+        auth_type = detected[0]
+
+    if auth_type == "api-key":
+        console.print(
+            "[yellow]⚠  API key auth has no router to register.[/yellow]\n"
+            "  It ships a [cyan]validate_api_key[/cyan] dependency — add it to the endpoints you\n"
+            "  want protected instead."
+        )
+        raise typer.Exit(1)
+
+    if auth_type not in ROUTER_MODULES:
+        console.print(f"[red]Unknown auth type:[/red] {auth_type}")
+        raise typer.Exit(1)
+
+    rel_path, module = ROUTER_MODULES[auth_type]
+    router_file = output_root / rel_path
+    if not router_file.exists():
+        console.print(
+            f"[red]Auth router not found:[/red] {router_file}\n"
+            f"  Run [bold]kaira auth generate --type {auth_type}[/bold] first."
+        )
+        raise typer.Exit(1)
+
+    import_line = f"from {module} import router as auth_router"
+    if no_version_prefix:
+        include_line = "app.include_router(auth_router)"
+        mounted_at = "/auth"
+    else:
+        include_line = "app.include_router(auth_router, prefix=API_VERSION_PREFIX)"
+        mounted_at = f"/api/{getattr(config, 'api_version', 'v1')}/auth"
+
+    main_path = output_root / "main.py"
+    result = register_router_in_main(main_path, import_line, include_line)
+
+    if result == "no-main":
+        console.print(f"[red]main.py not found:[/red] {main_path}")
+        raise typer.Exit(1)
+
+    if result == "no-marker":
+        console.print(
+            f"[yellow]⚠  No [cyan]# \\[ROUTER_REGISTRATION][/cyan] marker in {main_path}.[/yellow]\n"
+            "  Add these two lines by hand:\n\n"
+            f"  [cyan]{import_line}[/cyan]\n"
+            f"  [cyan]{include_line}[/cyan]\n"
+        )
+        raise typer.Exit(1)
+
+    if result == "already":
+        console.print(f"[yellow]⚠  Auth router is already registered in {main_path}.[/yellow]")
+        return
+
+    console.print(f"  [green bold]✓[/green bold]  Auth router registered in [cyan]{main_path}[/cyan]")
+    console.print(Panel(
+        f"[green]Auth routes mounted at[/green] [bold]{mounted_at}[/bold]",
+        title="Kaira — Auth",
+        border_style="green",
+    ))
+
+    if getattr(config, "auth_type", "none") == "none":
+        console.print(
+            "\n[dim]Hint:[/dim] [bold]auth_type[/bold] is still [bold]none[/bold] in your config, so newly\n"
+            f"  generated routers won't get auth guards. Set it with:\n"
+            f"  [cyan]kaira config set auth_type {auth_type}[/cyan]"
+        )
 
 
 @app.command("add-guard")

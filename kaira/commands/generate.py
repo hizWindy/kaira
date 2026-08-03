@@ -20,6 +20,8 @@ from kaira.config import (
     get_config,
     save_config,
     register_model,
+    register_embedded_model,
+    embedded_model_names,
 )
 from kaira.core.parser import (
     parse_fields,
@@ -29,8 +31,14 @@ from kaira.core.parser import (
     FieldDef,
     RelationDef,
 )
-from kaira.core.generator import generate_layer, resolve_output_path, TEMPLATES_DIR
+from kaira.core.generator import (
+    generate_layer,
+    generate_embedded_model,
+    resolve_output_path,
+    TEMPLATES_DIR,
+)
 from kaira.core.detector import write_with_check
+from kaira.core.wiring import register_router_in_main
 
 
 def _ensure_message_schema(config, base: Path) -> None:
@@ -85,36 +93,14 @@ def _print_skipped(path: Path) -> None:
 
 def _register_router_in_main(model_name: str, base: Path, config) -> None:
     """Register a generated router in Phase 3 main.py when the placeholder exists."""
-    main_path = base / "main.py"
-    if not main_path.exists():
-        return
-
-    try:
-        content = main_path.read_text(encoding="utf-8")
-    except OSError:
-        return
-
-    marker = "# [ROUTER_REGISTRATION]"
-    if marker not in content:
-        return
-
     snake = camel_to_snake(model_name)
     routers_dir = config.routers_dir.replace("/", ".").replace("\\", ".")
     router_var = f"{snake}_router"
-    import_line = f"from {routers_dir}.{snake}_router import router as {router_var}"
-    include_line = f"app.include_router({router_var}, prefix=API_VERSION_PREFIX)"
-
-    if import_line not in content:
-        import_anchor = "from rate_limit import limiter\n"
-        if import_anchor in content:
-            content = content.replace(import_anchor, f"{import_anchor}{import_line}\n", 1)
-        else:
-            content = f"{import_line}\n{content}"
-
-    if include_line not in content:
-        content = content.replace(marker, f"{include_line}\n{marker}", 1)
-
-    main_path.write_text(content, encoding="utf-8")
+    register_router_in_main(
+        base / "main.py",
+        f"from {routers_dir}.{snake}_router import router as {router_var}",
+        f"app.include_router({router_var}, prefix=API_VERSION_PREFIX)",
+    )
 
 
 def _generate_and_write(
@@ -150,6 +136,101 @@ def _generate_and_write(
         [{"type": r.relation_type, "target": r.target} for r in relations],
     )
     save_config(config)
+
+
+# ---------------------------------------------------------------------------
+# generate embedded
+# ---------------------------------------------------------------------------
+
+@app.command("embedded")
+def generate_embedded(
+    model_name: Annotated[
+        str, typer.Argument(help="PascalCase embedded type name, e.g. EmergencyContact")
+    ],
+    fields: Annotated[
+        Optional[str],
+        typer.Option("--fields", "-f", help='Field definitions: "name:str, phone:str"'),
+    ] = None,
+    force: Annotated[
+        bool,
+        typer.Option("--force", help="Overwrite existing files without prompting"),
+    ] = False,
+) -> None:
+    """Generate an embedded (nested) document type usable as a field type.
+
+    An embedded type is a value object stored *inside* another model rather
+    than in its own collection or table — so it gets a single pydantic model,
+    no repository, service or router. Once generated, any model can declare it:
+
+    \b
+    kaira generate embedded EmergencyContact --fields "name:str, phone:str"
+    kaira generate model Credential --fields "sss_id:str, emergency_contact:EmergencyContact"
+
+    Optional and list forms both work:
+
+    \b
+    --fields "emergency_contact:Optional[EmergencyContact]"
+    --fields "contacts:list[EmergencyContact]"
+    """
+    try:
+        validate_model_name(model_name)
+    except ValueError as exc:
+        console.print(f"[bold red]✗[/bold red]  {exc}")
+        raise typer.Exit(1)
+
+    config = get_config()
+
+    # An embedded type may itself embed another, so already-registered names
+    # are in scope — minus this one, which cannot contain itself.
+    in_scope = embedded_model_names(config) - {model_name}
+    try:
+        parsed_fields = parse_fields(fields or "", embedded=in_scope)
+    except ValueError as exc:
+        console.print(f"[bold red]✗[/bold red]  {exc}")
+        raise typer.Exit(1)
+
+    if any(m.get("name") == model_name for m in config.generated_models):
+        console.print(
+            f"[bold red]✗[/bold red]  '{model_name}' is already a top-level model. "
+            f"An embedded type cannot share its name."
+        )
+        raise typer.Exit(1)
+
+    console.print(
+        Panel(
+            f"[bold cyan]Embedded:[/bold cyan] {model_name}\n"
+            f"[bold cyan]Fields:[/bold cyan]   "
+            f"{', '.join(f.name for f in parsed_fields) or '—'}\n"
+            f"[dim]Nested value object — no repository, service or router.[/dim]",
+            title="[bold]Kaira[/bold] — Generating Embedded Type",
+            border_style="cyan",
+        )
+    )
+
+    base = Path.cwd()
+    content = generate_embedded_model(model_name, parsed_fields, config)
+    out_path = resolve_output_path("model", model_name, config, base)
+    result = write_with_check(out_path, content, force=force, non_interactive=False)
+    if result == "written":
+        _ruff_format(out_path)
+        _print_success(out_path)
+    else:
+        _print_skipped(out_path)
+
+    register_embedded_model(
+        config,
+        model_name,
+        [{"name": f.name, "type": f.raw_type} for f in parsed_fields],
+    )
+    save_config(config)
+
+    print_next_steps(
+        [
+            f'Use it: kaira generate model Owner --fields "{camel_to_snake(model_name)}:{model_name}"',
+            "Already have the owning model? kaira sync model Owner cascades it "
+            "through schema and router.",
+        ]
+    )
 
 
 # ---------------------------------------------------------------------------

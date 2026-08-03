@@ -17,16 +17,36 @@
 #}
 
 {%- macro base_type(field) -%}
-{{ (field.type | default('str')) | replace('Optional[', '') | replace(']', '') | trim | lower }}
+{{ (field.type | default('str')) | replace('Optional[', '') | replace('list[', '') | replace('List[', '') | replace(']', '') | trim | lower }}
 {%- endmacro -%}
 
-{%- macro sample_value(field) -%}
+{#-
+  The embedded type name a field refers to, or '' when the field is scalar.
+  `embedded_defs` is passed by seed_cmd.py and maps type name -> field list.
+-#}
+{%- macro embedded_name(field, embedded_defs) -%}
+{%- set raw = (field.type | default('str')) | replace('Optional[', '') | replace('list[', '') | replace('List[', '') | replace(']', '') | trim -%}
+{{ raw if raw in embedded_defs else '' }}
+{%- endmacro -%}
+
+{#-
+  A nested dict literal for one embedded document, built from its own fields so
+  the seed satisfies the nested model's validation rather than a flat string.
+-#}
+{%- macro embedded_literal(type_name, embedded_defs) -%}
+{% set sub_fields = embedded_defs.get(type_name, []) -%}
+{{ '{' }}{% for sub in sub_fields %}'{{ sub.name }}': {{ scalar_value(sub) }}{{ ', ' if not loop.last else '' }}{% endfor %}{{ '}' }}
+{%- endmacro -%}
+
+{%- macro scalar_value(field) -%}
 {%- set t = base_type(field) | trim -%}
 {%- set name = field.name | lower -%}
 {%- if name == 'password' or name.endswith('_password') -%}
-bcrypt.hashpw(f'password{i}'.encode(), bcrypt.gensalt()).decode('utf-8')
+bcrypt.hashpw(plain_password(i).encode(), bcrypt.gensalt()).decode('utf-8')
 {%- elif t == 'str' and (name == 'email' or name.endswith('_email')) -%}
 f'user{i}@example.com'
+{%- elif t == 'str' and (name == 'phone' or name.endswith('_phone')) -%}
+f'+639{i:09d}'
 {%- elif t == 'int' -%}
 i
 {%- elif t == 'float' -%}
@@ -40,6 +60,20 @@ f'sample_{{ field.name }}_{i}'
 {%- endif -%}
 {%- endmacro -%}
 
+{%- macro sample_value(field, embedded_defs={}) -%}
+{%- set nested = embedded_name(field, embedded_defs) | trim -%}
+{%- if nested -%}
+{%- set literal = embedded_literal(nested, embedded_defs) | trim -%}
+{%- if (field.type | lower).startswith('list[') -%}
+[{{ literal }}]
+{%- else -%}
+{{ literal }}
+{%- endif -%}
+{%- else -%}
+{{ scalar_value(field) }}
+{%- endif -%}
+{%- endmacro -%}
+
 {#-
   Emit the record-dict entries shared by both paradigms, at `indent` spaces.
   Newlines are emitted explicitly: the seed environment sets trim_blocks, which
@@ -47,8 +81,55 @@ f'sample_{{ field.name }}_{i}'
   a single line. The last entry omits its newline so the caller's closing brace
   is not preceded by a blank line.
 -#}
-{%- macro record_dict(fields, indent) -%}
+{#-
+  The plaintext-password helper plus the post-seed credentials printout.
+
+  Emitted only when the model actually has a password field. `plain_password`
+  is the single source of truth: `sample_value` hashes its return value, and
+  the printout reads the same function, so the credentials shown can never
+  drift from the credentials stored. A hard-coded comment would rot the first
+  time the sample scheme changes.
+-#}
+{%- macro password_helper() -%}
+def plain_password(i: int) -> str:
+    """Return the plaintext password seeded for record *i*.
+
+    Seeded passwords are stored bcrypt-hashed and cannot be read back, so this
+    is the only way to recover them for testing. Used both to build the hash
+    and to print the credentials below — they cannot disagree.
+    """
+    return f"password{i}"
+{%- endmacro -%}
+
+{%- macro credentials_block(login_identifier, is_auth_model, auth_login_path, indent) -%}
+{% set ind = ' ' * indent %}
+{{ ind }}print()
+{{ ind }}print("Test credentials — plaintext, seeded data only:")
+{{ ind }}for i in range(1, min(count, 3) + 1):
+{% if login_identifier %}
+{{ ind }}    print(f"  {build_record(i)[{{ '%r' | format(login_identifier) }}]}  /  {plain_password(i)}")
+{% else %}
+{{ ind }}    print(f"  record {i}  /  {plain_password(i)}")
+{% endif %}
+{{ ind }}if count > 3:
+{{ ind }}    print(f"  ... and {count - 3} more, same pattern: password<n>")
+{% if is_auth_model and login_identifier %}
+{{ ind }}print()
+{{ ind }}print("Log in with:")
+{{ ind }}print(f"  curl -X POST http://localhost:8000{{ auth_login_path }} \\")
+{{ ind }}print("    -H 'Content-Type: application/json' \\")
+{{ ind }}print(
+{{ ind }}    "    -d '"
+{{ ind }}    + json.dumps(
+{{ ind }}        {"username": build_record(1)[{{ '%r' | format(login_identifier) }}], "password": plain_password(1)}
+{{ ind }}    )
+{{ ind }}    + "'"
+{{ ind }})
+{% endif %}
+{%- endmacro -%}
+
+{%- macro record_dict(fields, indent, embedded_defs={}) -%}
 {%- for field in fields -%}
-{{ indent }}'{{ field.name }}': {{ sample_value(field) }},{{ "\n" if not loop.last else "" }}
+{{ indent }}'{{ field.name }}': {{ sample_value(field, embedded_defs) }},{{ "\n" if not loop.last else "" }}
 {%- endfor -%}
 {%- endmacro -%}

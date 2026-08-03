@@ -110,10 +110,11 @@ import secrets
 from typing import Optional
 from jose import jwt, JWTError
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from config.settings import settings
 from auth.utils import verify_password
+from core.logger import logger
 
 try:
     from models.blacklisted_token import BlacklistedToken
@@ -145,7 +146,7 @@ class AuthService:
         return jwt.encode(to_encode, settings.JWT_SECRET_KEY, algorithm="HS256")
 
     @staticmethod
-    def validate_access_token(token: str, db: Session) -> Optional[dict]:
+    def validate_access_token(token: str, db: AsyncSession) -> Optional[dict]:
         try:
             payload = jwt.decode(
                 token, 
@@ -158,37 +159,44 @@ class AuthService:
         except JWTError:
             return None
 
+    # get_db yields an AsyncSession, so every query below must be awaited.
+    # A sync `db.execute(...)` here returns an un-awaited coroutine and fails
+    # on `.scalar_one_or_none()` — which a bare `except` would turn into a
+    # blanket 401 with no trace of the real cause.
     @staticmethod
-    def authenticate_user(username: str, password_raw: str, db: Session) -> Optional[dict]:
-        try:
-            from models.user import User
-            user = db.execute(select(User).where(User.username == username)).scalar_one_or_none()
-            if user and verify_password(password_raw, user.password):
-                access = AuthService.create_access_token(user.uuid)
-                refresh = AuthService.create_refresh_token(user.uuid)
-                return {"access_token": access, "refresh_token": refresh, "token_type": "bearer"}
-        except Exception:
-            pass
+    async def authenticate_user(username: str, password_raw: str, db: AsyncSession) -> Optional[dict]:
+        from models.user import User
+
+        result = await db.execute(select(User).where(User.username == username))
+        user = result.scalar_one_or_none()
+        if user and verify_password(password_raw, user.password):
+            access = AuthService.create_access_token(user.uuid)
+            refresh = AuthService.create_refresh_token(user.uuid)
+            return {"access_token": access, "refresh_token": refresh, "token_type": "bearer"}
+        # Same response for "no such user" and "wrong password" — the caller
+        # must not be able to enumerate accounts.
         return None
 
     @staticmethod
-    def refresh_access_token(refresh_token: str, db: Session) -> Optional[dict]:
+    async def refresh_access_token(refresh_token: str, db: AsyncSession) -> Optional[dict]:
         try:
             payload = jwt.decode(refresh_token, settings.JWT_SECRET_KEY, algorithms=["HS256"])
             jti = payload.get("jti")
             user_id = payload.get("sub")
             if not jti or not user_id:
                 return None
-            
+
             # Check blacklist
             if BlacklistedToken is not None:
-                exists = db.execute(select(BlacklistedToken).where(BlacklistedToken.token == refresh_token)).scalar_one_or_none()
-                if exists:
+                result = await db.execute(
+                    select(BlacklistedToken).where(BlacklistedToken.token == refresh_token)
+                )
+                if result.scalar_one_or_none():
                     return None
-            
+
             # Blacklist the old refresh token (Token Rotation!)
-            AuthService.blacklist_token(refresh_token, db)
-            
+            await AuthService.blacklist_token(refresh_token, db)
+
             # Generate new pair
             new_access = AuthService.create_access_token(user_id)
             new_refresh = AuthService.create_refresh_token(user_id)
@@ -197,20 +205,25 @@ class AuthService:
             return None
 
     @staticmethod
-    def blacklist_token(token: str, db: Session) -> bool:
+    async def blacklist_token(token: str, db: AsyncSession) -> bool:
         if BlacklistedToken is None:
             return False
         try:
             # Check if already blacklisted
-            exists = db.execute(select(BlacklistedToken).where(BlacklistedToken.token == token)).scalar_one_or_none()
-            if exists:
+            result = await db.execute(
+                select(BlacklistedToken).where(BlacklistedToken.token == token)
+            )
+            if result.scalar_one_or_none():
                 return False
-            
+
             # Add to DB blacklist
-            blacklisted = BlacklistedToken(token=token)
-            db.add(blacklisted)
-            db.commit()
+            db.add(BlacklistedToken(token=token))
+            await db.commit()
             return True
-        except Exception:
+        except Exception as exc:
+            # Logged rather than swallowed: a silent False here means logout
+            # reports success while the token stays valid.
+            await db.rollback()
+            logger.error(f"Failed to blacklist token: {exc}")
             return False
 {% endif %}

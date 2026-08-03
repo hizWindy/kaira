@@ -59,6 +59,7 @@ from kaira.commands.sync_cmd import app as sync_app
 
 # ── Phase 7 command apps ──────────────────────────────────────────────────────
 from kaira.commands.doc_migrate_cmd import app as doc_migrate_app
+from kaira.commands.export_cmd import app as export_app
 
 # ── Import standalone command functions ───────────────────────────────────────
 from kaira.commands.project import init_command
@@ -181,6 +182,11 @@ app.add_typer(
     doc_migrate_app,
     name="migrate-docs",
     help="NoSQL document migration and schema evolution.",
+)
+app.add_typer(
+    export_app,
+    name="export",
+    help="Export data to xlsx/pdf/docx — CLI files and generated API endpoints.",
 )
 
 

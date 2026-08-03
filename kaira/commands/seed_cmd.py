@@ -13,8 +13,14 @@ from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
 from rich.prompt import Confirm
 
-from kaira.config import get_config, save_config, SUPPORTED_FIELD_TYPES, SERVER_MANAGED_FIELDS
-from kaira.core.parser import infer_column_type, normalize_ast_type
+from kaira.config import (
+    get_config,
+    save_config,
+    embedded_model_names,
+    SUPPORTED_FIELD_TYPES,
+    SERVER_MANAGED_FIELDS,
+)
+from kaira.core.parser import _embedded_target, infer_column_type, normalize_ast_type
 from kaira.console import console
 from kaira.core.detector import write_with_check
 from kaira.core.drivers import get_engine_driver
@@ -29,13 +35,37 @@ app = typer.Typer(help="Database seeding commands.")
 _MANAGED_FIELDS = SERVER_MANAGED_FIELDS
 
 
-def _parse_live_model_fields(
-    model_file: Path, target_model_name: Optional[str] = None
-) -> list[dict[str, str]]:
-    """Inspect a generated Python model file via AST and extract active scalar fields.
+def _embedded_seed_type(raw_type: str, embedded: set[str]) -> Optional[str]:
+    """Return the canonical embedded type for *raw_type*, or ``None``.
 
-    Handles both Beanie/Pydantic Document models and SQLAlchemy Mapped models.
+    Mirrors the check in ``sync``: without it an embedded field is dropped from
+    the seed, and a seed missing a *required* nested field fails validation the
+    moment it runs.
     """
+    if not embedded:
+        return None
+    target = _embedded_target(raw_type)
+    if target is None or target not in embedded:
+        return None
+    raw = raw_type.strip()
+    if raw.lower().startswith("list["):
+        return f"list[{target}]"
+    if raw.startswith("Optional["):
+        return f"Optional[{target}]"
+    return target
+
+
+def _parse_live_model_fields(
+    model_file: Path,
+    target_model_name: Optional[str] = None,
+    embedded: Optional[set[str]] = None,
+) -> list[dict[str, str]]:
+    """Inspect a generated Python model file via AST and extract active fields.
+
+    Handles Beanie/Pydantic Document models, SQLAlchemy Mapped models, and
+    embedded document fields whose type names a registered embedded model.
+    """
+    embedded = embedded or set()
     if not model_file.exists():
         return []
 
@@ -100,6 +130,14 @@ def _parse_live_model_fields(
             if raw_type.startswith("Mapped[") and raw_type.endswith("]"):
                 raw_type = raw_type[7:-1].strip()
 
+            # Checked before the generic exclusions so `list[EmergencyContact]`
+            # is not mistaken for a relationship and discarded.
+            if raw_type:
+                embedded_type = _embedded_seed_type(raw_type, embedded)
+                if embedded_type:
+                    fields.append({"name": name, "type": embedded_type})
+                    continue
+
             if raw_type and not any(
                 token in raw_type for token in ("Link[", "relationship", "ForeignKey", "list[", "Dict[")
             ):
@@ -114,15 +152,42 @@ def _parse_live_model_fields(
     return fields
 
 
+def _restore_embedded_from_snapshot(
+    live_fields: list[dict[str, str]],
+    snapshot: list[dict[str, str]],
+    embedded: set[str],
+) -> list[dict[str, str]]:
+    """Re-add embedded fields the AST pass could not recover.
+
+    On SQL an embedded field is declared as ``Mapped[dict]`` backed by a JSON
+    column, so the model file no longer names the embedded type — only the
+    ``.kaira.json`` snapshot still knows it. Merging the two keeps SQL seeds
+    complete *and* stops the snapshot from being overwritten with a field list
+    that has silently lost its embedded entries.
+    """
+    live_names = {f["name"] for f in live_fields}
+    merged = list(live_fields)
+    for index, field in enumerate(snapshot):
+        if field.get("name") in live_names:
+            continue
+        if _embedded_seed_type(field.get("type", ""), embedded):
+            merged.insert(min(index, len(merged)), field)
+    return merged
+
+
 def _get_model_fields(config: Any, model_name: str, output_root: Path) -> list[dict[str, str]]:
     """Resolve model fields, preferring live AST inspection of the model file over static config."""
     snake = camel_to_snake(model_name)
     model_file = output_root / config.models_dir / f"{snake}.py"
+    embedded = embedded_model_names(config)
 
-    live_fields = _parse_live_model_fields(model_file, model_name)
+    live_fields = _parse_live_model_fields(model_file, model_name, embedded)
     if live_fields:
         for m in config.generated_models:
             if m.get("name") == model_name:
+                live_fields = _restore_embedded_from_snapshot(
+                    live_fields, m.get("fields", []), embedded
+                )
                 m["fields"] = live_fields
                 save_config(config)
                 break
@@ -194,6 +259,35 @@ def render_seed(
 
     env = _get_env()
     snake = camel_to_snake(model_name)
+    # Embedded types need their own field lists so the seed can build a nested
+    # sample value instead of a flat string. Keyed by type name for the macro.
+    embedded_defs = {
+        entry["name"]: entry.get("fields", [])
+        for entry in getattr(config, "embedded_models", [])
+        if entry.get("name")
+    }
+    embedded_used = {
+        _embedded_target(f.get("type", "")) or ""
+        for f in fields
+        if _embedded_seed_type(f.get("type", ""), set(embedded_defs))
+    }
+
+    # A seeded password is bcrypt-hashed and unreadable afterwards, so the seed
+    # prints the plaintext and the identifier it pairs with. The generated auth
+    # service authenticates against `User.username`, so that field is preferred;
+    # email is the fallback for models shaped differently.
+    has_password = any(_is_password_field(f) for f in fields) or any(
+        _is_password_field(sub)
+        for name in embedded_used
+        for sub in embedded_defs.get(name, [])
+    )
+    field_names = [f.get("name") for f in fields]
+    login_identifier = next(
+        (name for name in ("username", "email") if name in field_names), ""
+    )
+    auth_type = getattr(config, "auth_type", "none")
+    api_version = getattr(config, "api_version", "v1")
+
     ctx = {
         "model_name": model_name,
         "snake_name": snake,
@@ -201,7 +295,14 @@ def render_seed(
         "fields": fields,
         "models_dir": config.models_dir,
         "db_type": db_type,
-        "needs_bcrypt": any(_is_password_field(f) for f in fields),
+        "embedded_defs": embedded_defs,
+        "has_password": has_password,
+        "login_identifier": login_identifier,
+        # The curl hint is only correct for the model the auth service queries.
+        "is_auth_model": model_name == "User" and auth_type != "none",
+        "auth_login_path": f"/api/{api_version}/auth/login",
+        # A password *inside* an embedded type still needs bcrypt imported.
+        "needs_bcrypt": has_password,
     }
 
     tmpl = env.get_template(driver.get_seed_template_name())
@@ -285,11 +386,16 @@ def seed_run(
     ) as progress:
         task = progress.add_task("[cyan]Running seeds...", total=len(scripts))
         for script in scripts:
-            # Auto-sync live model fields into seed script if model definition evolved
+            # Auto-sync live model fields into seed script if model definition evolved.
+            # Rendering goes through render_seed rather than a context assembled
+            # here: a second copy of the context silently drops whatever keys it
+            # does not know about, which strips real code out of the seed.
             sname = script.stem.replace("seed_", "")
             model_pascal = snake_to_pascal(sname)
             model_file = output_root / config.models_dir / f"{sname}.py"
-            live_fields = _parse_live_model_fields(model_file, model_pascal)
+            live_fields = _parse_live_model_fields(
+                model_file, model_pascal, embedded_model_names(config)
+            )
             if live_fields:
                 script_text = script.read_text(encoding="utf-8")
                 missing = [
@@ -297,19 +403,10 @@ def seed_run(
                     if f"'{f['name']}':" not in script_text and f'"{f["name"]}":' not in script_text
                 ]
                 if missing:
-                    driver = get_engine_driver(db_type)
-                    env = _get_env()
-                    ctx = {
-                        "model_name": model_pascal,
-                        "snake_name": sname,
-                        "table_name": table_name(model_pascal),
-                        "fields": live_fields,
-                        "models_dir": config.models_dir,
-                        "db_type": db_type,
-                        "needs_bcrypt": any(_is_password_field(f) for f in live_fields),
-                    }
-                    tmpl = env.get_template(driver.get_seed_template_name())
-                    write_with_check(script, tmpl.render(**ctx), force=True, non_interactive=True)
+                    content, _ = render_seed(
+                        model_pascal, config, output_root, fields_override=live_fields
+                    )
+                    write_with_check(script, content, force=True, non_interactive=True)
                     console.print(f"  [cyan]ℹ Auto-synced {script.name} with updated model fields: {', '.join(missing)}[/cyan]")
 
             progress.update(task, description=f"[cyan]  {script.name}...")

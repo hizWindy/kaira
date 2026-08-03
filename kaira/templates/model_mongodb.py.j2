@@ -14,6 +14,9 @@ from typing import Optional
 
 from beanie import Document
 from pydantic import ConfigDict, Field
+{% for embedded in embedded_imports %}
+from {{ models_dir }}.{{ to_snake(embedded) }} import {{ embedded }}
+{% endfor %}
 
 
 class {{ model_name }}(Document):
@@ -28,7 +31,17 @@ class {{ model_name }}(Document):
 
     # ── Business fields ───────────────────────────────────────────────────────
 {% for field in fields %}
-{% if field.optional %}
+{% if field.is_embedded %}
+{# Embedded documents are stored inline; a list defaults to empty rather than
+   None so callers can append without a null check. #}
+{% if field.is_list %}
+    {{ field.name }}: list[{{ field.embedded_model }}] = Field(default_factory=list)
+{% elif field.optional %}
+    {{ field.name }}: Optional[{{ field.embedded_model }}] = None
+{% else %}
+    {{ field.name }}: {{ field.embedded_model }}
+{% endif %}
+{% elif field.optional %}
     {{ field.name }}: Optional[{{ field.python_type.replace("Optional[", "").rstrip("]") }}] = None
 {% elif field.python_type == "datetime" %}
     {{ field.name }}: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

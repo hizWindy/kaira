@@ -6,6 +6,9 @@ from datetime import datetime
 from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
+{% for embedded in embedded_imports %}
+from {{ models_dir }}.{{ to_snake(embedded) }} import {{ embedded }}
+{% endfor %}
 
 
 class {{ model_name }}Base(BaseModel):
@@ -13,7 +16,15 @@ class {{ model_name }}Base(BaseModel):
 {% set user_fields = fields | rejectattr('name', 'in', server_managed_fields) | list %}
 {% if user_fields %}
 {% for field in user_fields %}
-  {% if field.name == 'email' %}
+  {% if field.is_embedded %}
+    {% if field.is_list %}
+    {{ field.name }}: list[{{ field.embedded_model }}] = Field(default_factory=list)
+    {% elif field.optional %}
+    {{ field.name }}: Optional[{{ field.embedded_model }}] = None
+    {% else %}
+    {{ field.name }}: {{ field.embedded_model }}
+    {% endif %}
+  {% elif field.name == 'email' %}
     {{ field.name }}: str = Field(..., max_length=255, pattern=r'^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$')
   {% elif field.name == 'phone' %}
     {{ field.name }}: str = Field(..., max_length=20, pattern=r'^\+?[1-9]\d{1,14}$')
@@ -39,7 +50,15 @@ class {{ model_name }}Create({{ model_name }}Base):
 
 {% if user_fields %}
 {% for field in user_fields %}
-  {% if field.name == 'email' %}
+  {% if field.is_embedded %}
+    {% if field.is_list %}
+    {{ field.name }}: list[{{ field.embedded_model }}] = Field(default_factory=list)
+    {% elif field.optional %}
+    {{ field.name }}: Optional[{{ field.embedded_model }}] = None
+    {% else %}
+    {{ field.name }}: {{ field.embedded_model }}
+    {% endif %}
+  {% elif field.name == 'email' %}
     {{ field.name }}: str = Field(..., max_length=255, pattern=r'^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$')
   {% elif field.name == 'phone' %}
     {{ field.name }}: str = Field(..., max_length=20, pattern=r'^\+?[1-9]\d{1,14}$')
@@ -67,7 +86,13 @@ class {{ model_name }}Update(BaseModel):
     """
 {% if user_fields %}
 {% for field in user_fields %}
-  {% if field.name == 'email' %}
+  {% if field.is_embedded %}
+    {% if field.is_list %}
+    {{ field.name }}: Optional[list[{{ field.embedded_model }}]] = None
+    {% else %}
+    {{ field.name }}: Optional[{{ field.embedded_model }}] = None
+    {% endif %}
+  {% elif field.name == 'email' %}
     {{ field.name }}: Optional[str] = Field(None, max_length=255, pattern=r'^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$')
   {% elif field.name == 'phone' %}
     {{ field.name }}: Optional[str] = Field(None, max_length=20, pattern=r'^\+?[1-9]\d{1,14}$')
@@ -92,7 +117,15 @@ class {{ model_name }}Response(BaseModel):
     uuid: str
 {% for field in fields %}
   {% if field.name != 'password' and field.name not in server_managed_fields %}
-    {% if field.python_type == 'str' %}
+    {% if field.is_embedded %}
+      {% if field.is_list %}
+    {{ field.name }}: list[{{ field.embedded_model }}] = Field(default_factory=list)
+      {% elif field.optional %}
+    {{ field.name }}: Optional[{{ field.embedded_model }}] = None
+      {% else %}
+    {{ field.name }}: {{ field.embedded_model }}
+      {% endif %}
+    {% elif field.python_type == 'str' %}
     {{ field.name }}: str = Field(..., max_length=255)
     {% elif field.python_type == 'Optional[str]' %}
     {{ field.name }}: Optional[str] = Field(None, max_length=255)

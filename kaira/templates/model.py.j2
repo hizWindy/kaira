@@ -16,6 +16,9 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     ForeignKey,
+{% if has_embedded %}
+    JSON,
+{% endif %}
     Table,
 )
 from sqlalchemy.orm import relationship, Mapped, mapped_column
@@ -35,7 +38,18 @@ class {{ model_name }}(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     uuid: Mapped[str] = mapped_column(String(36), unique=True, index=True, default=lambda: str(uuid.uuid4()))
 {% for field in fields %}
-{% if field.optional %}
+{% if field.is_embedded %}
+{# SQL has no sub-document type, so the nested {{ field.embedded_model }} rides
+   in a JSON column. The ORM hands back plain dicts; the schema layer is where
+   it is validated back into a typed {{ field.embedded_model }}. #}
+{% if field.is_list %}
+    {{ field.name }}: Mapped[list[dict]] = mapped_column(JSON, nullable=False, default=list)
+{% elif field.optional %}
+    {{ field.name }}: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+{% else %}
+    {{ field.name }}: Mapped[dict] = mapped_column(JSON, nullable=False)
+{% endif %}
+{% elif field.optional %}
     {{ field.name }}: Mapped[{{ field.python_type }}] = mapped_column({{ field.sqlalchemy_type }}, nullable=True)
 {% else %}
     {{ field.name }}: Mapped[{{ field.python_type }}] = mapped_column({{ field.sqlalchemy_type }}, nullable=False)

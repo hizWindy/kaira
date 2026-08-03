@@ -63,7 +63,9 @@ def guide_main(
             "  [bold cyan]kaira guide sync[/bold cyan]              Cascade model field changes across layers\n"
             "  [bold magenta]── Phase 6 ──────────────────────────────────[/bold magenta]\n"
             "  [bold cyan]kaira guide db-provision[/bold cyan]      Automatic database provisioning\n"
-            "  [bold cyan]kaira guide offline[/bold cyan]           Offline / online database engine"
+            "  [bold cyan]kaira guide offline[/bold cyan]           Offline / online database engine\n"
+            "  [bold magenta]── Phase 7 ──────────────────────────────────[/bold magenta]\n"
+            "  [bold cyan]kaira guide export[/bold cyan]            Data export — CLI files & API endpoints"
         )
         print_guide_panel("Index", content, "Run any guide for examples and usage.")
 
@@ -816,4 +818,44 @@ def guide_offline() -> None:
         "offline",
         content,
         "See KAIRA_SQL_ECHO / kaira run --sql to surface SQL for a single run.",
+    )
+
+
+@app.command("export")
+def guide_export() -> None:
+    """Guide for exporting data — CLI files and generated API endpoints."""
+    content = (
+        "Two ways out of the database. Same pipeline, two trust boundaries.\n\n"
+        "[bold green]1. kaira export data — your own pull (CLI):[/bold green]\n"
+        "  kaira export data User --format xlsx\n"
+        "  kaira export data User --format pdf --limit 500\n"
+        '  kaira export data User --format docx --fields "username,email,created_at"\n'
+        '  kaira export data User --format xlsx --filter "status:active,role:admin"\n'
+        "  kaira export data User --format xlsx --output ./reports/users.xlsx\n\n"
+        "  Every model at once:\n"
+        "  kaira export data --all --format xlsx     one workbook, one sheet per model\n"
+        "  kaira export data --all --format pdf      one file per model\n\n"
+        "[bold green]2. kaira export add — self-serve endpoint (generated API):[/bold green]\n"
+        "  kaira auth add-guard User                 required first — no unguarded exports\n"
+        "  kaira export add User --format xlsx\n"
+        "  kaira export add Order --format all       xlsx + pdf + docx\n"
+        '  kaira export add User --format xlsx --rate-limit "2/minute"\n\n'
+        "  Gives you:  [cyan]GET /api/v1/users/export?format=xlsx[/cyan]\n"
+        "  Streamed, auth-gated, rate-limited, X-Kaira-Export-Format header.\n\n"
+        "  kaira export list                         model · formats · auth · rate limit\n"
+        "  kaira export remove User                  removes the block and its imports\n\n"
+        "[bold green]What is never exported:[/bold green]\n"
+        "  Any field whose name contains password, token, secret or api_key is\n"
+        "  stripped from every file, in every format, on both paths. There is no\n"
+        "  flag to keep them, and they cannot be used as a --filter key either —\n"
+        "  an equality filter on a hash is a guessing oracle.\n\n"
+        "[bold green]Safety:[/bold green]\n"
+        "  exports/ is created and gitignored automatically.\n"
+        "  --all against APP_ENV=production asks you to type the project name,\n"
+        "  and --force does not buy you past it."
+    )
+    print_guide_panel(
+        "export",
+        content,
+        "Use --limit for pdf/docx on large tables — they are page-oriented formats.",
     )

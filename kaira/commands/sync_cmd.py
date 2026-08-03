@@ -31,6 +31,7 @@ from kaira.config import (
     SERVER_MANAGED_FIELDS,
     SUPPORTED_FIELD_TYPES,
     KairaConfig,
+    embedded_model_names,
     get_config,
     register_model,
     save_config,
@@ -42,6 +43,7 @@ from kaira.commands.seed_cmd import render_seed
 from kaira.core.parser import (
     FieldDef,
     RelationDef,
+    _embedded_target,
     camel_to_snake,
     infer_column_type,
     normalize_ast_type,
@@ -115,15 +117,40 @@ def _is_relationship_or_fk(value: Optional[ast.expr]) -> bool:
     return False
 
 
-def _parse_model_fields(
-    model_path: Path, target_model_name: Optional[str] = None
-) -> Optional[list[FieldDef]]:
-    """Read user-defined scalar fields back from a generated model file via AST.
+def _embedded_field_type(raw_type: str, embedded: set[str]) -> Optional[str]:
+    """Return the canonical embedded type for *raw_type*, or ``None``.
 
-    Handles both SQLAlchemy ``Mapped[T]`` annotations and plain Beanie/Pydantic
-    annotations (``name: str``).  Returns a list of :class:`FieldDef`, or
+    Recognises ``EmergencyContact``, ``Optional[EmergencyContact]`` and
+    ``list[EmergencyContact]`` where the inner name is a registered embedded
+    model. Without this, sync sees an embedded field as an unknown annotation,
+    drops it, and the regenerated model silently loses the field.
+    """
+    if not embedded:
+        return None
+    target = _embedded_target(raw_type)
+    if target is None or target not in embedded:
+        return None
+    raw = raw_type.strip()
+    if raw.lower().startswith("list["):
+        return f"list[{target}]"
+    if raw.startswith("Optional["):
+        return f"Optional[{target}]"
+    return target
+
+
+def _parse_model_fields(
+    model_path: Path,
+    target_model_name: Optional[str] = None,
+    embedded: Optional[set[str]] = None,
+) -> Optional[list[FieldDef]]:
+    """Read user-defined fields back from a generated model file via AST.
+
+    Handles SQLAlchemy ``Mapped[T]`` annotations, plain Beanie/Pydantic
+    annotations (``name: str``), and embedded document fields whose type names
+    a registered embedded model.  Returns a list of :class:`FieldDef`, or
     ``None`` if the file cannot be parsed.
     """
+    embedded = embedded or set()
     try:
         tree = ast.parse(model_path.read_text(encoding="utf-8"))
     except (OSError, SyntaxError):
@@ -187,6 +214,15 @@ def _parse_model_fields(
                 except Exception:
                     raw_type = None
 
+            # An embedded document is checked before the generic exclusions:
+            # `list[EmergencyContact]` is a legitimate field, unlike the
+            # `list[...]`/`Link[...]` shapes the relationship system owns.
+            if raw_type:
+                embedded_type = _embedded_field_type(raw_type, embedded)
+                if embedded_type:
+                    fields.append(FieldDef(name=name, raw_type=embedded_type))
+                    continue
+
             if raw_type and not any(
                 tok in raw_type
                 for tok in ("Link[", "relationship", "ForeignKey", "list[", "Dict[")
@@ -207,12 +243,18 @@ def _parse_model_fields(
 # ---------------------------------------------------------------------------
 
 
-def _snapshot_fields(entry: dict) -> list[FieldDef]:
-    """Rebuild :class:`FieldDef` objects from a ``.kaira.json`` model entry."""
+def _snapshot_fields(entry: dict, embedded: Optional[set[str]] = None) -> list[FieldDef]:
+    """Rebuild :class:`FieldDef` objects from a ``.kaira.json`` model entry.
+
+    Embedded types are accepted alongside the scalar whitelist so a snapshotted
+    embedded field is not treated as removed on the next sync.
+    """
+    embedded = embedded or set()
     return [
         FieldDef(name=f["name"], raw_type=f["type"])
         for f in entry.get("fields", [])
         if f.get("type") in SUPPORTED_FIELD_TYPES
+        or _embedded_field_type(f.get("type", ""), embedded)
     ]
 
 
@@ -317,13 +359,18 @@ def _sync_one(
     entry = next(
         (m for m in config.generated_models if m.get("name") == model_name), None
     )
+    embedded = embedded_model_names(config)
 
     # ── Resolve current + target field sets ────────────────────────────────
     model_path = resolve_output_path("model", model_name, config, base)
-    file_fields = _parse_model_fields(model_path, model_name) if model_path.exists() else None
+    file_fields = (
+        _parse_model_fields(model_path, model_name, embedded)
+        if model_path.exists()
+        else None
+    )
 
     if entry is not None:
-        old_fields = _snapshot_fields(entry)
+        old_fields = _snapshot_fields(entry, embedded)
         relations = _snapshot_relations(entry)
     elif file_fields is not None:
         # Older project without a snapshot — derive it from the model file.
@@ -342,7 +389,9 @@ def _sync_one(
     target_fields = list(file_fields) if file_fields is not None else list(old_fields)
     if fields:
         try:
-            target_fields = _merge_fields(target_fields, parse_fields(fields))
+            target_fields = _merge_fields(
+                target_fields, parse_fields(fields, embedded=embedded)
+            )
         except ValueError as exc:
             smart_error(context=str(exc), typed=fields, guide_topic="generate")
 

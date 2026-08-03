@@ -26,6 +26,10 @@ SUPPORTED_FIELD_TYPES = {
 # and excluded from user-field introspection in sync / seed.
 SERVER_MANAGED_FIELDS = {"id", "uuid", "created_at", "updated_at"}
 
+# Embedded (nested) document fields are stored as a JSON column on SQL engines
+# and as a real sub-document on document stores. One declaration, both worlds.
+EMBEDDED_SQLALCHEMY_TYPE = "JSON"
+
 SQLALCHEMY_TYPE_MAP = {
     "str": "String",
     "int": "Integer",
@@ -91,6 +95,9 @@ class KairaConfig:
     ai_model: str = "gpt-4o"
     ai_api_key_env: str = "OPENAI_API_KEY"
     generated_models: list[dict[str, Any]] = field(default_factory=list)
+    # Embedded (nested) document types usable as a field type on any model.
+    # Each entry: {"name": "EmergencyContact", "fields": [{"name":…, "type":…}]}
+    embedded_models: list[dict[str, Any]] = field(default_factory=list)
     # Phase 3 fields
     db_type: str = "sqlite"          # postgresql | mysql | mongodb | sqlite
     api_version: str = "v1"           # v1 | v2 | …
@@ -164,6 +171,36 @@ def register_model(config: KairaConfig, model_name: str, fields: list[dict], rel
             entry["relations"] = relations
             return
     config.generated_models.append({"name": model_name, "fields": fields, "relations": relations})
+
+
+def register_embedded_model(
+    config: KairaConfig, model_name: str, fields: list[dict]
+) -> None:
+    """Add or update an embedded model entry in config's embedded_models list."""
+    for entry in config.embedded_models:
+        if entry.get("name") == model_name:
+            entry["fields"] = fields
+            return
+    config.embedded_models.append({"name": model_name, "fields": fields})
+
+
+def embedded_model_names(config: Optional[KairaConfig] = None) -> set[str]:
+    """Return the set of registered embedded model names.
+
+    Used by the field parser to decide whether a non-scalar type such as
+    ``EmergencyContact`` is a known embedded document or a typo. Returns an
+    empty set outside a Kaira project so parsing degrades to scalars only.
+    """
+    if config is None:
+        try:
+            config = get_config()
+        except Exception:
+            return set()
+    return {
+        entry["name"]
+        for entry in getattr(config, "embedded_models", [])
+        if entry.get("name")
+    }
 
 
 def get_venv_python(cwd: Optional[Path] = None) -> str:

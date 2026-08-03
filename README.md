@@ -154,6 +154,7 @@ kaira guide init
 kaira guide generate
 kaira guide db
 kaira guide config
+kaira guide export
 ```
 
 ### Database-aware generation
@@ -533,6 +534,60 @@ The app binds exactly **one** database at startup, governed by two independent d
 - The launch banner shows the database engine, name, and online/offline mode.
 
 See `kaira guide db-provision` and `kaira guide offline` for full walkthroughs.
+
+---
+
+## Phase 7: Data Export (`kaira export`)
+
+Getting data **out** — for you at the terminal, and for the users of the app you scaffolded. Two trust boundaries, one serialization pipeline in `core/export.py`, so neither side can end up with a weaker rule than the other.
+
+### `kaira export data` — your own pull (CLI)
+
+```bash
+kaira export data User --format xlsx
+kaira export data User --format pdf --limit 500
+kaira export data User --format docx --fields "username,email,created_at"
+kaira export data User --format xlsx --filter "status:active,role:admin"
+kaira export data User --format xlsx --output ./reports/users.xlsx
+
+kaira export data --all --format xlsx     # one workbook, one sheet per model
+kaira export data --all --format pdf      # one file per model
+```
+
+- Rows stream in batches (`LIMIT`/`OFFSET` on SQL, cursor batching on Mongo) — a table larger than RAM exports fine with or without `--limit`.
+- Output defaults to `./exports/<model>_<timestamp>.<ext>`; `exports/` is created and added to `.gitignore` automatically, because an export file *is* customer data sitting in the working tree.
+- `--filter` uses the same `key:value` grammar as the rest of Kaira. Equality only — operators are out of scope.
+
+### `kaira export add` — self-serve endpoint (generated API)
+
+```bash
+kaira auth add-guard User            # required first — no unguarded exports
+kaira export add User --format xlsx
+kaira export add Order --format all  # xlsx + pdf + docx
+kaira export list
+kaira export remove User
+```
+
+Generates into the model's **existing** router and service — no new layer:
+
+```
+GET /api/v1/users/export?format=xlsx
+```
+
+- **Auth-gated by default, no opt-out.** `kaira export add` refuses to run on an unguarded model and points you at `kaira auth add-guard`.
+- Rate-limited via `settings.EXPORT_RATE_LIMIT` (default `5/minute`, tighter than a normal GET because one call reads a whole table). The setting is injected into `config/settings.py` on first `export add`, so pre-Phase-7 projects get it too.
+- `StreamingResponse`, serialized to a temp file *before* the response starts — a failure returns a real 500 instead of truncating a `200 OK` mid-download.
+- Response carries `X-Kaira-Export-Format`, matching the `X-Kaira-DB-Mode` header pattern.
+- Raw exception details never reach the client; they go to Loguru and the client gets a generic 500.
+- `kaira export remove` deletes the endpoint **and its imports** — marker-delimited blocks, so nothing is left orphaned.
+
+### What is never exported
+
+Any field whose name contains `password`, `hashed_password`, `token`, `secret`, or `api_key` is stripped from every file, in every format, on both paths. There is no flag to keep them, and they are rejected as `--filter` keys too — an equality filter against a hash is a guessing oracle.
+
+`kaira export data --all` against `APP_ENV=production` requires you to type the project name, and `--force` does not buy you past it.
+
+See `kaira guide export` for the full walkthrough.
 
 ---
 

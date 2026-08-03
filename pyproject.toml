@@ -57,6 +57,11 @@ fuzzy = [
 audit = [
     "pip-audit>=2.7.0",
 ]
+export = [
+    "openpyxl>=3.1.0",
+    "reportlab>=4.0.0",
+    "python-docx>=1.1.0",
+]
 all = [
     "redis>=5.0.0",
     "celery[redis]>=5.4.0",
@@ -69,6 +74,9 @@ all = [
     "beanie>=1.24.0",
     "google-cloud-firestore>=2.16.0",
     "aiosqlite>=0.20.0",
+    "openpyxl>=3.1.0",
+    "reportlab>=4.0.0",
+    "python-docx>=1.1.0",
 ]
 cloud = [
     "asyncpg>=0.29.0",

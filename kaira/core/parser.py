@@ -7,23 +7,79 @@ import re
 from dataclasses import dataclass
 from typing import Optional
 
-from kaira.config import SQLALCHEMY_TYPE_MAP, PYTHON_TYPE_MAP
+from kaira.config import (
+    EMBEDDED_SQLALCHEMY_TYPE,
+    SQLALCHEMY_TYPE_MAP,
+    PYTHON_TYPE_MAP,
+)
+
+# An embedded field's type is the name of another declared model, optionally
+# wrapped: ``EmergencyContact``, ``Optional[EmergencyContact]``,
+# ``list[EmergencyContact]``.
+_EMBEDDED_LIST_RE = re.compile(r"^[Ll]ist\[([A-Z][a-zA-Z0-9]*)\]$")
+_EMBEDDED_OPTIONAL_RE = re.compile(r"^Optional\[([A-Z][a-zA-Z0-9]*)\]$")
+_EMBEDDED_PLAIN_RE = re.compile(r"^[A-Z][a-zA-Z0-9]*$")
 
 
 @dataclass
 class FieldDef:
-    """Represents a single model field."""
+    """Represents a single model field.
+
+    A field is either a scalar (``str``, ``Optional[int]``, …) or an *embedded*
+    document whose type is another declared model. Embedded fields carry the
+    referenced model name so every layer can emit the right annotation and
+    import without re-parsing the raw type string.
+    """
 
     name: str
-    raw_type: str  # e.g. "str", "Optional[int]"
+    raw_type: str  # e.g. "str", "Optional[int]", "list[EmergencyContact]"
     optional: bool = False
     sqlalchemy_type: str = ""
     python_type: str = ""
+    embedded_model: str = ""  # PascalCase name when this is an embedded document
+    is_list: bool = False
 
     def __post_init__(self) -> None:
         self.optional = self.raw_type.startswith("Optional[")
+
+        inner = _embedded_target(self.raw_type)
+        if inner:
+            self.embedded_model = inner
+            self.is_list = bool(_EMBEDDED_LIST_RE.match(self.raw_type))
+            # SQL has no sub-document type; the nested object rides in a JSON
+            # column, which postgres, mysql and sqlite all support.
+            self.sqlalchemy_type = EMBEDDED_SQLALCHEMY_TYPE
+            if self.is_list:
+                self.python_type = f"list[{inner}]"
+            elif self.optional:
+                self.python_type = f"Optional[{inner}]"
+            else:
+                self.python_type = inner
+            return
+
         self.sqlalchemy_type = SQLALCHEMY_TYPE_MAP.get(self.raw_type, "String")
         self.python_type = PYTHON_TYPE_MAP.get(self.raw_type, self.raw_type)
+
+    @property
+    def is_embedded(self) -> bool:
+        """True when this field holds a nested document rather than a scalar."""
+        return bool(self.embedded_model)
+
+
+def _embedded_target(raw_type: str) -> Optional[str]:
+    """Return the model name an embedded type refers to, or ``None``.
+
+    Recognises the shape only — whether the name is a *registered* embedded
+    model is checked at parse time, where the project config is available.
+    """
+    raw = raw_type.strip()
+    for pattern in (_EMBEDDED_LIST_RE, _EMBEDDED_OPTIONAL_RE):
+        match = pattern.match(raw)
+        if match:
+            return match.group(1)
+    if _EMBEDDED_PLAIN_RE.match(raw):
+        return raw
+    return None
 
 
 @dataclass
@@ -182,9 +238,34 @@ def infer_column_type(value: Optional[ast.expr]) -> Optional[str]:
     return f"Optional[{base}]" if nullable else base
 
 
-def _normalize_type(raw: str) -> str:
-    """Normalize a raw type string to a canonical form."""
+def _normalize_type(raw: str, embedded: Optional[set[str]] = None) -> str:
+    """Normalize a raw type string to a canonical form.
+
+    *embedded* is the set of registered embedded model names. A type naming one
+    of them resolves to an embedded document field; a PascalCase type that is
+    *not* registered is reported as such rather than silently accepted, because
+    an unknown name is far more often a typo than an intent to embed.
+    """
     raw_str = raw.strip()
+    embedded = embedded or set()
+
+    target = _embedded_target(raw_str)
+    if target:
+        if target in embedded:
+            # Canonical form keeps the wrapper so FieldDef can recover list /
+            # optional-ness without a second lookup.
+            if _EMBEDDED_LIST_RE.match(raw_str):
+                return f"list[{target}]"
+            if _EMBEDDED_OPTIONAL_RE.match(raw_str):
+                return f"Optional[{target}]"
+            return target
+        known = ", ".join(sorted(embedded)) if embedded else "none declared yet"
+        raise ValueError(
+            f"Unknown embedded type '{target}'. Declare it first with "
+            f'`kaira generate embedded {target} --fields "..."`. '
+            f"Registered embedded types: {known}."
+        )
+
     m = _OPTIONAL_RE.match(raw_str)
     if m:
         inner = m.group(1).strip()
@@ -198,19 +279,37 @@ def _normalize_type(raw: str) -> str:
     if norm is None:
         raise ValueError(
             f"Unsupported field type '{raw_str}'. "
-            f"Supported: {sorted(_VALID_BASE_TYPES)} or Optional[<type>]"
+            f"Supported: {sorted(_VALID_BASE_TYPES)}, Optional[<type>], "
+            f"or a registered embedded model."
         )
     return norm
 
 
-def parse_fields(fields_str: str) -> list[FieldDef]:
+def parse_fields(
+    fields_str: str, embedded: Optional[set[str]] = None
+) -> list[FieldDef]:
     """Parse a fields string like 'name:str, age:int, email:Optional[str]'.
+
+    Parameters
+    ----------
+    fields_str:
+        Comma-separated ``name:type`` pairs.
+    embedded:
+        Registered embedded model names, enabling types such as
+        ``EmergencyContact``, ``Optional[EmergencyContact]`` and
+        ``list[EmergencyContact]``. Defaults to the current project's config;
+        pass an explicit set to parse without touching the filesystem.
 
     Returns a list of :class:`FieldDef` instances.
     Raises :class:`ValueError` on invalid types or malformed tokens.
     """
     if not fields_str or not fields_str.strip():
         return []
+
+    if embedded is None:
+        from kaira.config import embedded_model_names
+
+        embedded = embedded_model_names()
 
     results: list[FieldDef] = []
     tokens = [t.strip() for t in fields_str.split(",") if t.strip()]
@@ -229,7 +328,7 @@ def parse_fields(fields_str: str) -> list[FieldDef]:
                 f"Field name '{fname}' must be lowercase snake_case."
             )
 
-        normalized = _normalize_type(ftype)
+        normalized = _normalize_type(ftype, embedded)
         results.append(FieldDef(name=fname, raw_type=normalized))
 
     return results
