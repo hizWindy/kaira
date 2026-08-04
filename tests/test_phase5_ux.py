@@ -29,6 +29,7 @@ class TestIsInteractive:
             # re-import to pick up patch
             import importlib
             import kaira.core.theme as theme_mod
+
             importlib.reload(theme_mod)
             assert theme_mod.is_interactive() is False
 
@@ -51,6 +52,7 @@ class TestIsInteractive:
         monkeypatch.setenv("NO_COLOR", "1")
         import importlib
         import kaira.core.theme as theme_mod
+
         importlib.reload(theme_mod)
         result = theme_mod.sym("OK")
         assert result == theme_mod.Symbols.OK_PLAIN
@@ -59,6 +61,7 @@ class TestIsInteractive:
         monkeypatch.delenv("NO_COLOR", raising=False)
         import importlib
         import kaira.core.theme as theme_mod
+
         # Force TTY
         with patch.object(sys.stdout, "isatty", return_value=True):
             importlib.reload(theme_mod)
@@ -129,6 +132,7 @@ class TestUIHelpers:
         monkeypatch.setenv("NO_COLOR", "1")
         import importlib
         import kaira.core.ui as ui_mod
+
         importlib.reload(ui_mod)
         ctx = ui_mod.spinner_context("Loading...")
         # Should be _PlainStatus in non-interactive mode
@@ -196,6 +200,7 @@ class TestOnboarding:
         monkeypatch.setattr(Path, "home", lambda: tmp_path)
         import importlib
         import kaira.commands.onboarding as ob
+
         importlib.reload(ob)
         assert ob.config_exists() is False
 
@@ -203,6 +208,7 @@ class TestOnboarding:
         monkeypatch.setattr(Path, "home", lambda: tmp_path)
         import importlib
         import kaira.commands.onboarding as ob
+
         importlib.reload(ob)
 
         ob.save_config({"experience_level": "new", "telemetry": False})
@@ -214,6 +220,7 @@ class TestOnboarding:
         monkeypatch.setattr(Path, "home", lambda: tmp_path)
         import importlib
         import kaira.commands.onboarding as ob
+
         importlib.reload(ob)
 
         ob.save_config({"experience_level": "experienced"})
@@ -226,6 +233,7 @@ class TestOnboarding:
         monkeypatch.setenv("NO_COLOR", "1")
         import importlib
         import kaira.commands.onboarding as ob
+
         importlib.reload(ob)
         assert ob._should_show(["kaira"]) is False
 
@@ -234,6 +242,7 @@ class TestOnboarding:
         monkeypatch.setattr(Path, "home", lambda: tmp_path)
         import importlib
         import kaira.commands.onboarding as ob
+
         importlib.reload(ob)
         # Even with TTY, args present should skip
         with patch("kaira.commands.onboarding.is_interactive", return_value=True):
@@ -243,6 +252,7 @@ class TestOnboarding:
         monkeypatch.setattr(Path, "home", lambda: tmp_path)
         import importlib
         import kaira.commands.onboarding as ob
+
         importlib.reload(ob)
         ob.save_config({"experience_level": "experienced"})
         with patch("kaira.commands.onboarding.is_interactive", return_value=True):

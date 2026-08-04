@@ -61,8 +61,10 @@ def _build_relation_block(
     lines: list[str] = []
 
     if relation_type == "one-to-many":
-        lines.append(f"    # ── One-to-Many: {model_name} → {target} ─────────────────────────")
-        lines.append(f"    {snake_target}s: Mapped[list[\"{target}\"]] = relationship(")
+        lines.append(
+            f"    # ── One-to-Many: {model_name} → {target} ─────────────────────────"
+        )
+        lines.append(f'    {snake_target}s: Mapped[list["{target}"]] = relationship(')
         lines.append(f'        "{target}",')
         lines.append(f'        back_populates="{snake_self}",')
         if cascade:
@@ -70,17 +72,23 @@ def _build_relation_block(
         lines.append("    )")
 
     elif relation_type == "many-to-one":
-        lines.append(f"    # ── Many-to-One: {model_name} → {target} ─────────────────────────")
-        lines.append(f"    {snake_target}_id: Mapped[int] = mapped_column(Integer, ForeignKey(\"{snake_target}s.id\"), nullable=True)")
-        lines.append(f"    {snake_target}: Mapped[\"{target}\"] = relationship(")
+        lines.append(
+            f"    # ── Many-to-One: {model_name} → {target} ─────────────────────────"
+        )
+        lines.append(
+            f'    {snake_target}_id: Mapped[int] = mapped_column(Integer, ForeignKey("{snake_target}s.id"), nullable=True)'
+        )
+        lines.append(f'    {snake_target}: Mapped["{target}"] = relationship(')
         lines.append(f'        "{target}",')
         lines.append(f'        back_populates="{snake_self}s",')
         lines.append("    )")
 
     elif relation_type == "many-to-many":
         assoc_table = f"{snake_self}_{snake_target}_association"
-        lines.append(f"    # ── Many-to-Many: {model_name} ↔ {target} ─────────────────────────")
-        lines.append(f"    {snake_target}s: Mapped[list[\"{target}\"]] = relationship(")
+        lines.append(
+            f"    # ── Many-to-Many: {model_name} ↔ {target} ─────────────────────────"
+        )
+        lines.append(f'    {snake_target}s: Mapped[list["{target}"]] = relationship(')
         lines.append(f'        "{target}",')
         lines.append(f"        secondary={assoc_table},")
         lines.append(f'        back_populates="{snake_self}s",')
@@ -92,11 +100,26 @@ def _build_relation_block(
 @app.command("relation")
 def add_relation(
     model_a: Annotated[str, typer.Argument(help="Source model (PascalCase)")],
-    has_many: Annotated[Optional[str], typer.Option("--has-many", help="Target model for one-to-many")] = None,
-    has_one: Annotated[Optional[str], typer.Option("--has-one", help="Target model for many-to-one")] = None,
-    many_to_many: Annotated[Optional[str], typer.Option("--many-to-many", help="Target model for many-to-many")] = None,
-    cascade: Annotated[Optional[str], typer.Option("--cascade", help='Cascade option e.g. "all, delete-orphan"')] = None,
-    embedded: Annotated[bool, typer.Option("--embedded", help="Embed child sub-document schema (NoSQL / MongoDB)")] = False,
+    has_many: Annotated[
+        Optional[str], typer.Option("--has-many", help="Target model for one-to-many")
+    ] = None,
+    has_one: Annotated[
+        Optional[str], typer.Option("--has-one", help="Target model for many-to-one")
+    ] = None,
+    many_to_many: Annotated[
+        Optional[str],
+        typer.Option("--many-to-many", help="Target model for many-to-many"),
+    ] = None,
+    cascade: Annotated[
+        Optional[str],
+        typer.Option("--cascade", help='Cascade option e.g. "all, delete-orphan"'),
+    ] = None,
+    embedded: Annotated[
+        bool,
+        typer.Option(
+            "--embedded", help="Embed child sub-document schema (NoSQL / MongoDB)"
+        ),
+    ] = False,
 ) -> None:
     """Add a relationship to MODEL_A's model file.
 
@@ -125,7 +148,9 @@ def add_relation(
         relation_type = "many-to-many"
         target = many_to_many
     else:
-        console.print("[bold red]✗[/bold red]  Specify one of --has-many, --has-one, or --many-to-many")
+        console.print(
+            "[bold red]✗[/bold red]  Specify one of --has-many, --has-one, or --many-to-many"
+        )
         raise typer.Exit(1)
 
     try:
@@ -147,7 +172,9 @@ def add_relation(
         )
         raise typer.Exit(1)
 
-    rel_block = _build_relation_block(model_a, relation_type, target, cascade, embedded=embedded, db_type=db_type)
+    rel_block = _build_relation_block(
+        model_a, relation_type, target, cascade, embedded=embedded, db_type=db_type
+    )
 
     console.print(
         Panel(
@@ -161,7 +188,9 @@ def add_relation(
     )
 
     _append_relation_block(model_file, rel_block)
-    console.print(f"[bold green]✓[/bold green]  Relationship added to [cyan]{model_file}[/cyan]")
+    console.print(
+        f"[bold green]✓[/bold green]  Relationship added to [cyan]{model_file}[/cyan]"
+    )
 
     if relation_type == "many-to-many":
         # Remind user to create association table

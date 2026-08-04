@@ -21,6 +21,7 @@ OverwriteChoice = Literal["overwrite", "skip", "diff"]
 # Existence check
 # ---------------------------------------------------------------------------
 
+
 def file_exists(path: Path) -> bool:
     """Return True if *path* exists on disk."""
     return path.is_file()
@@ -29,6 +30,7 @@ def file_exists(path: Path) -> bool:
 # ---------------------------------------------------------------------------
 # Diff display
 # ---------------------------------------------------------------------------
+
 
 def compute_diff(existing_content: str, new_content: str, filename: str = "") -> str:
     """Return a unified diff string between existing and new content."""
@@ -77,6 +79,7 @@ def show_diff(existing_path: Path, new_content: str) -> None:
 # Interactive overwrite prompt
 # ---------------------------------------------------------------------------
 
+
 def prompt_overwrite(path: Path) -> OverwriteChoice:
     """Prompt the user for what to do when a file already exists.
 
@@ -84,6 +87,7 @@ def prompt_overwrite(path: Path) -> OverwriteChoice:
     """
     try:
         import questionary
+
         choice = questionary.select(
             f"File already exists: {path}. Choose an action:",
             choices=[
@@ -129,6 +133,7 @@ def prompt_overwrite(path: Path) -> OverwriteChoice:
 # Safe write
 # ---------------------------------------------------------------------------
 
+
 def write_with_check(
     path: Path,
     content: str,
@@ -163,7 +168,9 @@ def write_with_check(
         return "written"
 
     if non_interactive:
-        console.print(f"  [yellow]⚠[/yellow]  Skipped (already exists): [dim]{path}[/dim]")
+        console.print(
+            f"  [yellow]⚠[/yellow]  Skipped (already exists): [dim]{path}[/dim]"
+        )
         return "skipped"
 
     # Interactive loop — user may choose "diff" multiple times before deciding
@@ -188,8 +195,7 @@ def _write(path: Path, content: str) -> None:
     except OSError as exc:
         console.print(
             Panel(
-                f"[red]✗[/red]  Failed to write [bold]{path}[/bold]\n"
-                f"[dim]{exc}[/dim]",
+                f"[red]✗[/red]  Failed to write [bold]{path}[/bold]\n[dim]{exc}[/dim]",
                 title="[bold red]Write Error[/bold red]",
                 border_style="red",
             )

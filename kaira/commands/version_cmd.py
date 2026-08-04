@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 import shutil
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated
 
 import typer
 from rich.panel import Panel
@@ -23,6 +23,7 @@ def version_main_callback(ctx: typer.Context) -> None:
     """Show the Kaira version when called without subcommands."""
     if ctx.invoked_subcommand is None:
         from kaira import __version__
+
         console.print(
             Panel(
                 f"[bold cyan]Kaira[/bold cyan] v[bold]{__version__}[/bold]",
@@ -46,18 +47,24 @@ def version_create(
     (output_root / "api" / version / "__init__.py").touch(exist_ok=True)
     (api_dir / "__init__.py").touch(exist_ok=True)
 
-    console.print(f"  [green bold]✓[/green bold]  Scaffolding created: [cyan]{api_dir}[/cyan]")
-    console.print(Panel(
-        f"[green]API version {version} structure initialized successfully![/green]",
-        title="Kaira — API Versioning",
-        border_style="green",
-    ))
+    console.print(
+        f"  [green bold]✓[/green bold]  Scaffolding created: [cyan]{api_dir}[/cyan]"
+    )
+    console.print(
+        Panel(
+            f"[green]API version {version} structure initialized successfully![/green]",
+            title="Kaira — API Versioning",
+            border_style="green",
+        )
+    )
 
 
 @app.command("migrate")
 def version_migrate(
     model_name: Annotated[str, typer.Argument(help="Model name to migrate.")],
-    from_version: Annotated[str, typer.Option("--from", help="Source version, e.g. v1")],
+    from_version: Annotated[
+        str, typer.Option("--from", help="Source version, e.g. v1")
+    ],
     to_version: Annotated[str, typer.Option("--to", help="Target version, e.g. v2")],
 ) -> None:
     """Copy a model's router to a new version and inject deprecation headers into the old version."""
@@ -85,22 +92,23 @@ def version_migrate(
 
     # Copy router to new version
     shutil.copy2(src_file, dest_file)
-    console.print(f"  [green bold]✓[/green bold]  Migrated router to: [cyan]{dest_file}[/cyan]")
+    console.print(
+        f"  [green bold]✓[/green bold]  Migrated router to: [cyan]{dest_file}[/cyan]"
+    )
 
     # Modify the old version router to add Deprecation and Sunset headers
     # Check if the source file is in api/vX/routers
     if src_file.parent.parent.name == from_version:
         v1_content = src_file.read_text(encoding="utf-8")
-        
+
         # Inject custom middleware-like header addition in endpoints or dependency headers
         # We can add custom Response headers injection
         # Let's import Response from fastapi
         if "from fastapi import" in v1_content:
             v1_content = v1_content.replace(
-                "from fastapi import",
-                "from fastapi import Response, "
+                "from fastapi import", "from fastapi import Response, "
             )
-        
+
         # Add headers: Deprecation: true, Sunset: next year
         # Find all def endpoint_name(request: Request, ...) and inject response: Response parameter
         # and then response.headers["Deprecation"] = "true"
@@ -112,22 +120,20 @@ def version_migrate(
             if re.match(r"^def \w+\(", line) or re.match(r"^async def \w+\(", line):
                 # Simple injection: add response: Response as parameter and write headers
                 pass
-        
+
         # Let's do a cleaner regex replacement: inject headers on endpoint enter
         modified_v1 = re.sub(
             r"(def \w+\([^)]+Depends\(get_service\)\)[^:]*:)",
             r"\1\n    # Deprecation Headers\n    response.headers['Deprecation'] = 'true'\n    response.headers['Sunset'] = '2027-12-31T00:00:00Z'",
-            v1_content
+            v1_content,
         )
         # Make sure Response is in params
-        modified_v1 = re.sub(
-            r"(def \w+\()",
-            r"\1response: Response, ",
-            modified_v1
-        )
-        
+        modified_v1 = re.sub(r"(def \w+\()", r"\1response: Response, ", modified_v1)
+
         src_file.write_text(modified_v1, encoding="utf-8")
-        console.print(f"  [green bold]✓[/green bold]  Added Deprecation & Sunset headers to [cyan]{src_file}[/cyan]")
+        console.print(
+            f"  [green bold]✓[/green bold]  Added Deprecation & Sunset headers to [cyan]{src_file}[/cyan]"
+        )
 
 
 @app.command("list")
@@ -141,8 +147,10 @@ def version_list() -> None:
         console.print("[yellow]No versioned API folder found under api/[/yellow]")
         return
 
-    versions = [d.name for d in api_root.iterdir() if d.is_dir() and d.name.startswith("v")]
-    
+    versions = [
+        d.name for d in api_root.iterdir() if d.is_dir() and d.name.startswith("v")
+    ]
+
     table = Table(title="Kaira — API Versions", border_style="cyan")
     table.add_column("Version", justify="left")
     table.add_column("Routers", justify="left")
@@ -151,7 +159,9 @@ def version_list() -> None:
         v_routers_dir = api_root / v / "routers"
         routers = []
         if v_routers_dir.exists():
-            routers = [f.stem.replace("_router", "") for f in v_routers_dir.glob("*_router.py")]
+            routers = [
+                f.stem.replace("_router", "") for f in v_routers_dir.glob("*_router.py")
+            ]
         table.add_row(v, ", ".join(routers) if routers else "None")
 
     console.print(table)

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import subprocess
-import sys
 from pathlib import Path
 from typing import Annotated
 
@@ -56,6 +55,7 @@ def _find_alembic_ini() -> Path:
 def _run_alembic(args: list[str], cwd: Path) -> None:
     """Run an alembic sub-command and stream output to the terminal."""
     from kaira.config import get_venv_python
+
     python_exe = get_venv_python(cwd)
     cmd = [python_exe, "-m", "alembic"] + args
     console.print(f"[dim]$ {' '.join(cmd)}[/dim]")

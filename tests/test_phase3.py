@@ -13,9 +13,11 @@ from kaira.main import app
 runner = CliRunner()
 cli = get_command(app)
 
+
 def run(*args):
     """Invoke the kaira CLI with the given arguments."""
     return runner.invoke(cli, list(args))
+
 
 class TestPhase3Commands:
     def test_guide_index(self):
@@ -25,7 +27,19 @@ class TestPhase3Commands:
         assert "kaira guide init" in result.output
 
     def test_guide_subcommands(self):
-        sub_guides = ["init", "generate", "auth", "migrate", "security", "test", "docker", "ci", "env", "db", "config"]
+        sub_guides = [
+            "init",
+            "generate",
+            "auth",
+            "migrate",
+            "security",
+            "test",
+            "docker",
+            "ci",
+            "env",
+            "db",
+            "config",
+        ]
         for topic in sub_guides:
             result = run("guide", topic)
             assert result.exit_code == 0
@@ -47,10 +61,20 @@ class TestPhase3Commands:
         with runner.isolated_filesystem(temp_dir=tmp_path):
             cwd = Path.cwd()
             # Run init with name argument and sqlite DB
-            result = run("init", "coolproject", "--db", "sqlite", "--auth", "jwt", "--no-docker", "--ci", "none")
+            result = run(
+                "init",
+                "coolproject",
+                "--db",
+                "sqlite",
+                "--auth",
+                "jwt",
+                "--no-docker",
+                "--ci",
+                "none",
+            )
             assert result.exit_code == 0
             assert "coolproject" in result.output
-            
+
             project_dir = cwd / "coolproject"
             assert project_dir.exists()
             assert (project_dir / "models").exists()
@@ -69,12 +93,22 @@ class TestPhase3Commands:
         with runner.isolated_filesystem(temp_dir=tmp_path):
             cwd = Path.cwd()
             # Run init with name argument and mongodb DB
-            result = run("init", "mongoproject", "--db", "mongodb", "--auth", "none", "--no-docker", "--ci", "none")
+            result = run(
+                "init",
+                "mongoproject",
+                "--db",
+                "mongodb",
+                "--auth",
+                "none",
+                "--no-docker",
+                "--ci",
+                "none",
+            )
             assert result.exit_code == 0
-            
+
             project_dir = cwd / "mongoproject"
             assert project_dir.exists()
-            
+
             # Verify database.py matches Beanie MongoDB setup
             db_content = (project_dir / "core" / "database.py").read_text()
             assert "init_beanie" in db_content

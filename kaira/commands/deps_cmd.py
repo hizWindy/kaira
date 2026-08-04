@@ -11,12 +11,13 @@ from typing import Annotated, Optional
 
 import typer
 from rich.panel import Panel
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
 from rich.table import Table
 
 from kaira.console import console
 
-app = typer.Typer(help="Dependency management — check, update, audit, tree, add, remove.")
+app = typer.Typer(
+    help="Dependency management — check, update, audit, tree, add, remove."
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -34,6 +35,7 @@ def _pip(*args: str, capture: bool = True) -> subprocess.CompletedProcess:
         CompletedProcess result.
     """
     from kaira.config import get_venv_python
+
     python_exe = get_venv_python()
     cmd = [python_exe, "-m", "pip", *args]
     return subprocess.run(
@@ -41,6 +43,48 @@ def _pip(*args: str, capture: bool = True) -> subprocess.CompletedProcess:
         capture_output=capture,
         text=True,
     )
+
+
+def _parse_dependency_array(content: str, key: str = "dependencies") -> list[str]:
+    """Extract the quoted specs from a TOML array, tracking bracket depth.
+
+    Matching the array with a non-greedy ``\\[(.*?)\\]`` stops at the first
+    ``]`` in the file, which is the extras marker inside a spec such as
+    ``fastapi[standard]>=0.115.0`` — that truncates the list and mangles the
+    entry it stops on.
+
+    Args:
+        content: Full ``pyproject.toml`` text.
+        key: Array key to read.
+
+    Returns:
+        Dependency specs in file order, without duplicates.
+    """
+    opening = re.search(rf"^\s*{re.escape(key)}\s*=\s*\[", content, re.MULTILINE)
+    if not opening:
+        return []
+
+    start = opening.end() - 1
+    depth = 0
+    body = ""
+    for index in range(start, len(content)):
+        if content[index] == "[":
+            depth += 1
+        elif content[index] == "]":
+            depth -= 1
+            if depth == 0:
+                body = content[start + 1 : index]
+                break
+    if not body:
+        return []
+
+    body = re.sub(r"#[^\n]*", "", body)  # drop comments
+    specs: list[str] = []
+    for match in re.finditer(r"[\"']([^\"']+)[\"']", body):
+        spec = match.group(1).strip()
+        if spec and spec not in specs:
+            specs.append(spec)
+    return specs
 
 
 def _read_pyproject_deps() -> list[str]:
@@ -53,14 +97,9 @@ def _read_pyproject_deps() -> list[str]:
     if not pp.exists():
         return []
     try:
-        content = pp.read_text(encoding="utf-8")
-        m = re.search(r"dependencies\s*=\s*\[(.*?)\]", content, re.DOTALL)
-        if m:
-            raw = m.group(1)
-            return [line.strip().strip('",').strip() for line in raw.splitlines() if line.strip().strip('",')]
-    except Exception:
-        pass
-    return []
+        return _parse_dependency_array(pp.read_text(encoding="utf-8"))
+    except OSError:
+        return []
 
 
 def _pin_version(package: str) -> Optional[str]:
@@ -107,7 +146,9 @@ def deps_check() -> None:
                 installed_ver = line.split(":", 1)[1].strip()
                 break
         status = "[green]✅ OK[/green]" if installed_ver else "[red]❌ Missing[/red]"
-        table.add_row(pkg_name, dep, installed_ver or "[dim]not installed[/dim]", status)
+        table.add_row(
+            pkg_name, dep, installed_ver or "[dim]not installed[/dim]", status
+        )
 
     console.print(table)
 
@@ -115,55 +156,36 @@ def deps_check() -> None:
 @app.command("update")
 def deps_update() -> None:
     """Update all dependencies to latest compatible versions and pin exact versions in pyproject.toml."""
+    from kaira.commands.project import install_packages
+
     deps = _read_pyproject_deps()
     if not deps:
         console.print("[yellow]No dependencies found in pyproject.toml[/yellow]")
         return
 
-    console.print("[cyan]Updating dependencies...[/cyan]\n")
-
     pp = Path.cwd() / "pyproject.toml"
     content = pp.read_text(encoding="utf-8") if pp.exists() else ""
 
     updated: list[tuple[str, str, str]] = []
+    names = [re.split(r"[><!=]", dep)[0].strip() for dep in deps]
+    before = {name: _pin_version(name) or "unknown" for name in names}
 
-    table = Table(title="Dependency Update", border_style="cyan")
-    table.add_column("Package", style="bold")
-    table.add_column("Old Version")
-    table.add_column("New Version")
-    table.add_column("Status")
+    # One invocation for the whole set: a per-package resolver cannot backtrack
+    # across the dependency graph and can leave incompatible versions behind.
+    install_packages(deps, upgrade=True)
 
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        TaskProgressColumn(),
-        console=console,
-    ) as progress:
-        task = progress.add_task("[cyan]Updating packages...", total=len(deps))
-        for dep in deps:
-            pkg_name = re.split(r"[><!=]", dep)[0].strip()
-            old_ver = _pin_version(pkg_name) or "unknown"
-
-            progress.update(task, description=f"[cyan]  Updating {pkg_name}...")
-            result = _pip("install", "--upgrade", pkg_name, capture=True)
-
-            new_ver = _pin_version(pkg_name) or old_ver
-            status = "[green]✅ Updated[/green]" if result.returncode == 0 else "[red]❌ Failed[/red]"
-            table.add_row(pkg_name, old_ver, new_ver, status)
-
-            if result.returncode == 0 and new_ver != old_ver:
-                updated.append((pkg_name, old_ver, new_ver))
-                # Pin exact version in pyproject.toml
-                if content:
-                    content = re.sub(
-                        rf'"{re.escape(dep)}"',
-                        f'"{pkg_name}=={new_ver}"',
-                        content,
-                    )
-            progress.advance(task)
-
-    console.print(table)
+    for dep, pkg_name in zip(deps, names):
+        old_ver = before[pkg_name]
+        new_ver = _pin_version(pkg_name) or old_ver
+        if new_ver == old_ver:
+            continue
+        updated.append((pkg_name, old_ver, new_ver))
+        if content:
+            content = re.sub(
+                rf'"{re.escape(dep)}"',
+                f'"{pkg_name}=={new_ver}"',
+                content,
+            )
 
     if updated and pp.exists() and content:
         pp.write_text(content, encoding="utf-8")
@@ -192,6 +214,7 @@ def deps_audit() -> None:
 
     console.print("[cyan]Running dependency audit...[/cyan]")
     from kaira.config import get_venv_python
+
     python_exe = get_venv_python()
     result = subprocess.run(
         [python_exe, "-m", "pip_audit", "--format", "json"],
@@ -201,6 +224,7 @@ def deps_audit() -> None:
 
     try:
         import json
+
         data = json.loads(result.stdout)
         vulns = data.get("vulnerabilities", []) if isinstance(data, dict) else []
     except Exception:
@@ -211,7 +235,12 @@ def deps_audit() -> None:
         return
 
     if not vulns:
-        console.print(Panel("[green]✅ No known vulnerabilities found.[/green]", border_style="green"))
+        console.print(
+            Panel(
+                "[green]✅ No known vulnerabilities found.[/green]",
+                border_style="green",
+            )
+        )
         return
 
     table = Table(title="Vulnerability Report", border_style="red")
@@ -237,7 +266,12 @@ def deps_audit() -> None:
     console.print(table)
 
     if has_critical:
-        console.print(Panel("[red]❌ HIGH/CRITICAL vulnerabilities found. Fix immediately.[/red]", border_style="red"))
+        console.print(
+            Panel(
+                "[red]❌ HIGH/CRITICAL vulnerabilities found. Fix immediately.[/red]",
+                border_style="red",
+            )
+        )
         raise typer.Exit(1)
 
 
@@ -248,6 +282,7 @@ def _try_pip_audit_module() -> bool:
         True if pip_audit module is available.
     """
     from kaira.config import get_venv_python
+
     python_exe = get_venv_python()
     if python_exe != sys.executable:
         try:
@@ -262,6 +297,7 @@ def _try_pip_audit_module() -> bool:
     else:
         try:
             import pip_audit  # noqa: F401
+
             return True
         except ImportError:
             return False
@@ -290,7 +326,9 @@ def deps_tree() -> None:
 
 @app.command("add")
 def deps_add(
-    package: Annotated[str, typer.Argument(help="Package to install (e.g. httpx or httpx==0.27.0)")],
+    package: Annotated[
+        str, typer.Argument(help="Package to install (e.g. httpx or httpx==0.27.0)")
+    ],
     dev: Annotated[bool, typer.Option("--dev", help="Add as a dev dependency")] = False,
 ) -> None:
     """Install a package and add it to pyproject.toml.
@@ -320,14 +358,14 @@ def deps_add(
     if dev:
         # Add to [project.optional-dependencies].dev
         content = re.sub(
-            r'(dev\s*=\s*\[)',
+            r"(dev\s*=\s*\[)",
             rf'\1\n    "{pin}",',
             content,
         )
     else:
         # Add to [project.dependencies]
         content = re.sub(
-            r'(dependencies\s*=\s*\[)',
+            r"(dependencies\s*=\s*\[)",
             rf'\1\n    "{pin}",',
             content,
         )
@@ -352,7 +390,9 @@ def deps_remove(
     """
     result = _pip("uninstall", package, "-y", capture=True)
     if result.returncode != 0:
-        console.print(f"[red]Failed to uninstall {package}: {result.stderr.strip()}[/red]")
+        console.print(
+            f"[red]Failed to uninstall {package}: {result.stderr.strip()}[/red]"
+        )
         raise typer.Exit(1)
 
     # Remove from pyproject.toml
@@ -362,7 +402,8 @@ def deps_remove(
         # Remove any line containing the package name in dependencies
         lines = content.splitlines(keepends=True)
         new_lines = [
-            line for line in lines
+            line
+            for line in lines
             if not re.search(rf'"{re.escape(package)}[><=!@"]*"', line)
         ]
         pp.write_text("".join(new_lines), encoding="utf-8")

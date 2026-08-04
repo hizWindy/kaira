@@ -12,9 +12,8 @@ Security rules:
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated
 
 import typer
 from jinja2 import Environment, FileSystemLoader
@@ -39,14 +38,31 @@ _PROVIDERS: dict[str, dict[str, tuple[str, list[str]]]] = {
         "paymongo": ("requests", ["PAYMONGO_SECRET_KEY", "PAYMONGO_PUBLIC_KEY"]),
     },
     "storage": {
-        "s3": ("boto3", ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_REGION", "AWS_BUCKET_NAME"]),
-        "cloudinary": ("cloudinary", ["CLOUDINARY_CLOUD_NAME", "CLOUDINARY_API_KEY", "CLOUDINARY_API_SECRET"]),
-        "gcs": ("google-cloud-storage", ["GCS_BUCKET_NAME", "GOOGLE_APPLICATION_CREDENTIALS"]),
+        "s3": (
+            "boto3",
+            [
+                "AWS_ACCESS_KEY_ID",
+                "AWS_SECRET_ACCESS_KEY",
+                "AWS_REGION",
+                "AWS_BUCKET_NAME",
+            ],
+        ),
+        "cloudinary": (
+            "cloudinary",
+            ["CLOUDINARY_CLOUD_NAME", "CLOUDINARY_API_KEY", "CLOUDINARY_API_SECRET"],
+        ),
+        "gcs": (
+            "google-cloud-storage",
+            ["GCS_BUCKET_NAME", "GOOGLE_APPLICATION_CREDENTIALS"],
+        ),
     },
     "notify": {
         "firebase": ("firebase-admin", ["FIREBASE_CREDENTIALS_PATH"]),
         "onesignal": ("requests", ["ONESIGNAL_APP_ID", "ONESIGNAL_API_KEY"]),
-        "twilio": ("twilio", ["TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_FROM_NUMBER"]),
+        "twilio": (
+            "twilio",
+            ["TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_FROM_NUMBER"],
+        ),
     },
     "monitor": {
         "sentry": ("sentry-sdk", ["SENTRY_DSN"]),
@@ -87,9 +103,13 @@ def _update_env_files(key: str, value: str) -> None:
 def _add_to_settings(key: str) -> None:
     """Add a required field to settings.py so env validate catches it missing."""
     from kaira.config import get_config
+
     cfg = get_config()
     output_root = Path.cwd() / cfg.output_dir
-    for candidate in [output_root / "core" / "config.py", output_root / "config" / "settings.py"]:
+    for candidate in [
+        output_root / "core" / "config.py",
+        output_root / "config" / "settings.py",
+    ]:
         if candidate.exists():
             content = candidate.read_text(encoding="utf-8")
             if key not in content:
@@ -107,7 +127,10 @@ def _provider_class_name(provider: str) -> str:
 def integrate_add(
     category: Annotated[
         str,
-        typer.Option("--provider", help="Provider spec: <category>/<provider>, e.g. email/sendgrid"),
+        typer.Option(
+            "--provider",
+            help="Provider spec: <category>/<provider>, e.g. email/sendgrid",
+        ),
     ],
 ) -> None:
     """Add a third-party integration."""
@@ -133,13 +156,16 @@ def integrate_add(
 
     if prov not in _PROVIDERS[cat]:
         valid_provs = ", ".join(_PROVIDERS[cat].keys())
-        console.print(f"[red]❌ Unknown provider '{prov}' for category '{cat}'. Valid: {valid_provs}[/red]")
+        console.print(
+            f"[red]❌ Unknown provider '{prov}' for category '{cat}'. Valid: {valid_provs}[/red]"
+        )
         raise typer.Exit(1)
 
     sdk_package, env_keys = _PROVIDERS[cat][prov]
     class_prefix = _provider_class_name(prov)
 
     from kaira.config import get_config
+
     cfg = get_config()
     output_root = Path.cwd() / cfg.output_dir
     integration_dir = output_root / "integrations" / cat / prov
@@ -180,6 +206,7 @@ def integrate_add(
     if sdk_package:
         console.print(f"  [cyan]Installing {sdk_package}...[/cyan]")
         from kaira.commands.project import install_packages
+
         install_packages([sdk_package])
 
     console.print(

@@ -4,24 +4,32 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
 import sys
 import subprocess
+import time
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Sequence
 
 import typer
 from jinja2 import Environment, FileSystemLoader
-import time
+from rich.markup import escape
 
-from rich.panel import Panel
-from rich.live import Live
-from rich.table import Table
-from rich.text import Text
-from rich.columns import Columns
 
 from kaira.config import KairaConfig
 from kaira.console import console
+from kaira.core import ui
 from kaira.core.detector import write_with_check
+from kaira.core.progress import (
+    ProgressItem,
+    ProgressPhase,
+    ProgressRenderer,
+    State,
+    format_elapsed,
+    format_size,
+    state_symbol,
+)
+from kaira.core.theme import GUTTER, Theme, sym
 
 TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
 
@@ -40,6 +48,11 @@ def _get_env() -> Environment:
     )
 
 
+def _elapsed_since(start: float) -> str:
+    """Return the time since *start* (a ``time.monotonic()`` reading)."""
+    return format_elapsed(time.monotonic() - start)
+
+
 def _pascal_to_slug(name: str) -> str:
     s = re.sub(r"(.)([A-Z][a-z]+)", r"\1_\2", name)
     return re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", s).lower()
@@ -49,19 +62,21 @@ def select_option(message: str, choices: list[str], default: str) -> str:
     """Helper to select an option via questionary or fallback to text selection."""
     if questionary is not None:
         try:
-            val = questionary.select(message, choices=choices, default=default).ask()
+            val = questionary.select(
+                message, choices=choices, default=default, qmark=f"{GUTTER}?"
+            ).ask()
             if val is not None:
                 return val
         except Exception:
             pass
 
     # Fallback interactive selection
-    console.print(f"\n[cyan]? {message}[/cyan]")
+    console.print(f"\n{GUTTER}[{Theme.PRIMARY}]?[/{Theme.PRIMARY}] {message}")
     for i, choice in enumerate(choices, 1):
         indicator = "  "
         if choice == default:
-            indicator = "> "
-        console.print(f" {indicator}{i}) {choice}")
+            indicator = f"{sym('POINTER')} "
+        console.print(f"{GUTTER}  {indicator}{i}) {choice}")
 
     while True:
         val = typer.prompt(f"Select option (1-{len(choices)})", default="1")
@@ -78,49 +93,307 @@ def select_confirm(message: str, default: bool = True) -> bool:
     """Helper to ask a yes/no question."""
     if questionary is not None:
         try:
-            val = questionary.confirm(message, default=default).ask()
+            val = questionary.confirm(
+                message, default=default, qmark=f"{GUTTER}?"
+            ).ask()
             if val is not None:
                 return val
         except Exception:
             pass
-    return typer.confirm(message, default=default)
+    return typer.confirm(f"{GUTTER}? {message}", default=default)
 
 
-def install_packages(packages: list[str], project_dir: Optional[Path] = None) -> tuple[int, int, int]:
+# ---------------------------------------------------------------------------
+# Installer output parsing
+#
+# Raw installer output is never rendered.  It is parsed here into phase/item
+# state transitions and, on failure, mapped to a short reason plus
+# copy-pasteable fix commands.
+# ---------------------------------------------------------------------------
+
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+
+# uv
+_UV_RESOLVED_RE = re.compile(r"^Resolved (\d+) package")
+_UV_PREPARED_RE = re.compile(r"^Prepared (\d+) package")
+_UV_INSTALLED_RE = re.compile(r"^Installed (\d+) package")
+_UV_AUDITED_RE = re.compile(r"^Audited (\d+) package")
+_UV_ADDED_RE = re.compile(r"^\+\s*([A-Za-z0-9._-]+)==(\S+)")
+
+# pip
+_PIP_DOWNLOADING_RE = re.compile(r"^\s*Downloading\s+\S+")
+_PIP_INSTALLING_RE = re.compile(r"^Installing collected packages:")
+_PIP_SUCCESS_RE = re.compile(r"^Successfully installed\s+(.+)$")
+_PIP_SUCCESS_ITEM_RE = re.compile(r"^(.+)-([0-9][^-]*)$")
+
+#: Byte sizes reported by pip, e.g. ``(18.2 MB)``.
+_SIZE_RE = re.compile(r"\((\d+(?:\.\d+)?)\s*([kKMG]?B)\)")
+
+_SIZE_UNITS = {"B": 1, "KB": 1024, "MB": 1024**2, "GB": 1024**3}
+
+
+class _InstallOutputParser:
+    """Drive phase and item states from an installer's streamed output.
+
+    The parser only reacts to statements the installer actually makes.  When a
+    package's completion cannot be determined from the output it is left
+    pending until the batch finishes, rather than guessed mid-flight.
     """
-    Install python packages silently and display a Rich live progress table.
+
+    def __init__(
+        self,
+        strategy: str,
+        resolve: "ProgressPhase",
+        download: "ProgressPhase",
+        install: "ProgressPhase",
+    ) -> None:
+        self.strategy = strategy
+        self.resolve = resolve
+        self.download = download
+        self.install = install
+        self.downloaded_bytes = 0.0
+
+    # -- helpers ------------------------------------------------------------
+
+    def _item(self, name: str) -> Optional["ProgressItem"]:
+        """Find the nested item for *name*, comparing normalised names."""
+        wanted = name.replace("_", "-").lower()
+        for item in self.install.items:
+            if item.name.replace("_", "-").lower() == wanted:
+                return item
+        return None
+
+    def _advance_to_download(self) -> None:
+        """Close the resolve phase and open download."""
+        if self.resolve.state == State.ACTIVE:
+            self.resolve.finish(
+                self.resolve.summary or f"{len(self.install.items)} packages"
+            )
+        if self.download.state == State.PENDING:
+            self.download.start()
+
+    def _advance_to_install(self) -> None:
+        """Close resolve/download and open install."""
+        self._advance_to_download()
+        if self.download.state == State.ACTIVE:
+            summary = (
+                format_size(self.downloaded_bytes)
+                if self.downloaded_bytes
+                else "cached"
+            )
+            self.download.finish(summary)
+        if self.install.state == State.PENDING:
+            self.install.start()
+
+    # -- feed ---------------------------------------------------------------
+
+    def feed(self, raw_line: str) -> bool:
+        """Consume one output line.  Returns True when state changed."""
+        line = _ANSI_RE.sub("", raw_line).strip()
+        if not line:
+            return False
+
+        size_match = _SIZE_RE.search(line)
+        if size_match:
+            value, unit = size_match.groups()
+            self.downloaded_bytes += float(value) * _SIZE_UNITS.get(unit.upper(), 1)
+
+        # ── uv ────────────────────────────────────────────────────────────
+        match = _UV_RESOLVED_RE.match(line)
+        if match:
+            self.resolve.summary = f"{match.group(1)} packages"
+            self._advance_to_download()
+            return True
+
+        match = _UV_PREPARED_RE.match(line)
+        if match:
+            self._advance_to_install()
+            return True
+
+        match = _UV_AUDITED_RE.match(line)
+        if match:
+            self._advance_to_install()
+            return True
+
+        match = _UV_INSTALLED_RE.match(line)
+        if match:
+            return True
+
+        match = _UV_ADDED_RE.match(line)
+        if match:
+            item = self._item(match.group(1))
+            if item is not None:
+                item.done(version=match.group(2))
+                return True
+            return False
+
+        # ── pip ───────────────────────────────────────────────────────────
+        if _PIP_DOWNLOADING_RE.match(line):
+            self._advance_to_download()
+            return True
+
+        if _PIP_INSTALLING_RE.match(line):
+            self._advance_to_install()
+            return True
+
+        match = _PIP_SUCCESS_RE.match(line)
+        if match:
+            for token in match.group(1).split():
+                name_version = _PIP_SUCCESS_ITEM_RE.match(token)
+                if not name_version:
+                    continue
+                item = self._item(name_version.group(1))
+                if item is not None:
+                    item.done(version=name_version.group(2))
+            return True
+
+        return False
+
+    def finalize(self, success: bool) -> None:
+        """Resolve any phase the installer never announced.
+
+        On success every open phase closes cleanly.  On failure the phase that
+        was still running is the one that broke, and later phases stay pending
+        so the failure isolates to its own stage.
+        """
+        if success:
+            self._advance_to_install()
+            return
+
+        for phase in (self.resolve, self.download, self.install):
+            if phase.state == State.ACTIVE:
+                phase.fail()
+                return
+
+
+#: Known failure signatures → (short reason, extra fix commands).
+_INSTALL_ERROR_CASES: tuple[tuple[tuple[str, ...], str, tuple[str, ...]], ...] = (
+    (
+        ("pg_config executable not found", "libpq-fe.h"),
+        "missing postgresql headers",
+        ("sudo apt install libpq-dev",),
+    ),
+    (
+        ("python.h: no such file",),
+        "missing python headers",
+        ("sudo apt install python3-dev",),
+    ),
+    (
+        ("microsoft visual c++", "vcvarsall.bat"),
+        "missing c++ build tools",
+        ("install the Visual Studio C++ Build Tools",),
+    ),
+    (
+        ("no matching distribution found", "could not find a version"),
+        "no matching distribution",
+        (),
+    ),
+    (
+        ("resolutionimpossible", "conflicting dependencies", "version conflict"),
+        "dependency conflict",
+        (),
+    ),
+    (
+        ("externally-managed-environment",),
+        "environment is externally managed",
+        ("kaira init --venv",),
+    ),
+    (
+        ("no space left on device",),
+        "no disk space left",
+        (),
+    ),
+    (
+        ("permission denied", "access is denied", "errno 13"),
+        "permission denied",
+        (),
+    ),
+    (
+        (
+            "temporary failure in name resolution",
+            "failed to establish a new connection",
+            "read timed out",
+            "connection refused",
+            "network is unreachable",
+            "could not resolve host",
+        ),
+        "network unreachable",
+        (),
+    ),
+    (
+        ("failed to build",),
+        "build failed",
+        (),
+    ),
+)
+
+_GENERIC_INSTALL_REASON = "install failed"
+
+
+def classify_install_error(
+    output: str, packages: Sequence[str]
+) -> tuple[str, list[str]]:
+    """Map raw installer output to a short reason and fix commands.
+
+    The raw text is only ever inspected here — it is never rendered, so index
+    URLs (which may carry credentials) and stack traces cannot leak into the
+    terminal.  Unrecognised failures get a generic reason plus the
+    ``kaira deps add`` hint rather than a dump of the output.
+
+    Args:
+        output: Combined installer stdout/stderr.
+        packages: The package specs involved in the failure.
+
+    Returns:
+        ``(short_reason, fix_commands)``.
+    """
+    haystack = output.lower()
+    reason = _GENERIC_INSTALL_REASON
+    hints: list[str] = []
+
+    for needles, mapped_reason, extra_hints in _INSTALL_ERROR_CASES:
+        if any(needle in haystack for needle in needles):
+            reason = mapped_reason
+            hints = list(extra_hints)
+            break
+
+    for package in packages:
+        base = re.split(r"[><=!\[,]", package)[0].strip()
+        hint = f"kaira deps add {base}"
+        if base and hint not in hints:
+            hints.append(hint)
+    return reason, hints
+
+
+def install_packages(
+    packages: list[str],
+    project_dir: Optional[Path] = None,
+    upgrade: bool = False,
+) -> tuple[int, int, int]:
+    """Install python packages via batched invocation with progress rendering.
+
+    Uses ``uv`` if available on PATH, otherwise falls back to ``pip`` silently.
+    The full package set is passed in a single invocation so the resolver can
+    backtrack across the whole dependency graph; installing one package at a
+    time can leave mutually incompatible versions installed.
+
+    Phase transitions (resolve → download → install) and item states are driven
+    by parsing the installer's actual output, never by timers or estimates.
+
+    Args:
+        packages: List of pip-format package specifiers.
+        project_dir: Optional project directory for venv detection.
+        upgrade: Pass ``--upgrade`` and skip the already-installed pre-check.
 
     Returns:
         tuple[int, int, int]: (installed_count, failed_count, skipped_count)
     """
-    import importlib.util
     import importlib.metadata
-    from rich import box as rich_box
+    import importlib.util
+
     from kaira.config import get_venv_python
 
     python_exe = get_venv_python(project_dir)
-
-    # ── Header ──────────────────────────────────────────────────────────────
-    console.print()
-    console.print(
-        Panel(
-            Text.from_markup(
-                f"  [bold white]Installing [cyan]{len(packages)}[/cyan] package(s) "
-                f"into your project environment[/bold white]\n"
-                f"  [dim]Kaira will skip packages already present on this machine.[/dim]"
-            ),
-            title="[bold cyan]⚡  Kaira  —  Dependency Installer[/bold cyan]",
-            border_style="cyan",
-            padding=(0, 2),
-        )
-    )
-    console.print()
-
-    installed_count = 0
-    failed_count = 0
-    skipped_count = 0
-    start_time = time.monotonic()
-    failed_details: list[tuple[str, str]] = []
 
     # Package → importable-name mapping
     pkg_import_map = {
@@ -144,214 +417,208 @@ def install_packages(packages: list[str], project_dir: Optional[Path] = None) ->
         "aiosqlite": "aiosqlite",
     }
 
-    # ── Build the live package-status table ─────────────────────────────────
-    def _make_table() -> Table:
-        t = Table(
-            box=rich_box.ROUNDED,
-            border_style="bright_black",
-            show_header=True,
-            header_style="bold bright_white on grey23",
-            expand=True,
-            padding=(0, 1),
-        )
-        t.add_column("  ", width=3, no_wrap=True)  # icon
-        t.add_column("Package", style="bold", ratio=3)  # name
-        t.add_column("Status", ratio=2)  # status label
-        t.add_column("Note", style="dim", ratio=3)  # extra info
-        return t
+    def _pkg_base(spec: str) -> str:
+        """Extract bare package name from a pip spec."""
+        return re.split(r"[><=!\[,]", spec)[0].strip()
 
-    table = _make_table()
+    def _import_name(spec: str) -> str:
+        """Resolve the import name for a package spec."""
+        return pkg_import_map.get(spec, _pkg_base(spec))
 
-    with Live(
-        table, console=console, refresh_per_second=12, vertical_overflow="visible"
-    ) as live:
-        for pkg in packages:
-            pkg_name = re.split(r"[><=!\[]", pkg)[0].strip()
-            import_name = pkg_import_map.get(pkg, pkg_name)
-
-            # ── Already-installed check ──────────────────────────────────
-            already_installed = False
-            installed_version: str | None = None
-            try:
-                if python_exe != sys.executable:
-                    # Query the virtual environment for the package status
-                    res = subprocess.run(
-                        [
-                            python_exe,
-                            "-c",
-                            f"import importlib.metadata; print(importlib.metadata.version('{import_name.replace('_', '-')}'))",
-                        ],
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.DEVNULL,
-                        text=True,
-                    )
-                    if res.returncode == 0:
-                        installed_version = res.stdout.strip()
-                        already_installed = True
-                    else:
-                        # Fallback import check
-                        res_imp = subprocess.run(
-                            [python_exe, "-c", f"import {import_name}"],
-                            stdout=subprocess.DEVNULL,
-                            stderr=subprocess.DEVNULL,
-                        )
-                        if res_imp.returncode == 0:
-                            already_installed = True
-                else:
-                    installed_version = importlib.metadata.version(
-                        import_name.replace("_", "-")
-                    )
-                    already_installed = True
-            except Exception:
-                if python_exe != sys.executable:
-                    pass
-                else:
-                    try:
-                        if importlib.util.find_spec(import_name) is not None:
-                            already_installed = True
-                    except Exception:
-                        pass
-
-            if already_installed:
-                skipped_count += 1
-                ver_note = f"v{installed_version}" if installed_version else "present"
-                table.add_row(
-                    "[green]✔[/green]",
-                    f"[green]{pkg}[/green]",
-                    "[dim green]Already installed[/dim green]",
-                    f"[dim]{ver_note}[/dim]",
+    def _check_installed(spec: str) -> bool:
+        """Check whether a package is already installed."""
+        import_name = _import_name(spec)
+        try:
+            if python_exe != sys.executable:
+                res = subprocess.run(
+                    [
+                        python_exe,
+                        "-c",
+                        (
+                            "import importlib.metadata; "
+                            f"print(importlib.metadata.version('{import_name.replace('_', '-')}'))"
+                        ),
+                    ],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.DEVNULL,
+                    text=True,
                 )
-                live.update(table)
-                continue
-
-            # ── Pending row (spinner effect via repeated update) ─────────
-            row_idx = len(table.rows)
-            table.add_row(
-                "[yellow]⟳[/yellow]",
-                f"[yellow]{pkg}[/yellow]",
-                "[yellow]Installing…[/yellow]",
-                "[dim]fetching from PyPI[/dim]",
-            )
-            live.update(table)
-
-            t0 = time.monotonic()
-            cmd = [python_exe, "-m", "pip", "install", pkg]
-            proc = subprocess.run(
-                cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True
-            )
-            elapsed = time.monotonic() - t0
-
-            if proc.returncode == 0:
-                installed_count += 1
-                # Try to fetch the version we just installed
-                try:
-                    if python_exe != sys.executable:
-                        res_ver = subprocess.run(
-                            [
-                                python_exe,
-                                "-c",
-                                f"import importlib.metadata; print(importlib.metadata.version('{import_name.replace('_', '-')}'))",
-                            ],
-                            stdout=subprocess.PIPE,
-                            stderr=subprocess.DEVNULL,
-                            text=True,
-                        )
-                        new_ver = res_ver.stdout.strip() if res_ver.returncode == 0 else None
-                        ver_note = f"v{new_ver}" if new_ver else "installed"
-                    else:
-                        new_ver = importlib.metadata.version(import_name.replace("_", "-"))
-                        ver_note = f"v{new_ver}"
-                except Exception:
-                    ver_note = "installed"
-                table.columns[0]._cells[row_idx] = "[bold green]✔[/bold green]"
-                table.columns[1]._cells[row_idx] = f"[bold green]{pkg}[/bold green]"
-                table.columns[2]._cells[row_idx] = "[bold green]Installed[/bold green]"
-                table.columns[3]._cells[row_idx] = (
-                    f"[dim]{ver_note}  ({elapsed:.1f}s)[/dim]"
+                if res.returncode == 0:
+                    return True
+                res_imp = subprocess.run(
+                    [python_exe, "-c", f"import {import_name}"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
                 )
+                return res_imp.returncode == 0
             else:
-                failed_count += 1
-                err_msg = (
-                    proc.stderr.strip().splitlines()[-1]
-                    if proc.stderr.strip()
-                    else "unknown error"
+                importlib.metadata.version(import_name.replace("_", "-"))
+                return True
+        except Exception:
+            if python_exe == sys.executable:
+                try:
+                    return importlib.util.find_spec(import_name) is not None
+                except Exception:
+                    pass
+            return False
+
+    def _get_version(spec: str) -> str:
+        """Get the installed version of a package, or empty string."""
+        import_name = _import_name(spec)
+        try:
+            if python_exe != sys.executable:
+                rv = subprocess.run(
+                    [
+                        python_exe,
+                        "-c",
+                        (
+                            "import importlib.metadata; "
+                            f"print(importlib.metadata.version('{import_name.replace('_', '-')}'))"
+                        ),
+                    ],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.DEVNULL,
+                    text=True,
                 )
-                err_short = err_msg[:55]
-                failed_details.append((pkg, err_msg))
-                table.columns[0]._cells[row_idx] = "[bold red]✘[/bold red]"
-                table.columns[1]._cells[row_idx] = f"[bold red]{pkg}[/bold red]"
-                table.columns[2]._cells[row_idx] = "[bold red]Failed[/bold red]"
-                table.columns[3]._cells[row_idx] = f"[dim red]{err_short}[/dim red]"
+                return rv.stdout.strip() if rv.returncode == 0 else ""
+            else:
+                return importlib.metadata.version(import_name.replace("_", "-"))
+        except Exception:
+            return ""
 
-            live.update(table)
+    # ── Pre-check: which packages are already installed ────────────────────
+    to_install: list[str] = []
+    skipped_count = 0
 
-    # ── Failure detail block ─────────────────────────────────────────────────
-    if failed_details:
-        console.print()
-        for fpkg, ferr in failed_details:
-            console.print(
-                Panel(
-                    f"[red]{ferr.strip()[:200]}[/red]\n\n"
-                    f"[dim]Retry manually:[/dim]  [bold]pip install {fpkg}[/bold]",
-                    title=f"[red]✘  Install failed — {fpkg}[/red]",
-                    border_style="red",
-                    padding=(0, 2),
-                )
-            )
-
-    # ── Summary panel ───────────────────────────────────────────────────────
-    elapsed_total = time.monotonic() - start_time
-    console.print()
-
-    summary_table = Table(box=rich_box.SIMPLE, show_header=False, padding=(0, 2))
-    summary_table.add_column("", style="bold", width=20)
-    summary_table.add_column("", justify="right", width=6)
-
-    summary_table.add_row(
-        "[bold green]✔  Installed[/bold green]",
-        f"[bold green]{installed_count}[/bold green]",
-    )
-    summary_table.add_row(
-        "[bold dim]⊘  Skipped[/bold dim]",
-        f"[dim]{skipped_count}[/dim]",
-    )
-    if failed_count:
-        summary_table.add_row(
-            "[bold red]✘  Failed[/bold red]",
-            f"[bold red]{failed_count}[/bold red]",
-        )
-    summary_table.add_row("", "")
-    summary_table.add_row(
-        "[dim]⏱  Total time[/dim]",
-        f"[dim]{elapsed_total:.1f}s[/dim]",
-    )
-
-    if failed_count == 0:
-        status_line = "[bold green]All packages ready — your project environment is set up![/bold green]"
-        border = "green"
-        icon = "🎉"
+    if upgrade:
+        # Upgrades always re-run the resolver — nothing is skipped.
+        to_install = list(packages)
     else:
-        status_line = (
-            f"[bold yellow]Installation finished with [red]{failed_count}[/red] failure(s). "
-            f"See above for details.[/bold yellow]"
-        )
-        border = "yellow"
-        icon = "⚠️ "
+        for pkg in packages:
+            if _check_installed(pkg):
+                skipped_count += 1
+            else:
+                to_install.append(pkg)
 
-    console.print(
-        Panel(
-            Columns(
-                [summary_table, Text.from_markup(f"\n  {status_line}")],
-                equal=False,
-                expand=True,
-            ),
-            title=f"[bold]{icon}  Installation Summary[/bold]",
-            border_style=border,
-            padding=(0, 1),
-        )
+    # ── Detect installer strategy (uv first, silent pip fallback) ──────────
+    uv_bin = shutil.which("uv")
+    strategy = "uv" if uv_bin else "pip"
+
+    # ── Build progress renderer ────────────────────────────────────────────
+    install_items = [ProgressItem(name=_pkg_base(p)) for p in to_install]
+
+    resolve_phase = ProgressPhase(name="resolve")
+    download_phase = ProgressPhase(name="download")
+    install_phase = ProgressPhase(name="install", items=install_items)
+
+    renderer = ProgressRenderer(
+        title="updating" if upgrade else "installing",
+        strategy=strategy,
+        total=len(to_install),
+        phases=[resolve_phase, download_phase, install_phase],
     )
-    console.print()
 
+    if not to_install:
+        # Everything already present — report without running an installer.
+        for phase, summary in (
+            (resolve_phase, f"{skipped_count} packages"),
+            (download_phase, "nothing to fetch"),
+            (install_phase, f"{skipped_count} already installed"),
+        ):
+            phase.summary = summary
+            phase.state = State.DONE
+        renderer.print_result()
+        return 0, 0, skipped_count
+
+    # ── Run one batched invocation (never one package at a time) ───────────
+    if uv_bin:
+        cmd = [uv_bin, "pip", "install", "--python", python_exe]
+        if upgrade:
+            cmd.append("--upgrade")
+        cmd.extend(to_install)
+    else:
+        cmd = [python_exe, "-m", "pip", "install"]
+        if upgrade:
+            cmd.append("--upgrade")
+        cmd.extend(to_install)
+
+    parser = _InstallOutputParser(
+        strategy=strategy,
+        resolve=resolve_phase,
+        download=download_phase,
+        install=install_phase,
+    )
+
+    with renderer:
+        resolve_phase.start()
+        renderer.refresh()
+
+        raw_output: list[str] = []
+        # pip block-buffers its output when stdout is a pipe, which would
+        # bunch every phase marker up at the end and make the timings useless.
+        env = {**os.environ, "PYTHONUNBUFFERED": "1"}
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            bufsize=1,
+            env=env,
+        )
+        assert proc.stdout is not None
+        for raw_line in proc.stdout:
+            raw_output.append(raw_line)
+            if parser.feed(raw_line):
+                renderer.refresh()
+        returncode = proc.wait()
+
+        # Close out any phase the installer never announced.  On failure the
+        # phase that was still running is the one that broke.
+        parser.finalize(success=returncode == 0)
+        combined_output = "".join(raw_output)
+        installed_count = 0
+        failed_count = 0
+        fix_hints: list[str] = []
+
+        if install_phase.state == State.PENDING:
+            # The run died before installation started: the failure belongs to
+            # resolve or download, so the install phase never expands.
+            failed_count = len(install_items)
+            reason, fix_hints = classify_install_error(combined_output, to_install)
+            for phase in (resolve_phase, download_phase):
+                if phase.state == State.FAILED:
+                    phase.summary = reason
+        else:
+            for item in install_items:
+                spec = next(
+                    (p for p in to_install if _pkg_base(p) == item.name), item.name
+                )
+                version = _get_version(spec)
+                # Exit 0 from a batched installer means every requested package
+                # landed; otherwise trust only what is importable afterwards.
+                if returncode == 0 or version:
+                    item.done(version=item.version or version)
+                    installed_count += 1
+                    continue
+
+                # Raw output is mapped to a short reason; it is never rendered.
+                reason, hints = classify_install_error(combined_output, [item.name])
+                item.fail(reason)
+                failed_count += 1
+                for hint in hints:
+                    if hint not in fix_hints:
+                        fix_hints.append(hint)
+
+            install_phase.finish(
+                f"{installed_count} ok · {failed_count} failed"
+                if failed_count
+                else f"{installed_count} packages"
+            )
+        renderer.refresh()
+
+    renderer.print_result(fix_hints)
     return installed_count, failed_count, skipped_count
 
 
@@ -515,9 +782,7 @@ def init_project(
     else:
         offline_url = "sqlite+aiosqlite:///./.kaira/offline.db"
     mode_lines = (
-        f"DB_MODE=online\n"
-        f"OFFLINE_DATABASE_URL={offline_url}\n"
-        f"FALLBACK_MODE=off\n"
+        f"DB_MODE=online\nOFFLINE_DATABASE_URL={offline_url}\nFALLBACK_MODE=off\n"
     )
     env_content = (
         f"APP_ENV=development\n"
@@ -709,14 +974,17 @@ def init_command(
         console.print(f"[red]Error: Folder '{name}' already exists.[/red]")
         raise typer.Exit(1)
 
-    # Interactive setup wizard
-    console.print(
-        f"\n⚡ Kaira — Project Setup: {name}\n────────────────────────────────────"
-    )
+    started = time.monotonic()
+
+    # Interactive setup wizard.  A fully flag-driven run asks nothing, so the
+    # heading would introduce an empty section — the scaffold section below
+    # echoes the resolved configuration either way.
+    if not (db and auth and docker is not None and ci is not None):
+        ui.section("setup", name)
 
     if not db:
         db_choice = select_option(
-            "Select database",
+            "database",
             ["SQLite", "PostgreSQL", "MySQL", "MongoDB"],
             "SQLite",
         )
@@ -730,9 +998,7 @@ def init_command(
         raise typer.Exit(1)
 
     if not auth:
-        auth_choice = select_option(
-            "Select auth type", ["JWT", "OAuth2", "API Key", "None"], "JWT"
-        )
+        auth_choice = select_option("auth", ["JWT", "OAuth2", "API Key", "None"], "JWT")
         auth = auth_choice.lower().replace(" ", "-")
     else:
         auth = auth.lower().replace(" ", "-")
@@ -743,13 +1009,13 @@ def init_command(
         raise typer.Exit(1)
 
     if docker is None:
-        docker = select_confirm("Include Docker?", default=True)
+        docker = select_confirm("docker", default=True)
 
     if ci is None:
-        include_ci = select_confirm("Include CI/CD?", default=True)
+        include_ci = select_confirm("ci/cd", default=True)
         if include_ci:
             ci_choice = select_option(
-                "Select CI/CD platform",
+                "ci platform",
                 ["GitHub Actions", "GitLab CI", "Bitbucket Pipelines"],
                 "GitHub Actions",
             )
@@ -774,13 +1040,20 @@ def init_command(
         )
         raise typer.Exit(1)
 
-    console.print("────────────────────────────────────")
-    console.print(f"✅ Generating {name}...")
-    console.print("────────────────────────────────────")
+    # Echo the resolved configuration so a flag-driven run shows the same
+    # summary an interactive one does.
+    ui.section("scaffold")
+    ui.field("database", db)
+    ui.field("auth", auth)
+    ui.field("docker", "yes" if docker else "no")
+    ui.field("ci", ci)
+    console.print()
 
     # Scaffold the project files
+    scaffold_started = time.monotonic()
     project_dir.mkdir(parents=True, exist_ok=True)
     init_project(name, db, auth, docker, ci, project_dir)
+    ui.step("project files", _elapsed_since(scaffold_started))
 
     # Package installation phase
     # Determine DB-specific and Core required packages
@@ -813,31 +1086,38 @@ def init_command(
         req_packages.extend(["motor>=3.3.0,<4.0.0", "beanie>=1.24.0,<2.0.0"])
     elif db == "sqlite":
         req_packages.extend(
-            ["sqlalchemy[asyncio]>=2.0.36,<3.0.0", "aiosqlite>=0.20.0", "alembic>=1.14.0"]
+            [
+                "sqlalchemy[asyncio]>=2.0.36,<3.0.0",
+                "aiosqlite>=0.20.0",
+                "alembic>=1.14.0",
+            ]
         )
 
     if os.environ.get("PYTEST_CURRENT_TEST"):
-        console.print(
-            "[yellow]Skipping virtual environment and dependency installation while running tests.[/yellow]"
-        )
+        ui.step("virtualenv", "skipped while running tests", State.PENDING)
+        ui.step("dependencies", "skipped while running tests", State.PENDING)
     else:
         # Create virtual environment
-        console.print(f"\n⚙️  Creating virtual environment (.venv) inside {name}...")
+        venv_started = time.monotonic()
         try:
-            subprocess.run([sys.executable, "-m", "venv", ".venv"], cwd=project_dir, check=True)
-            console.print("[green]✓  Virtual environment (.venv) created successfully![/green]")
+            subprocess.run(
+                [sys.executable, "-m", "venv", ".venv"],
+                cwd=project_dir,
+                check=True,
+                stdout=subprocess.DEVNULL,
+            )
+            ui.step("virtualenv", f".venv · {_elapsed_since(venv_started)}")
         except Exception as e:
-            console.print(f"[yellow]⚠️  Could not create virtual environment: {e}[/yellow]")
+            ui.step("virtualenv", str(e).splitlines()[0][:60], State.FAILED)
 
+        console.print()
         install_packages(req_packages, project_dir=project_dir)
 
     # ── Auto database provisioning (Phase 6, Feature 1) ───────────────────────
     # Detect a local server, create the DB, wire the DSN — or fall back to
     # offline SQLite so init always completes. The `scale` profile scaffolds the
     # DSN only (managed/external DB assumed).
-    console.print("\n────────────────────────────────────")
-    console.print("🗄️  Provisioning database...")
-    console.print("────────────────────────────────────")
+    ui.section("database", db)
     try:
         from kaira.commands.db_cmd import provision_and_persist
 
@@ -851,12 +1131,15 @@ def init_command(
             non_interactive=in_tests or not sys.stdin.isatty(),
         )
     except Exception as exc:  # provisioning must never abort a successful scaffold
-        console.print(f"[yellow]⚠️  Skipped auto-provisioning: {exc}[/yellow]")
-        console.print("[dim]→ run `kaira db create` once your database server is up.[/dim]")
+        ui.step("provisioning", str(exc).splitlines()[0][:60], State.FAILED)
+        ui.hint("kaira db create   # once your database server is up")
 
+    console.print()
+    ui.rule()
+    ok = escape(state_symbol(State.DONE))
     console.print(
-        f"\n[bold green]✓[/bold green]  Project [bold]{name}[/bold] scaffolded successfully!\n"
-        f"[dim]Next steps:[/dim]\n"
-        f"  1. [cyan]cd {name}[/cyan]\n"
-        f"  2. [cyan]kaira run[/cyan]"
+        f"{GUTTER}[{Theme.SUCCESS}]{ok} {name} ready[/{Theme.SUCCESS}] "
+        f"[{Theme.MUTED}]in {_elapsed_since(started)}[/{Theme.MUTED}]"
     )
+    ui.hint(f"cd {name}")
+    ui.hint("kaira run")

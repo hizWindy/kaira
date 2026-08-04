@@ -10,7 +10,6 @@ from typing import Annotated, Optional
 
 import typer
 from rich.panel import Panel
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
 
 from kaira.console import console
 from kaira.commands.ux_helpers import print_next_steps
@@ -54,6 +53,7 @@ def _ensure_message_schema(config, base: Path) -> None:
     schemas_dir.mkdir(parents=True, exist_ok=True)
     (schemas_dir / "__init__.py").touch(exist_ok=True)
     from jinja2 import Environment, FileSystemLoader
+
     env = Environment(
         loader=FileSystemLoader(str(TEMPLATES_DIR)),
         keep_trailing_newline=True,
@@ -61,20 +61,32 @@ def _ensure_message_schema(config, base: Path) -> None:
     tmpl = env.get_template("message_schema.py.j2")
     target.write_text(tmpl.render(), encoding="utf-8")
 
+
 def _ruff_format(path: Path) -> None:
     """Run ruff check --fix and ruff format on the given file path."""
     ruff_bin = shutil.which("ruff")
     if not ruff_bin:
-        console.print("  [yellow]⚠️  ruff not found. Install it for auto-formatting:[/yellow]\n"
-                      "      [dim]pip install ruff[/dim]")
+        console.print(
+            "  [yellow]⚠️  ruff not found. Install it for auto-formatting:[/yellow]\n"
+            "      [dim]pip install ruff[/dim]"
+        )
         return
     try:
         # Run ruff check --fix
-        subprocess.run([ruff_bin, "check", "--fix", str(path)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(
+            [ruff_bin, "check", "--fix", str(path)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
         # Run ruff format
-        subprocess.run([ruff_bin, "format", str(path)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(
+            [ruff_bin, "format", str(path)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
     except Exception:
         pass
+
 
 app = typer.Typer(help="Scaffold FastAPI backend layers.")
 
@@ -82,6 +94,15 @@ app = typer.Typer(help="Scaffold FastAPI backend layers.")
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _relative_to(path: Path, base: Path) -> str:
+    """Return *path* relative to *base*, falling back to the file name."""
+    try:
+        return str(path.relative_to(base))
+    except ValueError:
+        return path.name
+
 
 def _print_success(path: Path) -> None:
     console.print(f"  [bold green]✓[/bold green]  Written: [cyan]{path}[/cyan]")
@@ -118,7 +139,9 @@ def _generate_and_write(
     for layer in layers:
         content = generate_layer(layer, model_name, fields, relations, config)
         out_path = resolve_output_path(layer, model_name, config, base)
-        result = write_with_check(out_path, content, force=force, non_interactive=non_interactive)
+        result = write_with_check(
+            out_path, content, force=force, non_interactive=non_interactive
+        )
         if result == "written":
             _ruff_format(out_path)
             _print_success(out_path)
@@ -141,6 +164,7 @@ def _generate_and_write(
 # ---------------------------------------------------------------------------
 # generate embedded
 # ---------------------------------------------------------------------------
+
 
 @app.command("embedded")
 def generate_embedded(
@@ -237,9 +261,12 @@ def generate_embedded(
 # generate model
 # ---------------------------------------------------------------------------
 
+
 @app.command("model")
 def generate_model(
-    model_name: Annotated[str, typer.Argument(help="PascalCase model name, e.g. BlogPost")],
+    model_name: Annotated[
+        str, typer.Argument(help="PascalCase model name, e.g. BlogPost")
+    ],
     fields: Annotated[
         Optional[str],
         typer.Option("--fields", "-f", help='Field definitions: "name:str, age:int"'),
@@ -292,28 +319,45 @@ def generate_model(
 
     config = get_config()
     base = Path.cwd()
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        TaskProgressColumn(),
-        console=console,
-    ) as progress:
-        task = progress.add_task(f"[cyan]Generating {model_name}...", total=len(layers))
-        for lyr in layers:
-            progress.update(task, description=f"[cyan]  {lyr}...")
+
+    from kaira.core.progress import ProgressItem, ProgressPhase, ProgressRenderer
+
+    items = [ProgressItem(name=lyr) for lyr in layers]
+    phase = ProgressPhase(name="scaffold", items=items)
+    renderer = ProgressRenderer(
+        title=f"generate model {model_name}",
+        total=len(layers),
+        phases=[phase],
+        unit="layers",
+    )
+
+    written_count = 0
+    with renderer:
+        phase.start()
+        renderer.refresh()
+        for lyr, item in zip(layers, items):
+            item.start()
+            renderer.refresh()
             content = generate_layer(lyr, model_name, parsed_fields, [], config)
             out_path = resolve_output_path(lyr, model_name, config, base)
             from kaira.core.detector import write_with_check as _wwc
+
             result = _wwc(out_path, content, force=force, non_interactive=False)
             if result == "written":
                 _ruff_format(out_path)
                 _print_success(out_path)
                 if lyr == "router":
                     _register_router_in_main(model_name, base, config)
+                item.done(detail=_relative_to(out_path, base))
+                written_count += 1
             else:
                 _print_skipped(out_path)
-            progress.advance(task)
+                item.done(detail="skipped")
+            renderer.refresh()
+
+        phase.finish(f"{written_count} of {len(layers)} written")
+        renderer.refresh()
+    renderer.print_result()
 
     # Ensure the shared MessageResponse schema exists alongside model schemas.
     _ensure_message_schema(config, base)
@@ -327,7 +371,9 @@ def generate_model(
     )
     save_config(config)
 
-    console.print(f"\n[bold green]✓[/bold green]  Done! Pipeline generated for [bold]{model_name}[/bold].")
+    console.print(
+        f"\n[bold green]✓[/bold green]  Done! Pipeline generated for [bold]{model_name}[/bold]."
+    )
 
     # Derive next steps from project state
     db_type = config.db_type
@@ -336,9 +382,13 @@ def generate_model(
     if db_type != "mongodb" and not (output_root / "alembic").exists():
         next_steps.append("[cyan]kaira migrate init[/cyan] — set up Alembic migrations")
     if not (output_root / "auth" / "dependencies.py").exists():
-        next_steps.append("[cyan]kaira auth generate --type jwt[/cyan] — add authentication")
+        next_steps.append(
+            "[cyan]kaira auth generate --type jwt[/cyan] — add authentication"
+        )
     if not (output_root / "tests").exists():
-        next_steps.append(f"[cyan]kaira test generate {model_name}[/cyan] — generate tests")
+        next_steps.append(
+            f"[cyan]kaira test generate {model_name}[/cyan] — generate tests"
+        )
     next_steps.append(f"[cyan]kaira diff {model_name}[/cyan] — preview future changes")
     print_next_steps(next_steps)
 
@@ -347,7 +397,10 @@ def generate_model(
 # Single-layer commands
 # ---------------------------------------------------------------------------
 
-def _single_layer_cmd(layer: str, model_name: str, fields_str: Optional[str], force: bool) -> None:
+
+def _single_layer_cmd(
+    layer: str, model_name: str, fields_str: Optional[str], force: bool
+) -> None:
     try:
         validate_model_name(model_name)
     except ValueError as exc:
@@ -415,6 +468,7 @@ def generate_repository(
 # Bulk generation
 # ---------------------------------------------------------------------------
 
+
 @app.command("bulk")
 def generate_bulk(
     json_file: Annotated[str, typer.Argument(help="Path to bulk models JSON file")],
@@ -444,25 +498,32 @@ def generate_bulk(
         raise typer.Exit(1)
 
     if not isinstance(models_data, list):
-        console.print("[bold red]✗[/bold red]  JSON root must be an array of model definitions.")
+        console.print(
+            "[bold red]✗[/bold red]  JSON root must be an array of model definitions."
+        )
         raise typer.Exit(1)
 
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        TaskProgressColumn(),
-        console=console,
-    ) as progress:
-        task = progress.add_task("[cyan]Generating models...", total=len(models_data))
+    from kaira.core.progress import ProgressItem, ProgressPhase, ProgressRenderer
 
-        for entry in models_data:
+    items = [ProgressItem(name=entry.get("name", "unknown")) for entry in models_data]
+    phase = ProgressPhase(name="bulk generate", items=items)
+    renderer = ProgressRenderer(
+        title="generating", total=len(models_data), phases=[phase], unit="models"
+    )
+
+    with renderer:
+        phase.start()
+        renderer.refresh()
+        for entry, item in zip(models_data, items):
             model_name = entry.get("name", "")
+            item.start()
+            renderer.refresh()
             try:
                 validate_model_name(model_name)
             except ValueError as exc:
                 console.print(f"[bold red]✗[/bold red]  Skipping '{model_name}': {exc}")
-                progress.advance(task)
+                item.fail(reason=str(exc))
+                renderer.refresh()
                 continue
 
             # Parse fields — support both dict format and string format
@@ -476,7 +537,8 @@ def generate_bulk(
                 parsed_fields = parse_fields(fields_str)
             except ValueError as exc:
                 console.print(f"[bold red]✗[/bold red]  Skipping '{model_name}': {exc}")
-                progress.advance(task)
+                item.fail(reason=str(exc))
+                renderer.refresh()
                 continue
 
             relations_data = entry.get("relations", [])
@@ -484,14 +546,28 @@ def generate_bulk(
                 parsed_relations = parse_relations_from_json(relations_data)
             except ValueError as exc:
                 console.print(f"[bold red]✗[/bold red]  Skipping '{model_name}': {exc}")
-                progress.advance(task)
+                item.fail(reason=str(exc))
+                renderer.refresh()
                 continue
 
             tier = entry.get("tier", "full")
             layers = TIER_LAYERS.get(tier, TIER_LAYERS["full"])
 
-            progress.update(task, description=f"[cyan]Generating {model_name}...")
-            _generate_and_write(layers, model_name, parsed_fields, parsed_relations, force, non_interactive=True)
-            progress.advance(task)
+            _generate_and_write(
+                layers,
+                model_name,
+                parsed_fields,
+                parsed_relations,
+                force,
+                non_interactive=True,
+            )
+            item.done(detail=f"{len(layers)} layers")
+            renderer.refresh()
 
-    console.print(f"\n[bold green]✓[/bold green]  Bulk generation complete! Processed {len(models_data)} model(s).")
+        phase.finish()
+        renderer.refresh()
+    renderer.print_result()
+
+    console.print(
+        f"\n[bold green]✓[/bold green]  Bulk generation complete! Processed {len(models_data)} model(s)."
+    )

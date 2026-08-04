@@ -611,6 +611,151 @@ Use `--force` to bypass prompts and always overwrite.
 
 ---
 
+## Phase 7.5 Presentation & Discovery
+
+### Command Index (`kaira commands`)
+
+Scan or filter all registered commands without executing anything:
+
+```bash
+kaira commands                    # View all commands grouped by category
+kaira commands --group db         # Show only database commands
+kaira commands --search export    # Search across names & descriptions
+```
+
+### Brand Banner
+
+Shown on entry points only (bare `kaira`, `--help`, `--version`, `about`, `init`,
+`commands`) — never above a working command's output. Three-tier degradation:
+
+| Terminal | Output |
+|---|---|
+| Interactive TTY, UTF-8, colour | Block wordmark with `⚙️` / `⚡` flanks |
+| UTF-8 with `NO_COLOR` | Same wordmark, no ANSI |
+| Non-TTY, non-UTF-8, piped/CI, or under 32 columns | `KAIRA v1.0.0 · continuous model-level FastAPI scaffolding` |
+
+### Welcome Dashboard (bare `kaira`)
+
+Running `kaira` with no arguments inside a project prints the banner and the
+project's state — configuration, health, resource counts, and what to do next:
+
+```
+  proj29 · api v1
+  ────────────────────────────────────────────
+    database       postgresql · proj29
+    auth           jwt
+    ci             github
+
+  ✓ connection     online · connected · localhost:5432
+  ✓ auth setup     configured
+  ✓ docker         Dockerfile present
+  ! migrations     not initialized
+
+  resources
+  ────────────────────────────────────────────
+    models         5
+    routers        5
+    tests          0
+    last action    generate model User · 2026-08-04
+
+  action required
+  ────────────────────────────────────────────
+  → kaira migrate init
+  → kaira test generate --all
+```
+
+Outside a project it prints a short "no project here" body pointing at
+`kaira init`. Help is still one keystroke away via `kaira --help`, and the full
+index via `kaira commands`.
+
+### Output Language
+
+Every long-running command reads as a sequence of named sections laid out
+against one content column, inside one gutter — no full-width boxes, no
+per-command divider styles:
+
+```
+  scaffold
+  ────────────────────────────────────────────
+    database       postgresql
+    auth           jwt
+
+  ✓ project files  412ms
+  ✓ virtualenv     .venv · 2.4s
+
+  database · postgresql
+  ────────────────────────────────────────────
+  · detected       postgresql localhost:5432
+  ! auth required  postgres@localhost:5432 → proj29
+                   blank to skip and use offline SQLite
+  ? password       ****
+  ✓ created        proj29 · user postgres · localhost:5432
+  ✓ credentials    .env.development · git-ignored
+
+  ────────────────────────────────────────────
+  ✓ proj29 ready in 84.1s
+  → cd proj29
+  → kaira run
+```
+
+The vocabulary lives in `core/ui.py` — `section`, `step`, `note`, `field`,
+`subtext`, `hint`, `rule` — and shares its symbols, colours, gutter and rule
+width with the progress renderer via `core/theme.py`:
+
+- `✓ ✗ ! ◐ ◌` are **verdicts**; `·` is an **observation** that makes no claim
+  either way; a bare label/value **field** is a setting, not a step.
+- Labels sit in a fixed column, so values line up down a whole section. The
+  symbol column is padded to a uniform width, which keeps the alignment intact
+  when symbols fall back to `[ok]` / `[x]` on a non-UTF-8 console.
+- Rules are clamped to the content width and to the terminal, whichever is
+  narrower — a rule stretched across a 200-column window puts the eye a long
+  way from the text it belongs to.
+
+### Multi-Step Progress UI
+
+One shared renderer (`kaira/core/progress.py`) behind `kaira init`, `deps add`,
+`deps update`, `generate model`, `generate bulk`, `test generate --all`, and
+`seed run --all`. Every phase is visible from the start, so the shape of the job
+is clear before it runs:
+
+```
+⚡ installing · uv · 12 packages
+────────────────────────────────────────────
+✓ resolve   12 packages · 340ms
+✓ download  18.2 MB · 2.1s
+◐ install
+  ✓ fastapi 0.115.0
+  ✓ sqlalchemy 2.0.36
+  ◐ pydantic
+  ◌ alembic
+  ◌ +7 more
+────────────────────────────────────────────
+████████████░░░░░░░░░░░░  6/12 · 4.8s
+```
+
+- States: `pending ◌` · `active ◐` · `done ✓` · `partial !` · `failed ✗`, each
+  with an ASCII fallback (`.`, `>`, `[ok]`, `[!]`, `[x]`).
+- The nested list is capped at a fixed height, so the block never grows with the
+  project size.
+- On full success the detail collapses but the per-phase timings stay — a slow
+  resolve means a dependency conflict, a slow download means the network.
+- On failure only the failing phase expands, with a short reason and
+  copy-pasteable fix commands.
+- Under `NO_COLOR`, a pipe, or CI: no animation, no repainting, no cursor codes —
+  one plain line per phase as it resolves, then the summary.
+
+### Installer
+
+`uv` is used when it is on `PATH`, otherwise it falls back to `pip` silently.
+Either way the full package set goes to a **single** invocation so the resolver
+can backtrack across the whole dependency graph. Phase and item states come from
+parsing the installer's real output, never from timers. Raw installer output is
+never printed: failures are mapped to a short reason (missing PostgreSQL headers,
+dependency conflict, network unreachable, …) plus a fix command, so index URLs
+and stack traces cannot leak into the terminal.
+
+---
+
 ## Project Structure (Generated)
 
 ```

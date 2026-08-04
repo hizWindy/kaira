@@ -18,6 +18,7 @@ from kaira.core.detector import (
 # file_exists
 # ---------------------------------------------------------------------------
 
+
 class TestFileExists:
     def test_existing_file(self, tmp_path):
         f = tmp_path / "test.py"
@@ -35,6 +36,7 @@ class TestFileExists:
 # ---------------------------------------------------------------------------
 # compute_diff
 # ---------------------------------------------------------------------------
+
 
 class TestComputeDiff:
     def test_identical_returns_empty(self):
@@ -67,6 +69,7 @@ class TestComputeDiff:
 # write_with_check — new file (no prompt needed)
 # ---------------------------------------------------------------------------
 
+
 class TestWriteWithCheckNewFile:
     def test_writes_new_file(self, tmp_path):
         path = tmp_path / "models" / "user.py"
@@ -84,6 +87,7 @@ class TestWriteWithCheckNewFile:
 # write_with_check — existing file, force=True
 # ---------------------------------------------------------------------------
 
+
 class TestWriteWithCheckForce:
     def test_overwrites_with_force(self, tmp_path):
         path = tmp_path / "user.py"
@@ -96,6 +100,7 @@ class TestWriteWithCheckForce:
 # ---------------------------------------------------------------------------
 # write_with_check — existing file, non_interactive=True
 # ---------------------------------------------------------------------------
+
 
 class TestWriteWithCheckNonInteractive:
     def test_skips_existing_non_interactive(self, tmp_path):
@@ -110,13 +115,16 @@ class TestWriteWithCheckNonInteractive:
 # write_with_check — interactive overwrite
 # ---------------------------------------------------------------------------
 
+
 class TestWriteWithCheckInteractive:
     def test_interactive_overwrite(self, tmp_path):
         path = tmp_path / "user.py"
         path.write_text("old content")
 
         with patch("kaira.core.detector.prompt_overwrite", return_value="overwrite"):
-            result = write_with_check(path, "new content", force=False, non_interactive=False)
+            result = write_with_check(
+                path, "new content", force=False, non_interactive=False
+            )
 
         assert result == "written"
         assert path.read_text() == "new content"
@@ -126,7 +134,9 @@ class TestWriteWithCheckInteractive:
         path.write_text("original")
 
         with patch("kaira.core.detector.prompt_overwrite", return_value="skip"):
-            result = write_with_check(path, "new content", force=False, non_interactive=False)
+            result = write_with_check(
+                path, "new content", force=False, non_interactive=False
+            )
 
         assert result == "skipped"
         assert path.read_text() == "original"
@@ -144,9 +154,15 @@ class TestWriteWithCheckInteractive:
                 return "diff"
             return "skip"
 
-        with patch("kaira.core.detector.prompt_overwrite", side_effect=prompt_side_effect), \
-             patch("kaira.core.detector.show_diff"):
-            result = write_with_check(path, "new content", force=False, non_interactive=False)
+        with (
+            patch(
+                "kaira.core.detector.prompt_overwrite", side_effect=prompt_side_effect
+            ),
+            patch("kaira.core.detector.show_diff"),
+        ):
+            result = write_with_check(
+                path, "new content", force=False, non_interactive=False
+            )
 
         assert result == "skipped"
         assert call_count["n"] == 2
@@ -155,6 +171,7 @@ class TestWriteWithCheckInteractive:
 # ---------------------------------------------------------------------------
 # show_diff (smoke test — just ensure no exceptions)
 # ---------------------------------------------------------------------------
+
 
 class TestShowDiff:
     def test_show_diff_no_exception(self, tmp_path):

@@ -324,9 +324,7 @@ def parse_fields(
         ftype = parts[1].strip()
 
         if not re.match(r"^[a-z_][a-z0-9_]*$", fname):
-            raise ValueError(
-                f"Field name '{fname}' must be lowercase snake_case."
-            )
+            raise ValueError(f"Field name '{fname}' must be lowercase snake_case.")
 
         normalized = _normalize_type(ftype, embedded)
         results.append(FieldDef(name=fname, raw_type=normalized))

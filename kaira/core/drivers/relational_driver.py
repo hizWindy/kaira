@@ -42,7 +42,7 @@ class RelationalEngineDriver(BaseEngineDriver):
     ) -> Dict[str, Any]:
         """Return SQLAlchemy relationship code snippets."""
         cascade_part = f', cascade="{cascade}"' if cascade else ""
-        
+
         if relation_type == "has-many":
             field_code = f'    {target_model.lower()}s = relationship("{target_model}", back_populates="{source_model.lower()}"{cascade_part})'
         elif relation_type == "has-one":

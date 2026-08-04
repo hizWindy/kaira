@@ -160,7 +160,9 @@ def _endpoints_from_spec(spec: dict) -> list[Endpoint]:
                 .get("application/json", {})
                 .get("schema")
             )
-            ok = op.get("responses", {}).get("200") or op.get("responses", {}).get("201")
+            ok = op.get("responses", {}).get("200") or op.get("responses", {}).get(
+                "201"
+            )
             resp = (
                 (ok or {}).get("content", {}).get("application/json", {}).get("schema")
             )
@@ -353,7 +355,9 @@ def _group_endpoints(
         segments = [s for s in endpoint.path.split("/") if s and not s.startswith("{")]
         # Skip the /api/<version> prefix when deriving a name from the path.
         tail = [s for s in segments if s != "api" and not _looks_like_version(s)]
-        fallback = tail[0].replace("_", " ").title().replace(" ", "") if tail else "Root"
+        fallback = (
+            tail[0].replace("_", " ").title().replace(" ", "") if tail else "Root"
+        )
         buckets.setdefault(_group_name(endpoint, fallback), []).append(endpoint)
 
     groups: list[RouteGroup] = []

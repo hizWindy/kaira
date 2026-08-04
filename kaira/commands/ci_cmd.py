@@ -29,20 +29,27 @@ def _get_env() -> Environment:
 
 @app.command("generate")
 def ci_generate(
-    platform: Annotated[str, typer.Option("--platform", help="Platform: github, gitlab, bitbucket")] = "github",
-    force: Annotated[bool, typer.Option("--force", help="Overwrite existing files.")] = False,
+    platform: Annotated[
+        str, typer.Option("--platform", help="Platform: github, gitlab, bitbucket")
+    ] = "github",
+    force: Annotated[
+        bool, typer.Option("--force", help="Overwrite existing files.")
+    ] = False,
 ) -> None:
     """Generate pipeline config files with security analysis checks."""
     config = get_config()
     output_root = Path.cwd() / config.output_dir
 
     env = _get_env()
-    ctx = {"project_name": Path.cwd().name, "project_slug": Path.cwd().name.lower().replace("-", "_")}
+    ctx = {
+        "project_name": Path.cwd().name,
+        "project_slug": Path.cwd().name.lower().replace("-", "_"),
+    }
 
     if platform == "github":
         gh_dir = output_root / ".github" / "workflows"
         gh_dir.mkdir(parents=True, exist_ok=True)
-        
+
         # test.yml
         t_tmpl = env.get_template("ci_github.yml.j2")
         t_path = gh_dir / "test.yml"
@@ -77,9 +84,11 @@ def ci_generate(
         console.print(f"[red]Error: Unknown platform:[/red] {platform}")
         raise typer.Exit(1)
 
-    console.print(Panel(
-        f"[green]CI/CD ({platform}) pipeline generated successfully![/green]\n"
-        "Includes automated tests, ruff, mypy, bandit, and pip-audit coverage checks.",
-        title="Kaira — CI/CD Pipeline",
-        border_style="green",
-    ))
+    console.print(
+        Panel(
+            f"[green]CI/CD ({platform}) pipeline generated successfully![/green]\n"
+            "Includes automated tests, ruff, mypy, bandit, and pip-audit coverage checks.",
+            title="Kaira — CI/CD Pipeline",
+            border_style="green",
+        )
+    )

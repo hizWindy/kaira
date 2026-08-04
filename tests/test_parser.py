@@ -22,6 +22,7 @@ from kaira.core.parser import (
 # validate_model_name
 # ---------------------------------------------------------------------------
 
+
 class TestValidateModelName:
     def test_valid_pascal_case(self):
         assert validate_model_name("User") == "User"
@@ -54,6 +55,7 @@ class TestValidateModelName:
 # camel_to_snake
 # ---------------------------------------------------------------------------
 
+
 class TestCamelToSnake:
     def test_simple(self):
         assert camel_to_snake("User") == "user"
@@ -72,6 +74,7 @@ class TestCamelToSnake:
 # snake_to_pascal
 # ---------------------------------------------------------------------------
 
+
 class TestSnakeToPascal:
     def test_simple(self):
         assert snake_to_pascal("user") == "User"
@@ -86,6 +89,7 @@ class TestSnakeToPascal:
 # ---------------------------------------------------------------------------
 # pluralize + table_name
 # ---------------------------------------------------------------------------
+
 
 class TestPluralize:
     def test_regular(self):
@@ -110,6 +114,7 @@ class TestPluralize:
 # ---------------------------------------------------------------------------
 # parse_fields
 # ---------------------------------------------------------------------------
+
 
 class TestParseFields:
     def test_simple_str(self):
@@ -169,6 +174,7 @@ class TestParseFields:
 # parse_relation
 # ---------------------------------------------------------------------------
 
+
 class TestParseRelation:
     def test_one_to_many(self):
         r = parse_relation("one-to-many", "Comment")
@@ -203,6 +209,7 @@ class TestParseRelation:
 # parse_relations_from_json
 # ---------------------------------------------------------------------------
 
+
 class TestParseRelationsFromJson:
     def test_basic(self):
         data = [{"type": "many-to-one", "target": "User"}]
@@ -213,7 +220,11 @@ class TestParseRelationsFromJson:
     def test_multiple(self):
         data = [
             {"type": "many-to-one", "target": "User"},
-            {"type": "one-to-many", "target": "Comment", "cascade": "all, delete-orphan"},
+            {
+                "type": "one-to-many",
+                "target": "Comment",
+                "cascade": "all, delete-orphan",
+            },
         ]
         rels = parse_relations_from_json(data)
         assert len(rels) == 2

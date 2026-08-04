@@ -182,8 +182,11 @@ def _ensure_driver_installed(package_name: str) -> bool:
     """Auto-install missing database driver package into active Python environment."""
     import sys
     import subprocess
+
     try:
-        console.print(f"[cyan]📦 Auto-installing missing database driver '[bold]{package_name}[/bold]'...[/cyan]")
+        console.print(
+            f"[cyan]📦 Auto-installing missing database driver '[bold]{package_name}[/bold]'...[/cyan]"
+        )
         res = subprocess.run(
             [sys.executable, "-m", "pip", "install", package_name],
             stdout=subprocess.PIPE,
@@ -191,7 +194,9 @@ def _ensure_driver_installed(package_name: str) -> bool:
             text=True,
         )
         if res.returncode == 0:
-            console.print(f"[green]✓ Successfully installed [bold]{package_name}[/bold]![/green]")
+            console.print(
+                f"[green]✓ Successfully installed [bold]{package_name}[/bold]![/green]"
+            )
             return True
         return False
     except Exception:
@@ -223,7 +228,11 @@ def _test_connection_real(db_type: str, raw_url: str) -> tuple[bool, str]:
             await client.admin.command("ping")
             return True, ""
         else:
-            req_pkg = "asyncpg" if db_type == "postgresql" else ("aiomysql" if db_type == "mysql" else "aiosqlite")
+            req_pkg = (
+                "asyncpg"
+                if db_type == "postgresql"
+                else ("aiomysql" if db_type == "mysql" else "aiosqlite")
+            )
             try:
                 from sqlalchemy.ext.asyncio import create_async_engine
                 from sqlalchemy import text
@@ -234,13 +243,20 @@ def _test_connection_real(db_type: str, raw_url: str) -> tuple[bool, str]:
 
             try:
                 engine = create_async_engine(
-                    raw_url, connect_args={"timeout": 3} if db_type == "postgresql" else {}
+                    raw_url,
+                    connect_args={"timeout": 3} if db_type == "postgresql" else {},
                 )
             except Exception as exc:
-                if any(pkg in str(exc) for pkg in ["asyncpg", "aiomysql", "aiosqlite", "No module named"]):
+                if any(
+                    pkg in str(exc)
+                    for pkg in ["asyncpg", "aiomysql", "aiosqlite", "No module named"]
+                ):
                     if _ensure_driver_installed(req_pkg):
                         engine = create_async_engine(
-                            raw_url, connect_args={"timeout": 3} if db_type == "postgresql" else {}
+                            raw_url,
+                            connect_args={"timeout": 3}
+                            if db_type == "postgresql"
+                            else {},
                         )
                     else:
                         raise exc
@@ -330,32 +346,30 @@ def _password_prompt_factory(non_interactive: bool):
         return None
 
     from kaira.core import prompts
-    from kaira.core.theme import Theme, sym
 
     def _prompt(ctx) -> Optional[str]:  # type: ignore[no-untyped-def]
-        lock = sym("LOCK")
+        from kaira.core import ui
+        from kaira.core.progress import State
+
         if ctx.last_error:
-            console.print(
-                f"  [{Theme.ERROR}]{sym('FAIL')} Authentication failed for user "
-                f'"{ctx.user}" (attempt {ctx.attempt} of {ctx.max_attempts})[/{Theme.ERROR}]\n'
-                f"     The password didn't match. Try again, or leave blank to\n"
-                f"     skip and use offline SQLite."
+            ui.step(
+                "auth failed",
+                f"attempt {ctx.attempt} of {ctx.max_attempts} · "
+                f"blank to skip and use SQLite",
+                State.FAILED,
             )
         else:
-            console.print(
-                Panel(
-                    f"[bold]{lock} {ctx.engine.capitalize()} needs a password[/bold]\n\n"
-                    f"Kaira detected a running {ctx.engine} server but it requires\n"
-                    f'authentication. Enter the password for user "{ctx.user}"\n'
-                    f'to create the "{ctx.db_name}" database.\n\n'
-                    f"  Host:  {ctx.host}:{ctx.port}\n"
-                    f"  User:  {ctx.user}\n"
-                    f"  [dim](leave blank to skip and use offline SQLite instead)[/dim]",
-                    border_style=Theme.BORDER_WARNING,
-                )
+            # A box around three fields is more chrome than content, and it
+            # pushes the prompt itself down the screen.  The step vocabulary
+            # states the same facts on the same left edge as everything else.
+            ui.step(
+                "auth required",
+                f"{ctx.user}@{ctx.host}:{ctx.port} → {ctx.db_name}",
+                State.PARTIAL,
             )
+            ui.subtext("blank to skip and use offline SQLite")
         try:
-            value = prompts.secret("Password", flag="--skip")
+            value = prompts.secret("password", flag="--skip")
         except typer.Exit:
             return None
         return value or None
@@ -402,16 +416,24 @@ def provision_and_persist(
     Returns:
         The :class:`~kaira.core.provisioner.ProvisionResult`.
     """
-    from kaira.core import provisioner
-    from kaira.core.theme import Theme, sym
+    from kaira.core import provisioner, ui
+    from kaira.core.progress import State
 
     # scale: never auto-create (§1.5). Force scaffold-only.
     effective_skip = skip or profile == "scale"
 
     def announce(msg: str) -> None:
-        console.print(f"  [{Theme.PRIMARY}]{sym('BOLT')}[/{Theme.PRIMARY}] {msg}")
+        """Render one provisioning observation as ``label   detail``.
 
-    confirm_create = None if (assume_yes or profile == "solo") else _confirm_create_factory()
+        Provisioner messages are written as ``"<label> · <detail>"`` or as
+        plain prose; both fold into the same two-column note line.
+        """
+        label, _, detail = msg.partition(" · ")
+        ui.note(label.strip(), detail.strip())
+
+    confirm_create = (
+        None if (assume_yes or profile == "solo") else _confirm_create_factory()
+    )
 
     result = provisioner.provision_database(
         engine,
@@ -426,21 +448,15 @@ def provision_and_persist(
 
     # ── Report outcome ───────────────────────────────────────────────────────
     if result.offline:
-        console.print(f"  [{Theme.WARNING}]{sym('WARN')} {result.message}[/{Theme.WARNING}]")
-        console.print(
-            f"  [{Theme.MUTED}]→ start {engine} later and run: kaira db create[/{Theme.MUTED}]"
-        )
+        ui.step("offline", result.message, State.PARTIAL)
+        ui.hint(f"kaira db create   # once {engine} is running")
     elif result.manual_sql:
-        console.print(
-            Panel(
-                f"[{Theme.WARNING}]{sym('WARN')} cannot create database (insufficient privileges)\n"
-                f"    run this once as a superuser, then re-run `kaira db create`:\n\n"
-                f"    {result.manual_sql}[/{Theme.WARNING}]",
-                border_style=Theme.BORDER_WARNING,
-            )
-        )
+        ui.step("privileges", "cannot create database", State.PARTIAL)
+        ui.hint(result.manual_sql)
+        ui.hint("kaira db create")
     else:
-        console.print(f"  [{Theme.SUCCESS}]{sym('OK')} {result.message}[/{Theme.SUCCESS}]")
+        label, _, detail = result.message.partition(" · ")
+        ui.step(label.strip(), detail.strip(), State.DONE)
 
     _persist_provision(cwd, engine, result)
     return result
@@ -452,7 +468,9 @@ def _confirm_create_factory():
 
     def _confirm(name: str) -> bool:
         try:
-            return prompts.confirm(f'database "{name}" does not exist — create it?', default=True)
+            return prompts.confirm(
+                f'database "{name}" does not exist — create it?', default=True
+            )
         except typer.Exit:
             return False
 
@@ -462,7 +480,6 @@ def _confirm_create_factory():
 def _persist_provision(cwd: Path, engine: str, result: "object") -> None:
     """Write DSN/mode to env files and update ``.kaira.json`` after provisioning."""
     from kaira.core.provisioner import ProvisionResult, offline_store_url
-    from kaira.core.theme import Theme, sym
 
     assert isinstance(result, ProvisionResult)
     env_file = cwd / ".env"
@@ -480,10 +497,9 @@ def _persist_provision(cwd: Path, engine: str, result: "object") -> None:
     if not result.offline:
         _set_env_active("DATABASE_URL", result.dsn, [env_dev])
         if result.password_entered:
-            console.print(
-                f"  [{Theme.SUCCESS}]{sym('OK')} credentials saved to "
-                f".env.development (git-ignored)[/{Theme.SUCCESS}]"
-            )
+            from kaira.core import ui
+
+            ui.step("credentials", ".env.development · git-ignored")
     else:
         # Offline: run against the fallback store explicitly (never silently).
         _set_env_active("DATABASE_URL", offline_url, [env_dev])
@@ -502,9 +518,7 @@ def _persist_provision(cwd: Path, engine: str, result: "object") -> None:
         cfg.db_name = result.db_name
         cfg.db_provisioned = not result.offline
         cfg.db_mode = result.mode
-        config_path.write_text(
-            json.dumps(cfg.to_dict(), indent=2), encoding="utf-8"
-        )
+        config_path.write_text(json.dumps(cfg.to_dict(), indent=2), encoding="utf-8")
     except Exception:
         pass
 
@@ -776,7 +790,7 @@ def db_init() -> None:
         elif line.strip() == "NO_MODELS":
             console.print(
                 "[yellow]No models found. Run [bold]kaira generate model <Name> "
-                "--fields \"...\"[/bold] first.[/yellow]"
+                '--fields "..."[/bold] first.[/yellow]'
             )
             raise typer.Exit(1)
 

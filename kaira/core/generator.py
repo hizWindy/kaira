@@ -39,6 +39,7 @@ def _get_jinja_env() -> Environment:
 # Template context builder
 # ---------------------------------------------------------------------------
 
+
 def _build_context(
     model_name: str,
     fields: list[FieldDef],
@@ -49,9 +50,7 @@ def _build_context(
     snake = camel_to_snake(model_name)
     tbl = table_name(model_name)
 
-    needs_datetime = any(
-        "datetime" in f.raw_type for f in fields
-    )
+    needs_datetime = any("datetime" in f.raw_type for f in fields)
     needs_optional = any(f.optional for f in fields)
     has_relations = bool(relations)
 
@@ -106,6 +105,7 @@ def _build_context(
 # Single-layer generation
 # ---------------------------------------------------------------------------
 
+
 def generate_layer(
     layer: str,
     model_name: str,
@@ -132,10 +132,10 @@ def generate_layer(
         config = get_config()
 
     env = _get_jinja_env()
-    
+
     db_type = getattr(config, "db_type", "sqlite")
     driver = get_engine_driver(db_type)
-    
+
     if layer == "model":
         template_name = driver.get_model_template_name()
     elif layer == "repository":
@@ -178,6 +178,7 @@ def generate_embedded_model(
 # Multi-layer (full pipeline) generation
 # ---------------------------------------------------------------------------
 
+
 def generate_all(
     model_name: str,
     fields: list[FieldDef],
@@ -218,6 +219,7 @@ def generate_all(
 # ---------------------------------------------------------------------------
 # File path resolution
 # ---------------------------------------------------------------------------
+
 
 def resolve_output_path(
     layer: str,

@@ -12,7 +12,7 @@ from rich.panel import Panel
 
 from kaira.config import get_config
 from kaira.console import console
-from kaira.core.detector import write_with_check, file_exists
+from kaira.core.detector import write_with_check
 from kaira.core.wiring import register_router_in_main
 
 # Auth types that expose an APIRouter, mapped to the module holding it.
@@ -38,8 +38,12 @@ def _get_env() -> Environment:
 
 @app.command("generate")
 def auth_generate(
-    auth_type: Annotated[str, typer.Option("--type", help="Auth type: jwt, oauth2, api-key")] = "jwt",
-    force: Annotated[bool, typer.Option("--force", help="Overwrite existing files.")] = False,
+    auth_type: Annotated[
+        str, typer.Option("--type", help="Auth type: jwt, oauth2, api-key")
+    ] = "jwt",
+    force: Annotated[
+        bool, typer.Option("--force", help="Overwrite existing files.")
+    ] = False,
 ) -> None:
     """Generate authentication boilerplate code."""
     config = get_config()
@@ -77,11 +81,13 @@ def auth_generate(
         write_with_check(rl_path, content, force=force)
         console.print(f"  [green bold]✓[/green bold]  Written: [cyan]{rl_path}[/cyan]")
 
-    console.print(Panel(
-        f"[green]Auth ({auth_type}) scaffolding complete![/green]",
-        title="Kaira — Auth",
-        border_style="green",
-    ))
+    console.print(
+        Panel(
+            f"[green]Auth ({auth_type}) scaffolding complete![/green]",
+            title="Kaira — Auth",
+            border_style="green",
+        )
+    )
 
     if auth_type in ROUTER_MODULES:
         console.print(
@@ -90,7 +96,9 @@ def auth_generate(
         )
 
 
-def _generate_jwt(env: Environment, ctx: dict, auth_dir: Path, output_root: Path, force: bool) -> None:
+def _generate_jwt(
+    env: Environment, ctx: dict, auth_dir: Path, output_root: Path, force: bool
+) -> None:
     """Generate JWT authentication files."""
     templates = {
         "auth_jwt_dependencies.py.j2": auth_dir / "dependencies.py",
@@ -136,11 +144,16 @@ def _generate_api_key(env: Environment, ctx: dict, auth_dir: Path, force: bool) 
 def auth_register(
     auth_type: Annotated[
         Optional[str],
-        typer.Option("--type", help="Auth type to register: jwt or oauth2. Auto-detected when omitted."),
+        typer.Option(
+            "--type",
+            help="Auth type to register: jwt or oauth2. Auto-detected when omitted.",
+        ),
     ] = None,
     no_version_prefix: Annotated[
         bool,
-        typer.Option("--no-version-prefix", help="Mount at /auth instead of /api/<version>/auth."),
+        typer.Option(
+            "--no-version-prefix", help="Mount at /auth instead of /api/<version>/auth."
+        ),
     ] = False,
 ) -> None:
     """Register the generated auth router in main.py."""
@@ -148,7 +161,9 @@ def auth_register(
     output_root = Path.cwd() / config.output_dir
 
     if auth_type is None:
-        detected = [t for t, (rel, _) in ROUTER_MODULES.items() if (output_root / rel).exists()]
+        detected = [
+            t for t, (rel, _) in ROUTER_MODULES.items() if (output_root / rel).exists()
+        ]
         if not detected:
             console.print(
                 "[yellow]⚠  No auth router found.[/yellow]\n"
@@ -209,15 +224,21 @@ def auth_register(
         raise typer.Exit(1)
 
     if result == "already":
-        console.print(f"[yellow]⚠  Auth router is already registered in {main_path}.[/yellow]")
+        console.print(
+            f"[yellow]⚠  Auth router is already registered in {main_path}.[/yellow]"
+        )
         return
 
-    console.print(f"  [green bold]✓[/green bold]  Auth router registered in [cyan]{main_path}[/cyan]")
-    console.print(Panel(
-        f"[green]Auth routes mounted at[/green] [bold]{mounted_at}[/bold]",
-        title="Kaira — Auth",
-        border_style="green",
-    ))
+    console.print(
+        f"  [green bold]✓[/green bold]  Auth router registered in [cyan]{main_path}[/cyan]"
+    )
+    console.print(
+        Panel(
+            f"[green]Auth routes mounted at[/green] [bold]{mounted_at}[/bold]",
+            title="Kaira — Auth",
+            border_style="green",
+        )
+    )
 
     if getattr(config, "auth_type", "none") == "none":
         console.print(
@@ -229,7 +250,9 @@ def auth_register(
 
 @app.command("add-guard")
 def auth_add_guard(
-    router_name: Annotated[str, typer.Argument(help="Name of the router model (PascalCase, e.g. User)")],
+    router_name: Annotated[
+        str, typer.Argument(help="Name of the router model (PascalCase, e.g. User)")
+    ],
 ) -> None:
     """Add Depends(get_current_user) to all endpoints in a router."""
     config = get_config()
@@ -246,6 +269,7 @@ def auth_add_guard(
 
     # Find the router file
     from kaira.core.parser import camel_to_snake
+
     snake = camel_to_snake(router_name)
     router_path = output_root / config.routers_dir / f"{snake}_router.py"
     if not router_path.exists():
@@ -256,7 +280,9 @@ def auth_add_guard(
 
     # Check if already guarded
     if "get_current_user" in content:
-        console.print(f"[yellow]⚠  {router_name} router already has auth guard.[/yellow]")
+        console.print(
+            f"[yellow]⚠  {router_name} router already has auth guard.[/yellow]"
+        )
         return
 
     # Inject import
@@ -286,4 +312,6 @@ def auth_add_guard(
     )
 
     router_path.write_text(modified, encoding="utf-8")
-    console.print(f"  [green bold]✓[/green bold]  Auth guard added to [cyan]{router_path}[/cyan]")
+    console.print(
+        f"  [green bold]✓[/green bold]  Auth guard added to [cyan]{router_path}[/cyan]"
+    )

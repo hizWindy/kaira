@@ -99,13 +99,13 @@ class KairaConfig:
     # Each entry: {"name": "EmergencyContact", "fields": [{"name":…, "type":…}]}
     embedded_models: list[dict[str, Any]] = field(default_factory=list)
     # Phase 3 fields
-    db_type: str = "sqlite"          # postgresql | mysql | mongodb | sqlite
-    api_version: str = "v1"           # v1 | v2 | …
-    auth_type: str = "none"           # jwt | oauth2 | api-key | none
+    db_type: str = "sqlite"  # postgresql | mysql | mongodb | sqlite
+    api_version: str = "v1"  # v1 | v2 | …
+    auth_type: str = "none"  # jwt | oauth2 | api-key | none
     # Phase 6 — auto DB provisioning (Feature 1) + offline/online mode (Feature 3)
-    db_name: str = ""                 # sanitized database identifier
-    db_provisioned: bool = False      # True once the DB has been created/confirmed
-    db_mode: str = "online"           # online | offline | auto (Layer-1 default: online)
+    db_name: str = ""  # sanitized database identifier
+    db_provisioned: bool = False  # True once the DB has been created/confirmed
+    db_mode: str = "online"  # online | offline | auto (Layer-1 default: online)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -163,14 +163,18 @@ def get_output_root(config: Optional[KairaConfig] = None) -> Path:
     return Path.cwd() / config.output_dir
 
 
-def register_model(config: KairaConfig, model_name: str, fields: list[dict], relations: list[dict]) -> None:
+def register_model(
+    config: KairaConfig, model_name: str, fields: list[dict], relations: list[dict]
+) -> None:
     """Add or update a model entry in config's generated_models list."""
     for entry in config.generated_models:
         if entry.get("name") == model_name:
             entry["fields"] = fields
             entry["relations"] = relations
             return
-    config.generated_models.append({"name": model_name, "fields": fields, "relations": relations})
+    config.generated_models.append(
+        {"name": model_name, "fields": fields, "relations": relations}
+    )
 
 
 def register_embedded_model(
@@ -207,6 +211,7 @@ def get_venv_python(cwd: Optional[Path] = None) -> str:
     """Find the virtual environment python in the current workspace or parent directories."""
     import sys
     import os
+
     if cwd is None:
         cwd = Path.cwd()
     # Walk up to find a directory containing .venv
@@ -220,7 +225,7 @@ def get_venv_python(cwd: Optional[Path] = None) -> str:
                 venv_python = venv_dir / "bin" / "python"
             if venv_python.exists():
                 return str(venv_python)
-            
+
         # Also check for env/ or venv/ just in case
         for name in ["venv", "env"]:
             v_dir = directory / name

@@ -20,6 +20,7 @@ cli = get_command(app)
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def run(*args):
     """Invoke the kaira CLI with the given arguments."""
     return runner.invoke(cli, list(args))
@@ -28,6 +29,7 @@ def run(*args):
 # ---------------------------------------------------------------------------
 # version / help
 # ---------------------------------------------------------------------------
+
 
 class TestVersionAndHelp:
     def test_version_flag(self):
@@ -57,11 +59,18 @@ class TestVersionAndHelp:
 # kaira generate model
 # ---------------------------------------------------------------------------
 
+
 class TestGenerateModel:
     def test_basic_generation(self, tmp_path):
         """Generate a full pipeline for a User model."""
         with runner.isolated_filesystem(temp_dir=tmp_path):
-            result = run("generate", "model", "User", "--fields", "username:str, email:str, age:int")
+            result = run(
+                "generate",
+                "model",
+                "User",
+                "--fields",
+                "username:str, email:str, age:int",
+            )
         assert result.exit_code == 0
         assert "User" in result.output
         assert "✓" in result.output
@@ -79,20 +88,31 @@ class TestGenerateModel:
 
     def test_simple_tier(self, tmp_path):
         with runner.isolated_filesystem(temp_dir=tmp_path):
-            result = run("generate", "model", "User", "--fields", "name:str", "--tier", "simple")
+            result = run(
+                "generate", "model", "User", "--fields", "name:str", "--tier", "simple"
+            )
         assert result.exit_code == 0
         assert "simple" in result.output
 
     def test_invalid_tier(self, tmp_path):
         with runner.isolated_filesystem(temp_dir=tmp_path):
-            result = run("generate", "model", "User", "--fields", "name:str", "--tier", "invalid")
+            result = run(
+                "generate", "model", "User", "--fields", "name:str", "--tier", "invalid"
+            )
         assert result.exit_code != 0
 
     def test_files_created(self, tmp_path):
         """Verify that all 5 layer files are actually written."""
         with runner.isolated_filesystem(temp_dir=tmp_path):
             cwd = Path.cwd()
-            run("generate", "model", "Product", "--fields", "name:str, price:float", "--force")
+            run(
+                "generate",
+                "model",
+                "Product",
+                "--fields",
+                "name:str, price:float",
+                "--force",
+            )
             assert (cwd / "models" / "product.py").exists()
             assert (cwd / "schemas" / "product_schema.py").exists()
             assert (cwd / "services" / "product_service.py").exists()
@@ -114,6 +134,7 @@ class TestGenerateModel:
 # ---------------------------------------------------------------------------
 # kaira generate (single layer)
 # ---------------------------------------------------------------------------
+
 
 class TestGenerateSingleLayer:
     def test_generate_router(self, tmp_path):
@@ -140,6 +161,7 @@ class TestGenerateSingleLayer:
 # ---------------------------------------------------------------------------
 # kaira generate bulk
 # ---------------------------------------------------------------------------
+
 
 class TestGenerateBulk:
     def test_bulk_from_json(self, tmp_path):
@@ -174,6 +196,7 @@ class TestGenerateBulk:
 # kaira config
 # ---------------------------------------------------------------------------
 
+
 class TestConfigCommands:
     def test_config_show(self, tmp_path):
         with runner.isolated_filesystem(temp_dir=tmp_path):
@@ -199,6 +222,7 @@ class TestConfigCommands:
 # kaira info
 # ---------------------------------------------------------------------------
 
+
 class TestInfoCommand:
     def test_info_no_models(self, tmp_path):
         with runner.isolated_filesystem(temp_dir=tmp_path):
@@ -217,6 +241,7 @@ class TestInfoCommand:
 # kaira check
 # ---------------------------------------------------------------------------
 
+
 class TestCheckCommand:
     def test_check_no_models(self, tmp_path):
         with runner.isolated_filesystem(temp_dir=tmp_path):
@@ -234,6 +259,7 @@ class TestCheckCommand:
 # ---------------------------------------------------------------------------
 # kaira list
 # ---------------------------------------------------------------------------
+
 
 class TestListCommands:
     def test_list_models_empty_dir(self, tmp_path):
@@ -259,12 +285,15 @@ class TestListCommands:
 # kaira diff
 # ---------------------------------------------------------------------------
 
+
 class TestDiffCommand:
     def test_diff_no_files(self, tmp_path):
         with runner.isolated_filesystem(temp_dir=tmp_path):
             result = run("diff", "User")
         assert result.exit_code == 0
-        assert "not found" in result.output.lower() or "Nothing to diff" in result.output
+        assert (
+            "not found" in result.output.lower() or "Nothing to diff" in result.output
+        )
 
     def test_diff_invalid_model_name(self):
         result = run("diff", "not_pascal")

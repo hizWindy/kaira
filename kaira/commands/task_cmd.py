@@ -49,7 +49,9 @@ def _update_env_files(key: str, value: str) -> None:
         try:
             content = env_file.read_text(encoding="utf-8")
             if f"{key}=" in content:
-                content = re.sub(rf"^{key}=.*$", f"{key}={value}", content, flags=re.MULTILINE)
+                content = re.sub(
+                    rf"^{key}=.*$", f"{key}={value}", content, flags=re.MULTILINE
+                )
             else:
                 content += f"\n{key}={value}\n"
             env_file.write_text(content, encoding="utf-8")
@@ -61,6 +63,7 @@ def _update_env_files(key: str, value: str) -> None:
 def task_init() -> None:
     """Initialise Celery for this project."""
     from kaira.config import get_config
+
     cfg = get_config()
     output_root = Path.cwd() / cfg.output_dir
     tasks_dir = output_root / "tasks"
@@ -79,7 +82,9 @@ def task_init() -> None:
 
     _update_env_files("CELERY_BROKER_URL", "redis://localhost:6379/0")
     _update_env_files("CELERY_RESULT_BACKEND", "redis://localhost:6379/1")
-    console.print("  [green]✅[/green] CELERY_BROKER_URL + CELERY_RESULT_BACKEND added to .env* files")
+    console.print(
+        "  [green]✅[/green] CELERY_BROKER_URL + CELERY_RESULT_BACKEND added to .env* files"
+    )
 
     settings_candidates = [
         output_root / "core" / "config.py",
@@ -94,7 +99,9 @@ def task_init() -> None:
                     '\n    CELERY_RESULT_BACKEND: str = "redis://localhost:6379/1"\n'
                 )
                 settings_path.write_text(content, encoding="utf-8")
-                console.print(f"  [green]✅[/green] Celery settings added to {settings_path.name}")
+                console.print(
+                    f"  [green]✅[/green] Celery settings added to {settings_path.name}"
+                )
             break
 
     console.print(
@@ -108,10 +115,14 @@ def task_init() -> None:
 
 @app.command("generate")
 def task_generate(
-    task_name: Annotated[str, typer.Argument(help="PascalCase task class name, e.g. SendEmail")],
+    task_name: Annotated[
+        str, typer.Argument(help="PascalCase task class name, e.g. SendEmail")
+    ],
     schedule: Annotated[
         Optional[str],
-        typer.Option("--schedule", help="Cron schedule, e.g. crontab(minute=0, hour='*')"),
+        typer.Option(
+            "--schedule", help="Cron schedule, e.g. crontab(minute=0, hour='*')"
+        ),
     ] = None,
 ) -> None:
     """Generate a Celery task class."""
@@ -120,6 +131,7 @@ def task_generate(
         raise typer.Exit(1)
 
     from kaira.config import get_config
+
     cfg = get_config()
     output_root = Path.cwd() / cfg.output_dir
     tasks_dir = output_root / "tasks"
@@ -144,11 +156,13 @@ def task_generate(
                 f'        "{snake}": {{\n'
                 f'            "task": "tasks.{snake}.{snake}_task",\n'
                 f'            "schedule": {schedule},\n'
-                f'        }},\n'
+                f"        }},\n"
             )
             content = content.replace("    },\n)", f"    {beat_entry}    }},\n)")
             celery_app_path.write_text(content, encoding="utf-8")
-            console.print(f"  [green]✅[/green] Registered in beat_schedule: [cyan]{snake}[/cyan]")
+            console.print(
+                f"  [green]✅[/green] Registered in beat_schedule: [cyan]{snake}[/cyan]"
+            )
 
     console.print(
         Panel(
@@ -163,17 +177,26 @@ def task_generate(
 def task_list() -> None:
     """List all generated Celery task files."""
     from kaira.config import get_config
+
     cfg = get_config()
     output_root = Path.cwd() / cfg.output_dir
     tasks_dir = output_root / "tasks"
 
     if not tasks_dir.exists():
-        console.print("[yellow]No tasks/ directory found. Run kaira task init first.[/yellow]")
+        console.print(
+            "[yellow]No tasks/ directory found. Run kaira task init first.[/yellow]"
+        )
         return
 
-    task_files = [f for f in tasks_dir.glob("*.py") if f.name not in {"__init__.py", "celery_app.py"}]
+    task_files = [
+        f
+        for f in tasks_dir.glob("*.py")
+        if f.name not in {"__init__.py", "celery_app.py"}
+    ]
     if not task_files:
-        console.print("[dim]No tasks generated yet. Use kaira task generate <TaskName>.[/dim]")
+        console.print(
+            "[dim]No tasks generated yet. Use kaira task generate <TaskName>.[/dim]"
+        )
         return
 
     table = Table(title="⚡ Celery Tasks", border_style="cyan")

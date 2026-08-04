@@ -134,11 +134,15 @@ def list_routes() -> None:
                 route_match = re.match(single_pat, line_str)
 
                 # Multi-line: @router.get(  with path on next non-empty line
-                if not route_match and re.match(rf"@router\.{method_lower}\(\s*$", line_str):
+                if not route_match and re.match(
+                    rf"@router\.{method_lower}\(\s*$", line_str
+                ):
                     for offset in range(1, 5):
                         if idx + offset < len(lines):
                             next_stripped = lines[idx + offset].strip()
-                            path_match = re.match(r"""[\"']([^\"']*)[\"']""", next_stripped)
+                            path_match = re.match(
+                                r"""[\"']([^\"']*)[\"']""", next_stripped
+                            )
                             if path_match:
                                 # Fake a match object by storing the group
                                 sub_path = path_match.group(1)
@@ -166,11 +170,16 @@ def list_routes() -> None:
                                 sig_lines = []
                                 for sig_offset in range(0, 10):
                                     if idx + offset + sig_offset < len(lines):
-                                        sig_lines.append(lines[idx + offset + sig_offset])
+                                        sig_lines.append(
+                                            lines[idx + offset + sig_offset]
+                                        )
                                         if "):" in lines[idx + offset + sig_offset]:
                                             break
                                 sig_str = "".join(sig_lines)
-                                if "get_current_user" in sig_str or "validate_api_key" in sig_str:
+                                if (
+                                    "get_current_user" in sig_str
+                                    or "validate_api_key" in sig_str
+                                ):
                                     has_auth = True
                                 break
 

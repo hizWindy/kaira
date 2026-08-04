@@ -105,7 +105,7 @@ def test_middleware_error_contract():
 
 # ── Behavioural harness ──────────────────────────────────────────────────────
 
-APP_SOURCE = '''\
+APP_SOURCE = """\
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
@@ -146,34 +146,34 @@ def boom():
     from domain import load_user
 
     return load_user("abc")
-'''
+"""
 
-DOMAIN_SOURCE = '''\
+DOMAIN_SOURCE = """\
 def parse_age(raw: str) -> int:
     return int(raw)
 
 
 def load_user(uuid: str) -> dict:
     return {"uuid": uuid, "age": parse_age("not-a-number")}
-'''
+"""
 
-SETTINGS_SOURCE = '''\
+SETTINGS_SOURCE = """\
 class _Settings:
     APP_ENV = "development"
     ALLOWED_ORIGINS = ["*"]
 
 
 settings = _Settings()
-'''
+"""
 
-RATE_LIMIT_SOURCE = '''\
+RATE_LIMIT_SOURCE = """\
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 limiter = Limiter(key_func=get_remote_address)
-'''
+"""
 
-PROBE_SOURCE = '''\
+PROBE_SOURCE = """\
 import json
 
 from fastapi.testclient import TestClient
@@ -205,7 +205,7 @@ with open("results.json", "w", encoding="utf-8") as handle:
 from core.logger import logger
 
 logger.complete()
-'''
+"""
 
 
 def _build_project(root: Path) -> None:

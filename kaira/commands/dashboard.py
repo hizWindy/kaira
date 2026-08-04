@@ -6,14 +6,11 @@ import json
 import os
 import socket
 from pathlib import Path
-from typing import Optional
 
-from rich.columns import Columns
-from rich.panel import Panel
-from rich.table import Table
-from rich.text import Text
 
 from kaira.console import console
+from kaira.core import ui
+from kaira.core.progress import State
 
 
 # ---------------------------------------------------------------------------
@@ -21,7 +18,7 @@ from kaira.console import console
 # ---------------------------------------------------------------------------
 
 
-def _probe_db(db_type: str, timeout: float = 2.0) -> str:
+def _probe_db(db_type: str, timeout: float = 2.0) -> tuple[State, str]:
     """Attempt a lightweight TCP connection check for the configured database.
 
     Args:
@@ -29,15 +26,16 @@ def _probe_db(db_type: str, timeout: float = 2.0) -> str:
         timeout: Maximum seconds to wait for the connection.
 
     Returns:
-        A short status string for display.
+        ``(state, detail)`` — the state drives the symbol and colour, the
+        detail is the human-readable half of the step line.
     """
     if db_type == "sqlite":
-        return "[green]✅ SQLite (local)[/green]"
+        return State.DONE, "local file"
 
     port_map = {"postgresql": 5432, "mysql": 3306, "mongodb": 27017}
     port = port_map.get(db_type)
     if port is None:
-        return "[dim]Unknown[/dim]"
+        return State.PENDING, "unknown engine"
 
     # Read DATABASE_URL from env to get host, fallback to localhost
     raw_url = os.environ.get("DATABASE_URL", "")
@@ -51,15 +49,18 @@ def _probe_db(db_type: str, timeout: float = 2.0) -> str:
 
     try:
         with socket.create_connection((host, port), timeout=timeout):
-            return "[green]✅ Connected[/green]"
+            return State.DONE, f"connected · {host}:{port}"
     except (OSError, socket.timeout):
-        return "[red]❌ Unreachable[/red]"
+        return State.FAILED, f"unreachable · {host}:{port}"
     except Exception:
-        return "[yellow]⏱️ Timeout[/yellow]"
+        return State.PARTIAL, f"timed out · {host}:{port}"
 
 
 def _count_files(directory: Path, pattern: str) -> int:
     """Count files matching a glob pattern in a directory.
+
+    ``__init__.py`` is excluded: every scaffolded package has one, so counting
+    it reports "2 models" for a project that has none.
 
     Args:
         directory: Directory to scan.
@@ -70,28 +71,49 @@ def _count_files(directory: Path, pattern: str) -> int:
     """
     if not directory.exists():
         return 0
-    return len(list(directory.glob(pattern)))
+    return len([p for p in directory.glob(pattern) if p.name != "__init__.py"])
+
+
+def _detect_ci(root: Path) -> str:
+    """Identify the CI platform from files on disk.
+
+    ``.kaira.json`` has no CI field, so reading one there always reported
+    "none".  The scaffolded workflow file is the actual evidence.
+
+    Args:
+        root: Project root.
+
+    Returns:
+        Platform name, or ``"none"`` when no workflow is present.
+    """
+    if (root / ".github" / "workflows").is_dir():
+        return "github"
+    if (root / ".gitlab-ci.yml").exists():
+        return "gitlab"
+    if (root / "bitbucket-pipelines.yml").exists():
+        return "bitbucket"
+    return "none"
 
 
 def _last_action() -> str:
     """Read the most recent command from .kaira/history.jsonl.
 
     Returns:
-        Short display string of the last command, or 'None'.
+        Short display string of the last command, or ``"none"``.
     """
     history_path = Path.cwd() / ".kaira" / "history.jsonl"
     if not history_path.exists():
-        return "[dim]None[/dim]"
+        return "none"
     try:
         lines = history_path.read_text(encoding="utf-8").strip().splitlines()
         if lines:
             record = json.loads(lines[-1])
             cmd = record.get("command", "unknown")
             ts = record.get("timestamp", "")[:10]
-            return f"[cyan]{cmd}[/cyan] [dim]{ts}[/dim]"
+            return f"{cmd} · {ts}" if ts else str(cmd)
     except Exception:
         pass
-    return "[dim]None[/dim]"
+    return "none"
 
 
 # ---------------------------------------------------------------------------
@@ -109,14 +131,9 @@ def _render_inside_project(config_path: Path) -> None:
     try:
         raw = json.loads(config_path.read_text(encoding="utf-8"))
     except Exception:
-        console.print(
-            Panel(
-                "[yellow]⚠️  .kaira.json is malformed or unreadable.\n"
-                "Run [bold]kaira config show[/bold] to inspect it.[/yellow]",
-                title="[yellow]Kaira — Config Warning[/yellow]",
-                border_style="yellow",
-            )
-        )
+        ui.section("project")
+        ui.step("config", ".kaira.json is malformed or unreadable", State.FAILED)
+        ui.hint("kaira config show")
         return
 
     from kaira.config import KairaConfig
@@ -129,11 +146,10 @@ def _render_inside_project(config_path: Path) -> None:
     project_name = raw.get("project", raw.get("project_name", Path.cwd().name))
     db_type = raw.get("database", cfg.db_type)
     auth_type = raw.get("auth", cfg.auth_type)
-    has_docker = raw.get("docker", False)
-    ci_platform = raw.get("ci", "none")
     api_version = raw.get("api_version", cfg.api_version)
 
     output_root = Path.cwd() / cfg.output_dir
+    ci_platform = _detect_ci(output_root)
 
     # Stats
     model_count = _count_files(output_root / cfg.models_dir, "*.py")
@@ -141,141 +157,105 @@ def _render_inside_project(config_path: Path) -> None:
     test_count = _count_files(output_root / "tests", "test_*.py")
 
     # DB connection probe (non-blocking, 2s timeout)
-    db_status = _probe_db(db_type, timeout=2.0)
+    db_state, db_detail = _probe_db(db_type, timeout=2.0)
 
-    # Resolved online/offline mode badge (Phase 6, Feature 4) — from .kaira.json,
+    # Resolved online/offline mode (Phase 6, Feature 4) — from .kaira.json,
     # the single resolved source; never re-probed here.
     db_name = raw.get("db_name", "") or cfg.db_name
     db_mode = raw.get("db_mode", "") or cfg.db_mode or "online"
-    mode_badge = (
-        "[bold yellow]⚠️ offline[/bold yellow]"
-        if db_mode == "offline"
-        else "[bold green]✅ online[/bold green]"
-    )
+    if db_mode == "offline" and db_state == State.DONE:
+        db_state = State.PARTIAL
 
     # Auth status
     auth_dir = output_root / "auth"
     auth_status = (
-        "[green]✅ Configured[/green]"
+        ("auth setup", "configured", State.DONE)
         if (auth_dir / "dependencies.py").exists()
-        else "[red]❌ Not set up[/red]"
+        else ("auth setup", "not configured", State.FAILED)
     )
 
     # Docker status
     docker_status = (
-        "[green]✅ Dockerfile present[/green]"
+        ("docker", "Dockerfile present", State.DONE)
         if (output_root / "Dockerfile").exists()
-        else "[dim]Not configured[/dim]"
+        else ("docker", "not configured", State.PENDING)
     )
 
     # Pending migrations (only for relational DBs)
     if db_type == "mongodb":
-        migration_status = "[dim]N/A (MongoDB)[/dim]"
+        migration_status = ("migrations", "n/a for mongodb", State.PENDING)
+    elif (output_root / "alembic").exists():
+        migration_status = ("migrations", "initialized", State.DONE)
     else:
-        alembic_dir = output_root / "alembic"
-        migration_status = (
-            "[green]✅ Initialized[/green]"
-            if alembic_dir.exists()
-            else "[yellow]⚠️  Not initialized[/yellow]"
-        )
+        migration_status = ("migrations", "not initialized", State.PARTIAL)
 
-    # Action-required items
+    # Action-required items, as commands rather than sentences about commands
     actions: list[str] = []
     if db_type != "mongodb" and not (output_root / "alembic").exists():
-        actions.append("Run [bold cyan]kaira migrate init[/bold cyan] to set up migrations")
+        actions.append("kaira migrate init")
     if not (auth_dir / "dependencies.py").exists():
-        actions.append("Run [bold cyan]kaira auth generate --type jwt[/bold cyan] to add auth")
+        actions.append("kaira auth generate --type jwt")
     if not (output_root / "Dockerfile").exists():
-        actions.append("Run [bold cyan]kaira docker init --with-compose[/bold cyan] to add Docker")
+        actions.append("kaira docker init --with-compose")
     if router_count > test_count:
-        actions.append("Run [bold cyan]kaira test generate --all[/bold cyan] to generate tests")
+        actions.append("kaira test generate --all")
 
-    # ── Header
-    console.print(
-        Panel(
-            f"[bold cyan]⚡ Kaira — {project_name}[/bold cyan]  "
-            f"[dim]API {api_version}[/dim]",
-            border_style="cyan",
-            expand=True,
-        )
-    )
+    # ── Configuration: settings the project was scaffolded with.  These are
+    #    facts, not outcomes, so they carry no state symbol.
+    ui.section(project_name, f"api {api_version}")
+    ui.field("database", f"{db_type} · {db_name}" if db_name else db_type)
+    ui.field("auth", auth_type)
+    ui.field("ci", ci_platform)
 
-    # ── Info table
-    info = Table.grid(padding=(0, 2))
-    info.add_column(style="dim", no_wrap=True)
-    info.add_column()
-    _db_label = f"[bold]{db_type}[/bold]"
-    if db_name:
-        _db_label += f" [dim]·[/dim] {db_name}"
-    info.add_row("Database", f"{_db_label}  [dim]·[/dim]  {mode_badge}  {db_status}")
-    info.add_row("Auth", f"[bold]{auth_type}[/bold]  {auth_status}")
-    info.add_row("Docker", docker_status)
-    info.add_row("CI/CD", f"[bold]{ci_platform}[/bold]")
-    info.add_row("Migrations", migration_status)
-    console.print(Panel(info, title="Project Info", border_style="blue", expand=False))
+    # ── Health: each of these has a verdict, so each gets a state symbol.
+    console.print()
+    ui.step("connection", f"{db_mode} · {db_detail}", db_state)
+    ui.step(*auth_status)
+    ui.step(*docker_status)
+    ui.step(*migration_status)
 
-    # ── Stats table
-    stats = Table.grid(padding=(0, 3))
-    stats.add_column(style="dim")
-    stats.add_column(style="bold")
-    stats.add_row("Models", str(model_count))
-    stats.add_row("Routers", str(router_count))
-    stats.add_row("Tests", str(test_count))
-    stats.add_row("Last action", _last_action())
-    console.print(Panel(stats, title="Stats", border_style="blue", expand=False))
+    # ── Resources
+    ui.section("resources")
+    ui.field("models", str(model_count))
+    ui.field("routers", str(router_count))
+    ui.field("tests", str(test_count))
+    ui.field("last action", _last_action())
 
-    # ── Action-required
+    # ── Action-required, as commands the user can paste
     if actions:
-        action_text = "\n".join(f"  • {a}" for a in actions)
-        console.print(
-            Panel(
-                action_text,
-                title="[yellow]⚠️  Action Required[/yellow]",
-                border_style="yellow",
-                expand=False,
-            )
-        )
+        ui.section("action required")
+        for action in actions:
+            ui.hint(action)
 
-    # ── Quick commands
-    quick = (
-        "[dim]Generate a model:[/dim]  [cyan]kaira generate model <Name> --fields \"field:type\"[/cyan]\n"
-        "[dim]Run health check:[/dim]  [cyan]kaira health[/cyan]\n"
-        "[dim]View all guides:[/dim]  [cyan]kaira guide[/cyan]\n"
-        "[dim]Project status:[/dim]   [cyan]kaira status[/cyan]"
-    )
-    console.print(Panel(quick, title="Quick Commands", border_style="dim", expand=False))
+    ui.section("next")
+    ui.hint('kaira generate model <Name> --fields "field:type"')
+    ui.hint("kaira status")
+    ui.hint("kaira commands")
+    console.print()
     _print_attribution_footer()
 
 
 def _render_outside_project() -> None:
-    """Render the minimal welcome panel when outside a Kaira project."""
-    from kaira import __version__
+    """Render the minimal welcome body when outside a Kaira project."""
+    ui.section("no project here", Path.cwd().name)
+    ui.note("looked for", ".kaira.json in this directory")
 
-    content = (
-        f"[bold cyan]Kaira[/bold cyan] v{__version__} — Automated FastAPI Scaffolding CLI\n\n"
-        "Start a new project:\n"
-        "  [bold cyan]kaira init <project-name>[/bold cyan]\n\n"
-        "Browse guides:\n"
-        "  [bold cyan]kaira guide[/bold cyan]\n\n"
-        "[dim]No .kaira.json found in this directory.[/dim]"
-    )
-    console.print(
-        Panel(
-            content,
-            title="[bold cyan]⚡ Welcome to Kaira[/bold cyan]",
-            border_style="cyan",
-            expand=False,
-        )
-    )
+    ui.section("next")
+    ui.hint("kaira init <project-name>")
+    ui.hint("kaira guide")
+    ui.hint("kaira commands")
+    console.print()
     _print_attribution_footer()
 
 
 def _print_attribution_footer() -> None:
-    """Print a single muted attribution line below the dashboard panels."""
-    from kaira.core.theme import Theme, attribution, sym
+    """Print the single muted attribution line below the dashboard body."""
+    from kaira.core.theme import GUTTER, Theme, attribution, sym
 
     bolt = sym("BOLT")
-    console.print(f"[{Theme.MUTED}]{bolt} Kaira · {attribution()}[/{Theme.MUTED}]")
+    console.print(
+        f"{GUTTER}[{Theme.MUTED}]{bolt} Kaira · {attribution()}[/{Theme.MUTED}]"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -300,10 +280,6 @@ def welcome_dashboard() -> None:
             _render_outside_project()
     except Exception as exc:
         # Last-resort fallback — never crash
-        console.print(
-            Panel(
-                f"[yellow]⚠️  Dashboard error: {exc}\n"
-                "Run [bold]kaira config show[/bold] for more info.[/yellow]",
-                border_style="yellow",
-            )
-        )
+        ui.section("project")
+        ui.step("dashboard", str(exc).splitlines()[0][:60], State.FAILED)
+        ui.hint("kaira config show")

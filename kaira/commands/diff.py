@@ -174,6 +174,7 @@ def diff_command(
         # Interactive prompt after each diff
         try:
             import questionary
+
             choice = questionary.select(
                 f"Action for diff {out_path.name}:",
                 choices=[

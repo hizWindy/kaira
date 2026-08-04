@@ -2,7 +2,6 @@
 
 import datetime
 from pathlib import Path
-from typing import Optional
 
 import typer
 from rich.table import Table
@@ -25,7 +24,9 @@ def _get_migrations_dir() -> Path:
 
 @app.command("make")
 def doc_migrate_make(
-    description: str = typer.Argument(..., help="Brief description of the document migration."),
+    description: str = typer.Argument(
+        ..., help="Brief description of the document migration."
+    ),
 ) -> None:
     """Generate a new Python document migration script for MongoDB."""
     config = get_config()
@@ -84,7 +85,9 @@ def doc_migrate_run() -> None:
     scripts = sorted(list(mig_dir.glob("V*__*.py")))
 
     if not scripts:
-        console.print("[yellow]No document migration scripts found in 'migrations_docs/'. Run 'kaira db migrate-docs make <description>' first.[/yellow]")
+        console.print(
+            "[yellow]No document migration scripts found in 'migrations_docs/'. Run 'kaira db migrate-docs make <description>' first.[/yellow]"
+        )
         return
 
     console.print(f"[cyan]🚀 Found {len(scripts)} document migration script(s).[/cyan]")
@@ -100,7 +103,11 @@ def doc_migrate_status() -> None:
     mig_dir = _get_migrations_dir()
     scripts = sorted(list(mig_dir.glob("V*__*.py")))
 
-    table = Table(title="⚡ Document Migration Scripts (NoSQL)", show_header=True, header_style="bold magenta")
+    table = Table(
+        title="⚡ Document Migration Scripts (NoSQL)",
+        show_header=True,
+        header_style="bold magenta",
+    )
     table.add_column("Script Name", style="cyan")
     table.add_column("Created", style="dim")
     table.add_column("Status", style="green")
@@ -111,7 +118,9 @@ def doc_migrate_status() -> None:
 
     for script in scripts:
         stat = script.stat()
-        created = datetime.datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M")
+        created = datetime.datetime.fromtimestamp(stat.st_mtime).strftime(
+            "%Y-%m-%d %H:%M"
+        )
         table.add_row(script.name, created, "[green]Ready / Applied[/green]")
 
     console.print(table)

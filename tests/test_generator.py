@@ -17,6 +17,7 @@ from kaira.core.generator import (
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def config() -> KairaConfig:
     return KairaConfig()
@@ -40,6 +41,7 @@ def relations():
 # ---------------------------------------------------------------------------
 # generate_layer — model
 # ---------------------------------------------------------------------------
+
 
 class TestGenerateModel:
     def test_class_name_in_output(self, config, simple_fields):
@@ -93,6 +95,7 @@ class TestGenerateModel:
 # generate_layer — schema
 # ---------------------------------------------------------------------------
 
+
 class TestGenerateSchema:
     def test_base_schema(self, config, simple_fields):
         output = generate_layer("schema", "User", simple_fields, [], config)
@@ -131,15 +134,23 @@ class TestGenerateSchema:
                 in_update = True
             elif in_update and line.startswith("class "):
                 in_update = False
-            elif in_update and ":" in line and "pass" not in line and "model_config" not in line:
+            elif (
+                in_update
+                and ":" in line
+                and "pass" not in line
+                and "model_config" not in line
+            ):
                 update_field_lines.append(line)
         for line in update_field_lines:
-            assert "None" in line or "Optional" in line, f"Expected optional field: {line}"
+            assert "None" in line or "Optional" in line, (
+                f"Expected optional field: {line}"
+            )
 
 
 # ---------------------------------------------------------------------------
 # generate_layer — repository
 # ---------------------------------------------------------------------------
+
 
 class TestGenerateRepository:
     def test_class_name(self, config, simple_fields):
@@ -163,6 +174,7 @@ class TestGenerateRepository:
 # ---------------------------------------------------------------------------
 # generate_layer — service
 # ---------------------------------------------------------------------------
+
 
 class TestGenerateService:
     def test_class_name(self, config, simple_fields):
@@ -190,6 +202,7 @@ class TestGenerateService:
 # ---------------------------------------------------------------------------
 # generate_layer — router
 # ---------------------------------------------------------------------------
+
 
 class TestGenerateRouter:
     def test_router_instance(self, config, simple_fields):
@@ -220,10 +233,17 @@ class TestGenerateRouter:
 # generate_all
 # ---------------------------------------------------------------------------
 
+
 class TestGenerateAll:
     def test_full_tier_has_all_layers(self, config, simple_fields):
         result = generate_all("User", simple_fields, [], tier="full", config=config)
-        assert set(result.keys()) >= {"model", "repository", "schema", "service", "router"}
+        assert set(result.keys()) >= {
+            "model",
+            "repository",
+            "schema",
+            "service",
+            "router",
+        }
 
     def test_simple_tier_has_subset(self, config, simple_fields):
         result = generate_all("User", simple_fields, [], tier="simple", config=config)
@@ -242,6 +262,7 @@ class TestGenerateAll:
 # ---------------------------------------------------------------------------
 # resolve_output_path
 # ---------------------------------------------------------------------------
+
 
 class TestResolveOutputPath:
     def test_model_path(self, config, tmp_path):

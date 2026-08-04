@@ -45,57 +45,71 @@ def _get_env_loader() -> Environment:
 def _run_checklist() -> list[tuple[str, bool, str]]:
     """Evaluate all deploy checklist items."""
     from kaira.config import get_config
+
     cfg = get_config()
     output_root = Path.cwd() / cfg.output_dir
     items: list[tuple[str, bool, str]] = []
 
     env_prod = Path(".env.production")
-    items.append((
-        ".env.production configured",
-        env_prod.exists() and env_prod.stat().st_size > 0,
-        "Run: kaira env init",
-    ))
+    items.append(
+        (
+            ".env.production configured",
+            env_prod.exists() and env_prod.stat().st_size > 0,
+            "Run: kaira env init",
+        )
+    )
 
     dockerfile = output_root / "Dockerfile"
-    items.append((
-        "Dockerfile present",
-        dockerfile.exists(),
-        "Run: kaira docker init --with-compose",
-    ))
+    items.append(
+        (
+            "Dockerfile present",
+            dockerfile.exists(),
+            "Run: kaira docker init --with-compose",
+        )
+    )
 
     tests_dir = output_root / "tests"
-    items.append((
-        "Tests directory exists",
-        tests_dir.exists() and bool(list(tests_dir.glob("test_*.py"))),
-        "Run: kaira test generate --all",
-    ))
+    items.append(
+        (
+            "Tests directory exists",
+            tests_dir.exists() and bool(list(tests_dir.glob("test_*.py"))),
+            "Run: kaira test generate --all",
+        )
+    )
 
     auth_dir = output_root / "auth"
-    items.append((
-        "Auth layer configured",
-        (auth_dir / "dependencies.py").exists(),
-        "Run: kaira auth generate --type jwt",
-    ))
+    items.append(
+        (
+            "Auth layer configured",
+            (auth_dir / "dependencies.py").exists(),
+            "Run: kaira auth generate --type jwt",
+        )
+    )
 
-    items.append((
-        "APP_ENV not hardcoded (check settings.py)",
-        True,
-        "Ensure no secrets are committed to git",
-    ))
+    items.append(
+        (
+            "APP_ENV not hardcoded (check settings.py)",
+            True,
+            "Ensure no secrets are committed to git",
+        )
+    )
 
     db_type = cfg.db_type
     if db_type != "mongodb":
         alembic_ok = (output_root / "alembic").exists()
-        items.append((
-            "Alembic migrations initialized",
-            alembic_ok,
-            "Run: kaira migrate init",
-        ))
+        items.append(
+            (
+                "Alembic migrations initialized",
+                alembic_ok,
+                "Run: kaira migrate init",
+            )
+        )
 
     # ── Phase 5 cloud/fallback checks ────────────────────────────────────────
 
     # Check cloud config
     import json as _json
+
     kaira_cfg_path = Path(".kaira.json")
     is_cloud = False
     if kaira_cfg_path.exists():
@@ -111,15 +125,21 @@ def _run_checklist() -> list[tuple[str, bool, str]]:
         queue_empty = True
         if write_queue.exists():
             try:
-                lines = [line for line in write_queue.read_text(encoding="utf-8").splitlines() if line.strip()]
+                lines = [
+                    line
+                    for line in write_queue.read_text(encoding="utf-8").splitlines()
+                    if line.strip()
+                ]
                 queue_empty = len(lines) == 0
             except OSError:
                 queue_empty = False
-        items.append((
-            "Fallback queue empty",
-            queue_empty,
-            "Run: kaira cloud fallback sync  (replay queued writes before deploying)",
-        ))
+        items.append(
+            (
+                "Fallback queue empty",
+                queue_empty,
+                "Run: kaira cloud fallback sync  (replay queued writes before deploying)",
+            )
+        )
 
         # Check cloud credentials are referenced from secret store (not hardcoded in .env.example)
         _CLOUD_REAL_VALUE_MARKERS = [
@@ -138,26 +158,30 @@ def _run_checklist() -> list[tuple[str, bool, str]]:
                         if marker in val and not val.startswith("<"):
                             creds_from_store = False
                             break
-        items.append((
-            "Cloud credentials referenced from secret store",
-            creds_from_store,
-            "Ensure .env.example uses placeholders for cloud keys (e.g. <your-supabase-url>)",
-        ))
+        items.append(
+            (
+                "Cloud credentials referenced from secret store",
+                creds_from_store,
+                "Ensure .env.example uses placeholders for cloud keys (e.g. <your-supabase-url>)",
+            )
+        )
 
     return items
-
 
 
 @app.command("generate")
 def deploy_generate(
     platform: Annotated[
         str,
-        typer.Option("--platform", help="Deployment platform: railway | render | vps | fly"),
+        typer.Option(
+            "--platform", help="Deployment platform: railway | render | vps | fly"
+        ),
     ],
 ) -> None:
     """Generate a platform-specific deployment configuration file."""
     if platform not in _PLATFORMS:
         from kaira.commands.smart_errors import smart_error
+
         smart_error(
             context=f"Unknown platform '{platform}'.",
             typed=platform,
@@ -200,7 +224,12 @@ def deploy_checklist() -> None:
 
     all_passed = all(passed for _, passed, _ in items)
     if all_passed:
-        console.print(Panel("[green]✅ All checks passed. Ready to deploy![/green]", border_style="green"))
+        console.print(
+            Panel(
+                "[green]✅ All checks passed. Ready to deploy![/green]",
+                border_style="green",
+            )
+        )
     else:
         failed = sum(1 for _, passed, _ in items if not passed)
         console.print(
@@ -225,13 +254,19 @@ def deploy_check() -> None:
 def deploy_run(
     platform: Annotated[
         str,
-        typer.Option("--platform", help="Deployment platform: railway | render | vps | fly"),
+        typer.Option(
+            "--platform", help="Deployment platform: railway | render | vps | fly"
+        ),
     ],
-    force: Annotated[bool, typer.Option("--force", help="Skip typed confirmation (CI mode)")] = False,
+    force: Annotated[
+        bool, typer.Option("--force", help="Skip typed confirmation (CI mode)")
+    ] = False,
 ) -> None:
     """Trigger a deployment after passing the full checklist."""
     if platform not in _PLATFORMS:
-        console.print(f"[red]❌ Unknown platform '{platform}'. Valid: {', '.join(_PLATFORMS)}[/red]")
+        console.print(
+            f"[red]❌ Unknown platform '{platform}'. Valid: {', '.join(_PLATFORMS)}[/red]"
+        )
         raise typer.Exit(1)
 
     items = _run_checklist()
@@ -246,7 +281,9 @@ def deploy_run(
         )
         raise typer.Exit(1)
 
-    if not typed_confirmation(platform, f"This will deploy to [bold]{platform}[/bold].", force=force):
+    if not typed_confirmation(
+        platform, f"This will deploy to [bold]{platform}[/bold].", force=force
+    ):
         return
 
     console.print(

@@ -64,9 +64,15 @@ def recap_main(ctx: typer.Context) -> None:
 
 @app.command("show")
 def recap_command(
-    today: Annotated[bool, typer.Option("--today", help="Show only today's commands")] = False,
-    week: Annotated[bool, typer.Option("--week", help="Show commands from the last 7 days")] = False,
-    limit: Annotated[int, typer.Option("--limit", "-n", help="Maximum records to show")] = 50,
+    today: Annotated[
+        bool, typer.Option("--today", help="Show only today's commands")
+    ] = False,
+    week: Annotated[
+        bool, typer.Option("--week", help="Show commands from the last 7 days")
+    ] = False,
+    limit: Annotated[
+        int, typer.Option("--limit", "-n", help="Maximum records to show")
+    ] = 50,
 ) -> None:
     """Show command history from .kaira/history.jsonl.
 

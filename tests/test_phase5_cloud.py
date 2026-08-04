@@ -186,25 +186,45 @@ class TestEnvUpdateHelpers:
 class TestDbSwitchCloudRouting:
     def test_db_switch_supabase_calls_cloud_connect(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
-        (tmp_path / ".kaira.json").write_text(json.dumps({
-            "output_dir": "app", "db_type": "sqlite", "models_dir": "models",
-            "repositories_dir": "repositories", "schemas_dir": "schemas",
-            "services_dir": "services", "routers_dir": "routers",
-        }))
+        (tmp_path / ".kaira.json").write_text(
+            json.dumps(
+                {
+                    "output_dir": "app",
+                    "db_type": "sqlite",
+                    "models_dir": "models",
+                    "repositories_dir": "repositories",
+                    "schemas_dir": "schemas",
+                    "services_dir": "services",
+                    "routers_dir": "routers",
+                }
+            )
+        )
 
         with patch("kaira.commands.cloud_cmd.cloud_connect") as mock_connect:
             mock_connect.return_value = None
             result = runner.invoke(app, ["db", "switch", "supabase"])
         # Should trigger cloud connect routing
-        assert "cloud provider" in result.output.lower() or mock_connect.called or result.exit_code in (0, 1)
+        assert (
+            "cloud provider" in result.output.lower()
+            or mock_connect.called
+            or result.exit_code in (0, 1)
+        )
 
     def test_db_switch_invalid_type_shows_error(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
-        (tmp_path / ".kaira.json").write_text(json.dumps({
-            "output_dir": "app", "db_type": "sqlite", "models_dir": "models",
-            "repositories_dir": "repositories", "schemas_dir": "schemas",
-            "services_dir": "services", "routers_dir": "routers",
-        }))
+        (tmp_path / ".kaira.json").write_text(
+            json.dumps(
+                {
+                    "output_dir": "app",
+                    "db_type": "sqlite",
+                    "models_dir": "models",
+                    "repositories_dir": "repositories",
+                    "schemas_dir": "schemas",
+                    "services_dir": "services",
+                    "routers_dir": "routers",
+                }
+            )
+        )
         result = runner.invoke(app, ["db", "switch", "cassandra"])
         assert result.exit_code != 0
 
@@ -249,4 +269,7 @@ class TestCloudStatusCommand:
         monkeypatch.chdir(tmp_path)
         result = runner.invoke(app, ["cloud", "status"])
         assert result.exit_code == 0
-        assert "No cloud database configured" in result.output or "cloud" in result.output.lower()
+        assert (
+            "No cloud database configured" in result.output
+            or "cloud" in result.output.lower()
+        )

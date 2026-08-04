@@ -10,7 +10,6 @@ from typing import Annotated, Any, Optional
 import typer
 from jinja2 import Environment, FileSystemLoader
 from rich.panel import Panel
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
 from rich.prompt import Confirm
 
 from kaira.config import (
@@ -139,7 +138,8 @@ def _parse_live_model_fields(
                     continue
 
             if raw_type and not any(
-                token in raw_type for token in ("Link[", "relationship", "ForeignKey", "list[", "Dict[")
+                token in raw_type
+                for token in ("Link[", "relationship", "ForeignKey", "list[", "Dict[")
             ):
                 norm_type = normalize_ast_type(raw_type)
 
@@ -175,7 +175,9 @@ def _restore_embedded_from_snapshot(
     return merged
 
 
-def _get_model_fields(config: Any, model_name: str, output_root: Path) -> list[dict[str, str]]:
+def _get_model_fields(
+    config: Any, model_name: str, output_root: Path
+) -> list[dict[str, str]]:
     """Resolve model fields, preferring live AST inspection of the model file over static config."""
     snake = camel_to_snake(model_name)
     model_file = output_root / config.models_dir / f"{snake}.py"
@@ -193,7 +195,9 @@ def _get_model_fields(config: Any, model_name: str, output_root: Path) -> list[d
                 break
         return live_fields
 
-    model_entry = next((m for m in config.generated_models if m.get("name") == model_name), None)
+    model_entry = next(
+        (m for m in config.generated_models if m.get("name") == model_name), None
+    )
     return model_entry.get("fields", []) if model_entry else []
 
 
@@ -252,7 +256,11 @@ def render_seed(
     Returns:
         A ``(rendered_source, seed_file_path)`` tuple.
     """
-    fields = fields_override if fields_override is not None else _get_model_fields(config, model_name, output_root)
+    fields = (
+        fields_override
+        if fields_override is not None
+        else _get_model_fields(config, model_name, output_root)
+    )
 
     db_type = getattr(config, "db_type", "sqlite")
     driver = get_engine_driver(db_type)
@@ -313,8 +321,12 @@ def render_seed(
 
 @app.command("generate")
 def seed_generate(
-    model_name: Annotated[str, typer.Argument(help="Name of the model to generate a seed file for.")],
-    force: Annotated[bool, typer.Option("--force", help="Overwrite existing files.")] = False,
+    model_name: Annotated[
+        str, typer.Argument(help="Name of the model to generate a seed file for.")
+    ],
+    force: Annotated[
+        bool, typer.Option("--force", help="Overwrite existing files.")
+    ] = False,
 ) -> None:
     """Generate a mock data seed script for a model."""
     config = get_config()
@@ -334,21 +346,33 @@ def seed_generate(
 
 @app.command("run")
 def seed_run(
-    model_name: Annotated[Optional[str], typer.Argument(help="Name of the model to seed.")] = None,
-    seed_all: Annotated[bool, typer.Option("--all", help="Run all seed scripts.")] = False,
-    count: Annotated[int, typer.Option("--count", help="Records to insert per model.")] = 5,
+    model_name: Annotated[
+        Optional[str], typer.Argument(help="Name of the model to seed.")
+    ] = None,
+    seed_all: Annotated[
+        bool, typer.Option("--all", help="Run all seed scripts.")
+    ] = False,
+    count: Annotated[
+        int, typer.Option("--count", help="Records to insert per model.")
+    ] = 5,
     force: Annotated[
-        bool, typer.Option("--force", help="Seed even if the table/collection is non-empty.")
+        bool,
+        typer.Option("--force", help="Seed even if the table/collection is non-empty."),
     ] = False,
     stats: Annotated[
-        bool, typer.Option("--stats/--no-stats", help="Show table/collection counts afterwards.")
+        bool,
+        typer.Option(
+            "--stats/--no-stats", help="Show table/collection counts afterwards."
+        ),
     ] = True,
 ) -> None:
     """Run database seed scripts (development/staging only)."""
     # Enforce settings APP_ENV safety check
     app_env = os.getenv("APP_ENV", "development")
     if app_env == "production":
-        console.print("[red]Error: Seeding is disabled in production to protect data![/red]")
+        console.print(
+            "[red]Error: Seeding is disabled in production to protect data![/red]"
+        )
         raise typer.Exit(1)
 
     config = get_config()
@@ -357,7 +381,9 @@ def seed_run(
     db_type = getattr(config, "db_type", "sqlite")
 
     if not seeds_dir.exists():
-        console.print("[yellow]No seeds directory found. Run kaira seed generate <Model> first.[/yellow]")
+        console.print(
+            "[yellow]No seeds directory found. Run kaira seed generate <Model> first.[/yellow]"
+        )
         return
 
     scripts = []
@@ -377,19 +403,21 @@ def seed_run(
     before = _snapshot_counts(db_type) if stats else None
 
     failures: list[str] = []
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        TaskProgressColumn(),
-        console=console,
-    ) as progress:
-        task = progress.add_task("[cyan]Running seeds...", total=len(scripts))
-        for script in scripts:
+    from kaira.core.progress import ProgressItem, ProgressPhase, ProgressRenderer
+
+    items = [ProgressItem(name=s.name) for s in scripts]
+    phase = ProgressPhase(name="seeding", items=items)
+    renderer = ProgressRenderer(
+        title="seeding", total=len(scripts), phases=[phase], unit="scripts"
+    )
+
+    with renderer:
+        phase.start()
+        renderer.refresh()
+        for script, item in zip(scripts, items):
+            item.start()
+            renderer.refresh()
             # Auto-sync live model fields into seed script if model definition evolved.
-            # Rendering goes through render_seed rather than a context assembled
-            # here: a second copy of the context silently drops whatever keys it
-            # does not know about, which strips real code out of the seed.
             sname = script.stem.replace("seed_", "")
             model_pascal = snake_to_pascal(sname)
             model_file = output_root / config.models_dir / f"{sname}.py"
@@ -399,17 +427,20 @@ def seed_run(
             if live_fields:
                 script_text = script.read_text(encoding="utf-8")
                 missing = [
-                    f["name"] for f in live_fields
-                    if f"'{f['name']}':" not in script_text and f'"{f["name"]}":' not in script_text
+                    f["name"]
+                    for f in live_fields
+                    if f"'{f['name']}':" not in script_text
+                    and f'"{f["name"]}":' not in script_text
                 ]
                 if missing:
                     content, _ = render_seed(
                         model_pascal, config, output_root, fields_override=live_fields
                     )
                     write_with_check(script, content, force=True, non_interactive=True)
-                    console.print(f"  [cyan]ℹ Auto-synced {script.name} with updated model fields: {', '.join(missing)}[/cyan]")
+                    console.print(
+                        f"  [cyan]ℹ Auto-synced {script.name} with updated model fields: {', '.join(missing)}[/cyan]"
+                    )
 
-            progress.update(task, description=f"[cyan]  {script.name}...")
             args = ["--count", str(count)] + (["--force"] if force else [])
             result = run_project_file(script, output_root, args=args)
 
@@ -417,12 +448,22 @@ def seed_run(
                 for line in result.stdout.splitlines():
                     if line.strip():
                         console.print(f"  [green bold]✓[/green bold]  {line.strip()}")
+                item.done()
             else:
                 failures.append(script.name)
                 detail = (result.stderr or result.stdout).strip().splitlines()
                 tail = "\n".join(detail[-6:]) if detail else "no output"
-                console.print(f"  [red bold]✗[/red bold]  {script.name} failed:\n[dim]{tail}[/dim]")
-            progress.advance(task)
+                console.print(
+                    f"  [red bold]✗[/red bold]  {script.name} failed:\n[dim]{tail}[/dim]"
+                )
+                item.fail(
+                    reason=tail.splitlines()[0] if tail != "no output" else "failed"
+                )
+            renderer.refresh()
+
+        phase.finish()
+        renderer.refresh()
+    renderer.print_result()
 
     if stats:
         _print_seed_stats(db_type, before)
@@ -526,7 +567,9 @@ asyncio.run(main())
 
 @app.command("clear")
 def seed_clear(
-    force: Annotated[bool, typer.Option("--force", help="Skip the confirmation prompt.")] = False,
+    force: Annotated[
+        bool, typer.Option("--force", help="Skip the confirmation prompt.")
+    ] = False,
 ) -> None:
     """Clear all data from generated database tables or collections (requires confirmation)."""
     app_env = os.getenv("APP_ENV", "development")
@@ -553,7 +596,10 @@ def seed_clear(
         detail = (result.stderr or result.stdout).strip().splitlines()
         tail = "\n".join(detail[-6:]) if detail else "no output"
         console.print(
-            Panel(f"[red]Error clearing database:[/red]\n[dim]{tail}[/dim]", border_style="red")
+            Panel(
+                f"[red]Error clearing database:[/red]\n[dim]{tail}[/dim]",
+                border_style="red",
+            )
         )
         raise typer.Exit(1)
 

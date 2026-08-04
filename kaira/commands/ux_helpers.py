@@ -6,7 +6,6 @@ import json
 import os
 import re
 from pathlib import Path
-from typing import Optional
 
 import typer
 from rich.panel import Panel
@@ -27,7 +26,9 @@ except ImportError:
     _HAS_RAPIDFUZZ = False
 
 
-def suggest_did_you_mean(query: str, candidates: list[str], limit: int = 3) -> list[str]:
+def suggest_did_you_mean(
+    query: str, candidates: list[str], limit: int = 3
+) -> list[str]:
     """Return closest matches for *query* from *candidates*.
 
     Uses rapidfuzz when available, falls back to difflib.

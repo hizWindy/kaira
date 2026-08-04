@@ -53,7 +53,7 @@ def test_document_driver_relation_snippets():
         embedded=False,
     )
     assert "Link" in linked["field_code"]
-    assert "posts: list[Link[\"Post\"]]" in linked["field_code"]
+    assert 'posts: list[Link["Post"]]' in linked["field_code"]
 
     # Embedded relation
     embedded = driver.get_relation_snippet(
@@ -62,7 +62,7 @@ def test_document_driver_relation_snippets():
         relation_type="has-one",
         embedded=True,
     )
-    assert "address: \"AddressSchema\"" in embedded["field_code"]
+    assert 'address: "AddressSchema"' in embedded["field_code"]
 
 
 def test_doc_migrate_make_command(tmp_path, monkeypatch):
@@ -180,9 +180,16 @@ def test_firestore_document_allows_undeclared_fields():
 
 def test_driver_seed_template_dispatch():
     """Each paradigm resolves its own seed template rather than branching inline."""
-    assert get_engine_driver("mongodb").get_seed_template_name() == "seed_model_doc.py.j2"
-    assert get_engine_driver("postgresql").get_seed_template_name() == "seed_model_sql.py.j2"
-    assert get_engine_driver("sqlite").get_seed_template_name() == "seed_model_sql.py.j2"
+    assert (
+        get_engine_driver("mongodb").get_seed_template_name() == "seed_model_doc.py.j2"
+    )
+    assert (
+        get_engine_driver("postgresql").get_seed_template_name()
+        == "seed_model_sql.py.j2"
+    )
+    assert (
+        get_engine_driver("sqlite").get_seed_template_name() == "seed_model_sql.py.j2"
+    )
 
 
 def test_seed_generate_sql_uses_sqlalchemy(tmp_path, monkeypatch):
@@ -274,7 +281,9 @@ def test_seed_scripts_compile(tmp_path, monkeypatch):
 
     for db_type in ("mongodb", "postgresql"):
         _write_config(tmp_path, db_type, fields)
-        assert runner.invoke(app, ["seed", "generate", "User", "--force"]).exit_code == 0
+        assert (
+            runner.invoke(app, ["seed", "generate", "User", "--force"]).exit_code == 0
+        )
         source = (tmp_path / "seeds" / "seed_user.py").read_text(encoding="utf-8")
         compile(source, "seed_user.py", "exec")  # raises SyntaxError on failure
 
@@ -288,7 +297,9 @@ def test_seed_script_is_idempotent_by_default(tmp_path, monkeypatch):
         ("postgresql", "existing = await session.scalar(select(func.count())"),
     ):
         _write_config(tmp_path, db_type, [{"name": "username", "type": "str"}])
-        assert runner.invoke(app, ["seed", "generate", "User", "--force"]).exit_code == 0
+        assert (
+            runner.invoke(app, ["seed", "generate", "User", "--force"]).exit_code == 0
+        )
         content = (tmp_path / "seeds" / "seed_user.py").read_text(encoding="utf-8")
         assert guard in content
         assert "if existing and not force:" in content
@@ -350,7 +361,10 @@ def test_stats_table_columns_differ_by_paradigm():
 
 def test_try_collect_db_stats_swallows_connection_errors():
     """Stats are a convenience: an unreachable database must not raise."""
-    assert try_collect_db_stats("postgresql", "postgresql+asyncpg://x:y@127.0.0.1:1/none") is None
+    assert (
+        try_collect_db_stats("postgresql", "postgresql+asyncpg://x:y@127.0.0.1:1/none")
+        is None
+    )
 
 
 # ── DATABASE_URL resolution ──────────────────────────────────────────────────
@@ -379,7 +393,9 @@ def test_database_url_prefers_active_env_over_profile(tmp_path, monkeypatch):
     monkeypatch.delenv("DATABASE_URL", raising=False)
     monkeypatch.setenv("APP_ENV", "development")
 
-    (tmp_path / ".env").write_text("DATABASE_URL=mongodb://active/db\n", encoding="utf-8")
+    (tmp_path / ".env").write_text(
+        "DATABASE_URL=mongodb://active/db\n", encoding="utf-8"
+    )
     (tmp_path / ".env.development").write_text(
         "DATABASE_URL=mongodb://profile/db\n", encoding="utf-8"
     )
@@ -429,4 +445,3 @@ def test_seed_generate_uses_live_model_ast_fields(tmp_path, monkeypatch):
     assert "'password': bcrypt.hashpw" in content
     assert "'email': f'user{i}@example.com'," in content
     assert "'old_field'" not in content
-

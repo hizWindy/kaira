@@ -24,7 +24,9 @@ def _project_env(output_root: Path) -> dict[str, str]:
     return env
 
 
-def _run(argv: list[str], output_root: Path, capture: bool) -> subprocess.CompletedProcess:
+def _run(
+    argv: list[str], output_root: Path, capture: bool
+) -> subprocess.CompletedProcess:
     from kaira.config import get_venv_python
 
     return subprocess.run(

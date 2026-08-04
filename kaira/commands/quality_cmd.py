@@ -4,9 +4,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
-import sys
-from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated
 
 import typer
 from rich.panel import Panel
@@ -49,7 +47,11 @@ def _run_tool(
         True if the tool passed, False on failure or skip.
     """
     if not shutil.which(name):
-        table.add_row(label, "⏭️ Skipped", f"[dim]Install: {_TOOL_INSTALL_HINTS.get(name, name)}[/dim]")
+        table.add_row(
+            label,
+            "⏭️ Skipped",
+            f"[dim]Install: {_TOOL_INSTALL_HINTS.get(name, name)}[/dim]",
+        )
         return True  # Skipped ≠ failure; don't exit 1 for missing tool
 
     try:
@@ -79,7 +81,9 @@ def _run_tool(
 
 @app.command("lint")
 def quality_lint(
-    path: Annotated[str, typer.Argument(help="Path to lint (default: kaira/ or .)")] = ".",
+    path: Annotated[
+        str, typer.Argument(help="Path to lint (default: kaira/ or .)")
+    ] = ".",
 ) -> None:
     """Run ruff check on the project.
 
@@ -106,7 +110,9 @@ def quality_typecheck(
     if not shutil.which("mypy"):
         console.print("[yellow]mypy not found. Install with: pip install mypy[/yellow]")
         raise typer.Exit(1)
-    result = subprocess.run(["mypy", path, "--ignore-missing-imports"], capture_output=False)
+    result = subprocess.run(
+        ["mypy", path, "--ignore-missing-imports"], capture_output=False
+    )
     if result.returncode != 0:
         raise typer.Exit(1)
 
@@ -137,7 +143,9 @@ def quality_scan(
         path: Directory or file to scan.
     """
     if not shutil.which("bandit"):
-        console.print("[yellow]bandit not found. Install with: pip install bandit[/yellow]")
+        console.print(
+            "[yellow]bandit not found. Install with: pip install bandit[/yellow]"
+        )
         raise typer.Exit(1)
     result = subprocess.run(["bandit", "-ll", "-r", path], capture_output=False)
     if result.returncode != 0:
@@ -180,7 +188,9 @@ def quality_all(
     console.print(table)
 
     if failures == 0:
-        console.print(Panel("[green]✅ All quality checks passed![/green]", border_style="green"))
+        console.print(
+            Panel("[green]✅ All quality checks passed![/green]", border_style="green")
+        )
     else:
         console.print(
             Panel(

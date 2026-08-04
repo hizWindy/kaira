@@ -79,13 +79,16 @@ def _require_flags_file(output_root: Path) -> Path:
 def flags_init() -> None:
     """Initialise the feature flags module (core/flags.py)."""
     from kaira.config import get_config
+
     cfg = get_config()
     output_root = Path.cwd() / cfg.output_dir
     (output_root / "core").mkdir(parents=True, exist_ok=True)
     fp = _flags_path(output_root)
 
     if fp.exists():
-        console.print("[yellow]core/flags.py already exists. Use kaira flags add to add flags.[/yellow]")
+        console.print(
+            "[yellow]core/flags.py already exists. Use kaira flags add to add flags.[/yellow]"
+        )
         return
 
     _write_flags(fp, {})
@@ -122,13 +125,16 @@ def flags_add(
     default_bool = default.lower() in ("true", "1", "yes")
 
     from kaira.config import get_config
+
     cfg = get_config()
     output_root = Path.cwd() / cfg.output_dir
     fp = _require_flags_file(output_root)
 
     flags = _read_flags(fp)
     if flag_name in flags:
-        console.print(f"[yellow]Flag '{flag_name}' already exists. Use enable/disable to change it.[/yellow]")
+        console.print(
+            f"[yellow]Flag '{flag_name}' already exists. Use enable/disable to change it.[/yellow]"
+        )
         return
 
     flags[flag_name] = default_bool
@@ -147,13 +153,16 @@ def flags_enable(
 ) -> None:
     """Enable a feature flag."""
     from kaira.config import get_config
+
     cfg = get_config()
     output_root = Path.cwd() / cfg.output_dir
     fp = _require_flags_file(output_root)
 
     flags = _read_flags(fp)
     if flag_name not in flags:
-        console.print(f"[red]❌ Flag '{flag_name}' not found. Add it with: kaira flags add {flag_name}[/red]")
+        console.print(
+            f"[red]❌ Flag '{flag_name}' not found. Add it with: kaira flags add {flag_name}[/red]"
+        )
         raise typer.Exit(1)
 
     flags[flag_name] = True
@@ -167,13 +176,16 @@ def flags_disable(
 ) -> None:
     """Disable a feature flag."""
     from kaira.config import get_config
+
     cfg = get_config()
     output_root = Path.cwd() / cfg.output_dir
     fp = _require_flags_file(output_root)
 
     flags = _read_flags(fp)
     if flag_name not in flags:
-        console.print(f"[red]❌ Flag '{flag_name}' not found. Add it with: kaira flags add {flag_name}[/red]")
+        console.print(
+            f"[red]❌ Flag '{flag_name}' not found. Add it with: kaira flags add {flag_name}[/red]"
+        )
         raise typer.Exit(1)
 
     flags[flag_name] = False
@@ -185,6 +197,7 @@ def flags_disable(
 def flags_list() -> None:
     """List all feature flags and their current state."""
     from kaira.config import get_config
+
     cfg = get_config()
     output_root = Path.cwd() / cfg.output_dir
     fp = _flags_path(output_root)

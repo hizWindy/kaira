@@ -6,7 +6,6 @@ import json
 import os
 import socket
 from pathlib import Path
-from typing import Optional
 
 import typer
 from rich.panel import Panel
@@ -158,7 +157,9 @@ def status_command() -> None:
     models_dir = output_root / cfg.models_dir
     routers_dir = output_root / cfg.routers_dir
     model_count = len(list(models_dir.glob("*.py"))) if models_dir.exists() else 0
-    router_count = len(list(routers_dir.glob("*_router.py"))) if routers_dir.exists() else 0
+    router_count = (
+        len(list(routers_dir.glob("*_router.py"))) if routers_dir.exists() else 0
+    )
 
     # Auth status
     auth_dir = output_root / "auth"

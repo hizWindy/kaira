@@ -5,7 +5,7 @@ Entry point registered as: kaira = "kaira.main:app"
 
 from __future__ import annotations
 
-from typing import Annotated, Optional
+from typing import Annotated, Any, Optional
 
 import typer
 
@@ -61,6 +61,9 @@ from kaira.commands.sync_cmd import app as sync_app
 from kaira.commands.doc_migrate_cmd import app as doc_migrate_app
 from kaira.commands.export_cmd import app as export_app
 
+# ── Phase 7.5 command apps ───────────────────────────────────────────────────
+from kaira.commands.commands_cmd import app as commands_app
+
 # ── Import standalone command functions ───────────────────────────────────────
 from kaira.commands.project import init_command
 from kaira.commands.info import info_command
@@ -69,9 +72,32 @@ from kaira.commands.diff import diff_command
 from kaira.commands.health import health_command
 
 
+from typer.core import TyperGroup
+
+
+class KairaTyperGroup(TyperGroup):
+    """Root command group that prepends the Kaira banner to help output.
+
+    Help is an entry-point surface, so the banner belongs here.  It is *not*
+    hooked into the command callback, which would fire for every invocation
+    and leak the banner onto working commands and into piped output.
+    """
+
+    # ctx/formatter are typed Any: Typer re-exports click's Context and
+    # HelpFormatter from a private module, so naming click's public types here
+    # reads as an incompatible override.
+    def format_help(self, ctx: Any, formatter: Any) -> None:
+        """Render the banner, then Click's standard grouped help."""
+        from kaira.core.ui import render_banner
+
+        render_banner()
+        super().format_help(ctx, formatter)
+
+
 # ── Root Typer app ────────────────────────────────────────────────────────────
 
 app = typer.Typer(
+    cls=KairaTyperGroup,
     name="kaira",
     help=(
         "[bold cyan]Kaira[/bold cyan] — Automated FastAPI scaffolding CLI.\n\n"
@@ -79,7 +105,9 @@ app = typer.Typer(
         "[dim]Version: " + __version__ + "[/dim]"
     ),
     rich_markup_mode="rich",
-    no_args_is_help=True,
+    # Bare `kaira` renders the welcome dashboard, not the help page — help is
+    # reachable via `kaira --help` and `kaira commands`.
+    no_args_is_help=False,
     add_completion=True,
 )
 
@@ -188,6 +216,11 @@ app.add_typer(
     name="export",
     help="Export data to xlsx/pdf/docx — CLI files and generated API endpoints.",
 )
+app.add_typer(
+    commands_app,
+    name="commands",
+    help="Index of all available Kaira commands.",
+)
 
 
 # ── Standalone commands ───────────────────────────────────────────────────────
@@ -226,7 +259,9 @@ def cmd_init(
     ] = None,
     yes: Annotated[
         bool,
-        typer.Option("--yes", "-y", help="Skip confirmation prompts (non-interactive)."),
+        typer.Option(
+            "--yes", "-y", help="Skip confirmation prompts (non-interactive)."
+        ),
     ] = False,
 ) -> None:
     """Scaffold a full FastAPI project structure in a named directory with interactive wizard config.
@@ -238,7 +273,12 @@ def cmd_init(
     kaira init myproject --db postgresql --auth jwt --docker
     kaira init proj9 --db postgresql --profile solo
     """
-    init_command(name=name, db=db, auth=auth, docker=docker, ci=ci, profile=profile, yes=yes)
+    from kaira.core.ui import render_banner
+
+    render_banner()
+    init_command(
+        name=name, db=db, auth=auth, docker=docker, ci=ci, profile=profile, yes=yes
+    )
 
 
 @app.command("info")
@@ -288,7 +328,9 @@ def cmd_health() -> None:
 def _version_callback(value: bool) -> None:
     if value:
         from kaira.core.theme import Theme, attribution
+        from kaira.core.ui import render_banner
 
+        render_banner()
         console.print(f"Kaira v{__version__}")
         console.print(f"[{Theme.MUTED}]{attribution()}[/{Theme.MUTED}]")
         raise typer.Exit()
@@ -300,6 +342,9 @@ def cmd_about() -> None:
     from rich.panel import Panel
 
     from kaira.core.theme import Theme, attribution, sym
+    from kaira.core.ui import render_banner
+
+    render_banner()
 
     bolt = sym("BOLT")
     from kaira.core.theme import PROJECT_URL
@@ -320,7 +365,7 @@ def cmd_about() -> None:
     )
 
 
-@app.callback()
+@app.callback(invoke_without_command=True)
 def main(
     ctx: typer.Context,
     version: Annotated[
@@ -370,6 +415,15 @@ def main(
         run_onboarding()
     except Exception:  # never crash the main CLI due to onboarding
         pass
+
+    # Bare `kaira`: the banner, then the project dashboard (or the "no project"
+    # body outside one).  Working commands never reach this branch.
+    if ctx.invoked_subcommand is None:
+        from kaira.commands.dashboard import welcome_dashboard
+        from kaira.core.ui import render_banner
+
+        render_banner()
+        welcome_dashboard()
 
 
 if __name__ == "__main__":

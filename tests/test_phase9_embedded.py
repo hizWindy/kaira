@@ -128,7 +128,14 @@ def test_generate_embedded_creates_plain_pydantic_model(tmp_path, monkeypatch):
 
     result = runner.invoke(
         app,
-        ["generate", "embedded", "Address", "--fields", "street:str, city:str", "--force"],
+        [
+            "generate",
+            "embedded",
+            "Address",
+            "--fields",
+            "street:str, city:str",
+            "--force",
+        ],
     )
     assert result.exit_code == 0
 
@@ -155,8 +162,11 @@ def test_embedded_field_generates_nested_annotation_on_mongo(tmp_path, monkeypat
     result = runner.invoke(
         app,
         [
-            "generate", "model", "Credential",
-            "--fields", "sss_id:str, emergency_contact:EmergencyContact",
+            "generate",
+            "model",
+            "Credential",
+            "--fields",
+            "sss_id:str, emergency_contact:EmergencyContact",
             "--force",
         ],
     )
@@ -185,8 +195,11 @@ def test_embedded_field_becomes_json_column_on_sql(tmp_path, monkeypatch):
     result = runner.invoke(
         app,
         [
-            "generate", "model", "Credential",
-            "--fields", "sss_id:str, emergency_contact:EmergencyContact",
+            "generate",
+            "model",
+            "Credential",
+            "--fields",
+            "sss_id:str, emergency_contact:EmergencyContact",
             "--force",
         ],
     )
@@ -205,12 +218,21 @@ def test_embedded_list_defaults_to_empty_not_none(tmp_path, monkeypatch):
 
     result = runner.invoke(
         app,
-        ["generate", "model", "Patient", "--fields", "contacts:list[EmergencyContact]", "--force"],
+        [
+            "generate",
+            "model",
+            "Patient",
+            "--fields",
+            "contacts:list[EmergencyContact]",
+            "--force",
+        ],
     )
     assert result.exit_code == 0
 
     model_code = (tmp_path / "models" / "patient.py").read_text(encoding="utf-8")
-    assert "contacts: list[EmergencyContact] = Field(default_factory=list)" in model_code
+    assert (
+        "contacts: list[EmergencyContact] = Field(default_factory=list)" in model_code
+    )
 
 
 # ── Sync (the reported bug) ──────────────────────────────────────────────────
@@ -225,17 +247,25 @@ def test_sync_preserves_embedded_field(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     _init_project(tmp_path, "mongodb")
 
-    assert runner.invoke(
-        app,
-        [
-            "generate", "model", "Credential",
-            "--fields", "sss_id:str, emergency_contact:EmergencyContact",
-            "--force",
-        ],
-    ).exit_code == 0
+    assert (
+        runner.invoke(
+            app,
+            [
+                "generate",
+                "model",
+                "Credential",
+                "--fields",
+                "sss_id:str, emergency_contact:EmergencyContact",
+                "--force",
+            ],
+        ).exit_code
+        == 0
+    )
 
     model_path = tmp_path / "models" / "credential.py"
-    assert "emergency_contact: EmergencyContact" in model_path.read_text(encoding="utf-8")
+    assert "emergency_contact: EmergencyContact" in model_path.read_text(
+        encoding="utf-8"
+    )
 
     # A sync that genuinely regenerates the model layer.
     result = runner.invoke(
@@ -244,7 +274,9 @@ def test_sync_preserves_embedded_field(tmp_path, monkeypatch):
     assert result.exit_code == 0
 
     after = model_path.read_text(encoding="utf-8")
-    assert "emergency_contact: EmergencyContact" in after, "embedded field was destroyed"
+    assert "emergency_contact: EmergencyContact" in after, (
+        "embedded field was destroyed"
+    )
     assert "pagibig_id" in after, "new scalar field was not added"
 
     schema_after = (tmp_path / "schemas" / "credential_schema.py").read_text(
@@ -263,14 +295,20 @@ def test_seed_includes_embedded_field_as_nested_dict(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     _init_project(tmp_path, "mongodb")
 
-    assert runner.invoke(
-        app,
-        [
-            "generate", "model", "Credential",
-            "--fields", "sss_id:str, emergency_contact:EmergencyContact",
-            "--force",
-        ],
-    ).exit_code == 0
+    assert (
+        runner.invoke(
+            app,
+            [
+                "generate",
+                "model",
+                "Credential",
+                "--fields",
+                "sss_id:str, emergency_contact:EmergencyContact",
+                "--force",
+            ],
+        ).exit_code
+        == 0
+    )
 
     result = runner.invoke(app, ["seed", "generate", "Credential", "--force"])
     assert result.exit_code == 0
@@ -289,10 +327,20 @@ def test_seed_embedded_list_is_a_list_of_dicts(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     _init_project(tmp_path, "mongodb")
 
-    assert runner.invoke(
-        app,
-        ["generate", "model", "Patient", "--fields", "contacts:list[EmergencyContact]", "--force"],
-    ).exit_code == 0
+    assert (
+        runner.invoke(
+            app,
+            [
+                "generate",
+                "model",
+                "Patient",
+                "--fields",
+                "contacts:list[EmergencyContact]",
+                "--force",
+            ],
+        ).exit_code
+        == 0
+    )
 
     assert runner.invoke(app, ["seed", "generate", "Patient", "--force"]).exit_code == 0
 
@@ -311,9 +359,13 @@ def test_seed_picks_up_hand_added_embedded_field(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     _init_project(tmp_path, "mongodb")
 
-    assert runner.invoke(
-        app, ["generate", "model", "Credential", "--fields", "sss_id:str", "--force"]
-    ).exit_code == 0
+    assert (
+        runner.invoke(
+            app,
+            ["generate", "model", "Credential", "--fields", "sss_id:str", "--force"],
+        ).exit_code
+        == 0
+    )
 
     # Hand-edit the model, exactly as a developer would.
     model_path = tmp_path / "models" / "credential.py"
@@ -331,7 +383,9 @@ def test_seed_picks_up_hand_added_embedded_field(tmp_path, monkeypatch):
     )
     assert all(f["name"] != "emergency_contact" for f in credential["fields"])
 
-    assert runner.invoke(app, ["seed", "generate", "Credential", "--force"]).exit_code == 0
+    assert (
+        runner.invoke(app, ["seed", "generate", "Credential", "--force"]).exit_code == 0
+    )
 
     seed_code = (tmp_path / "seeds" / "seed_credential.py").read_text(encoding="utf-8")
     assert "'emergency_contact': {'name':" in seed_code
@@ -346,16 +400,24 @@ def test_seed_on_sql_recovers_embedded_from_snapshot(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     _init_project(tmp_path, "sqlite")
 
-    assert runner.invoke(
-        app,
-        [
-            "generate", "model", "Credential",
-            "--fields", "sss_id:str, emergency_contact:EmergencyContact",
-            "--force",
-        ],
-    ).exit_code == 0
+    assert (
+        runner.invoke(
+            app,
+            [
+                "generate",
+                "model",
+                "Credential",
+                "--fields",
+                "sss_id:str, emergency_contact:EmergencyContact",
+                "--force",
+            ],
+        ).exit_code
+        == 0
+    )
 
-    assert runner.invoke(app, ["seed", "generate", "Credential", "--force"]).exit_code == 0
+    assert (
+        runner.invoke(app, ["seed", "generate", "Credential", "--force"]).exit_code == 0
+    )
 
     seed_code = (tmp_path / "seeds" / "seed_credential.py").read_text(encoding="utf-8")
     assert "'emergency_contact': {'name':" in seed_code
@@ -363,7 +425,9 @@ def test_seed_on_sql_recovers_embedded_from_snapshot(tmp_path, monkeypatch):
 
     # The snapshot must still carry the embedded type, not a degraded copy.
     config = json.loads((tmp_path / ".kaira.json").read_text(encoding="utf-8"))
-    credential = next(m for m in config["generated_models"] if m["name"] == "Credential")
+    credential = next(
+        m for m in config["generated_models"] if m["name"] == "Credential"
+    )
     types = {f["name"]: f["type"] for f in credential["fields"]}
     assert types["emergency_contact"] == "EmergencyContact"
 
@@ -394,10 +458,20 @@ def test_seeded_password_plaintext_is_recoverable(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     _init_auth_project(tmp_path)
 
-    assert runner.invoke(
-        app,
-        ["generate", "model", "User", "--fields", "username:str, password:str", "--force"],
-    ).exit_code == 0
+    assert (
+        runner.invoke(
+            app,
+            [
+                "generate",
+                "model",
+                "User",
+                "--fields",
+                "username:str, password:str",
+                "--force",
+            ],
+        ).exit_code
+        == 0
+    )
     assert runner.invoke(app, ["seed", "generate", "User", "--force"]).exit_code == 0
 
     seed_code = (tmp_path / "seeds" / "seed_user.py").read_text(encoding="utf-8")
@@ -415,10 +489,20 @@ def test_seed_prints_login_command_for_auth_model(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     _init_auth_project(tmp_path)
 
-    assert runner.invoke(
-        app,
-        ["generate", "model", "User", "--fields", "username:str, password:str", "--force"],
-    ).exit_code == 0
+    assert (
+        runner.invoke(
+            app,
+            [
+                "generate",
+                "model",
+                "User",
+                "--fields",
+                "username:str, password:str",
+                "--force",
+            ],
+        ).exit_code
+        == 0
+    )
     assert runner.invoke(app, ["seed", "generate", "User", "--force"]).exit_code == 0
 
     seed_code = (tmp_path / "seeds" / "seed_user.py").read_text(encoding="utf-8")
@@ -432,9 +516,12 @@ def test_seed_omits_credentials_when_no_password(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     _init_auth_project(tmp_path)
 
-    assert runner.invoke(
-        app, ["generate", "model", "Article", "--fields", "title:str", "--force"]
-    ).exit_code == 0
+    assert (
+        runner.invoke(
+            app, ["generate", "model", "Article", "--fields", "title:str", "--force"]
+        ).exit_code
+        == 0
+    )
     assert runner.invoke(app, ["seed", "generate", "Article", "--force"]).exit_code == 0
 
     seed_code = (tmp_path / "seeds" / "seed_article.py").read_text(encoding="utf-8")
@@ -453,10 +540,20 @@ def test_seed_skips_login_hint_for_non_auth_model(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     _init_auth_project(tmp_path)
 
-    assert runner.invoke(
-        app,
-        ["generate", "model", "Admin", "--fields", "username:str, password:str", "--force"],
-    ).exit_code == 0
+    assert (
+        runner.invoke(
+            app,
+            [
+                "generate",
+                "model",
+                "Admin",
+                "--fields",
+                "username:str, password:str",
+                "--force",
+            ],
+        ).exit_code
+        == 0
+    )
     assert runner.invoke(app, ["seed", "generate", "Admin", "--force"]).exit_code == 0
 
     seed_code = (tmp_path / "seeds" / "seed_admin.py").read_text(encoding="utf-8")
@@ -476,10 +573,20 @@ def test_seed_run_autosync_preserves_credentials_block(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     _init_auth_project(tmp_path)
 
-    assert runner.invoke(
-        app,
-        ["generate", "model", "User", "--fields", "username:str, password:str", "--force"],
-    ).exit_code == 0
+    assert (
+        runner.invoke(
+            app,
+            [
+                "generate",
+                "model",
+                "User",
+                "--fields",
+                "username:str, password:str",
+                "--force",
+            ],
+        ).exit_code
+        == 0
+    )
     assert runner.invoke(app, ["seed", "generate", "User", "--force"]).exit_code == 0
 
     # Add a field to the model so auto-sync has something to reconcile.
@@ -516,7 +623,10 @@ def test_sql_auth_service_is_async(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     _init_auth_project(tmp_path)
 
-    assert runner.invoke(app, ["auth", "generate", "--type", "jwt", "--force"]).exit_code == 0
+    assert (
+        runner.invoke(app, ["auth", "generate", "--type", "jwt", "--force"]).exit_code
+        == 0
+    )
 
     service = (tmp_path / "auth" / "service.py").read_text(encoding="utf-8")
     assert "async def authenticate_user" in service
@@ -537,7 +647,10 @@ def test_oauth2_token_url_matches_mounted_path(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     _init_auth_project(tmp_path)
 
-    assert runner.invoke(app, ["auth", "generate", "--type", "jwt", "--force"]).exit_code == 0
+    assert (
+        runner.invoke(app, ["auth", "generate", "--type", "jwt", "--force"]).exit_code
+        == 0
+    )
 
     deps = (tmp_path / "auth" / "dependencies.py").read_text(encoding="utf-8")
     assert 'tokenUrl="/api/v1/auth/login"' in deps
@@ -549,10 +662,20 @@ def test_sync_preserves_embedded_list_field(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     _init_project(tmp_path, "mongodb")
 
-    assert runner.invoke(
-        app,
-        ["generate", "model", "Patient", "--fields", "contacts:list[EmergencyContact]", "--force"],
-    ).exit_code == 0
+    assert (
+        runner.invoke(
+            app,
+            [
+                "generate",
+                "model",
+                "Patient",
+                "--fields",
+                "contacts:list[EmergencyContact]",
+                "--force",
+            ],
+        ).exit_code
+        == 0
+    )
 
     result = runner.invoke(
         app, ["sync", "model", "Patient", "--fields", "full_name:str", "--force"]

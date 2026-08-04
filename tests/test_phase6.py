@@ -112,6 +112,7 @@ def test_detect_reports_unreachable_when_no_signal():
 # Provisioning decision tree
 # ---------------------------------------------------------------------------
 
+
 def _DET_OK(e, host="localhost"):
     return p.Detection(e, True, "client", "psql · port 5432", host, 5432)
 
@@ -122,14 +123,19 @@ def _DET_NO(e, host="localhost"):
 
 def test_provision_online_passwordless_success():
     r = p.provision_database(
-        "postgresql", "proj9",
-        detector=_DET_OK, creator=lambda *a: True, prompt_password=None,
+        "postgresql",
+        "proj9",
+        detector=_DET_OK,
+        creator=lambda *a: True,
+        prompt_password=None,
     )
     assert r.mode == "online" and r.created and not r.offline
 
 
 def test_provision_unreachable_falls_back_offline():
-    r = p.provision_database("postgresql", "proj9", detector=_DET_NO, prompt_password=None)
+    r = p.provision_database(
+        "postgresql", "proj9", detector=_DET_NO, prompt_password=None
+    )
     assert r.offline and r.mode == "offline" and r.engine == "sqlite"
     assert r.dsn == p.OFFLINE_SQLITE_URL
     assert r.ok  # init must still complete
@@ -147,7 +153,9 @@ def test_provision_auth_retry_then_success():
         seen.append(ctx.attempt)
         return "wrong" if ctx.attempt == 1 else "right"
 
-    r = p.provision_database("postgresql", "proj9", detector=_DET_OK, creator=creator, prompt_password=prompt)
+    r = p.provision_database(
+        "postgresql", "proj9", detector=_DET_OK, creator=creator, prompt_password=prompt
+    )
     assert r.mode == "online" and r.password_entered and seen == [1, 2]
 
 
@@ -156,7 +164,11 @@ def test_provision_blank_password_skips_to_offline():
         raise p.AuthError("needs password")
 
     r = p.provision_database(
-        "postgresql", "proj9", detector=_DET_OK, creator=creator, prompt_password=lambda ctx: None
+        "postgresql",
+        "proj9",
+        detector=_DET_OK,
+        creator=creator,
+        prompt_password=lambda ctx: None,
     )
     assert r.offline
 
@@ -171,7 +183,9 @@ def test_provision_three_failures_then_offline():
         attempts.append(ctx.attempt)
         return "still-wrong"
 
-    r = p.provision_database("postgresql", "proj9", detector=_DET_OK, creator=creator, prompt_password=prompt)
+    r = p.provision_database(
+        "postgresql", "proj9", detector=_DET_OK, creator=creator, prompt_password=prompt
+    )
     assert r.offline and attempts == [1, 2, 3]
 
 
@@ -179,7 +193,9 @@ def test_provision_privilege_failure_shows_manual_sql():
     def creator(engine, host, port, user, pw, name):
         raise p.PrivilegeError("permission denied")
 
-    r = p.provision_database("postgresql", "proj9", detector=_DET_OK, creator=creator, prompt_password=None)
+    r = p.provision_database(
+        "postgresql", "proj9", detector=_DET_OK, creator=creator, prompt_password=None
+    )
     assert not r.offline and r.manual_sql == "CREATE DATABASE proj9;"
 
 
@@ -188,17 +204,27 @@ def test_provision_non_interactive_auth_takes_offline():
         raise p.AuthError("needs password")
 
     # prompt_password=None means non-interactive: never block, fall back offline.
-    r = p.provision_database("postgresql", "proj9", detector=_DET_OK, creator=creator, prompt_password=None)
+    r = p.provision_database(
+        "postgresql", "proj9", detector=_DET_OK, creator=creator, prompt_password=None
+    )
     assert r.offline
 
 
 def test_provision_skip_scaffolds_only():
-    r = p.provision_database("postgresql", "proj9", skip=True, detector=_DET_OK, prompt_password=None)
+    r = p.provision_database(
+        "postgresql", "proj9", skip=True, detector=_DET_OK, prompt_password=None
+    )
     assert not r.offline and not r.created and "scaffolded" in r.message.lower()
 
 
 def test_provision_mongo_is_lazy_no_op():
-    r = p.provision_database("mongodb", "proj9", detector=_DET_OK, creator=lambda *a: True, prompt_password=None)
+    r = p.provision_database(
+        "mongodb",
+        "proj9",
+        detector=_DET_OK,
+        creator=lambda *a: True,
+        prompt_password=None,
+    )
     assert r.mode == "online" and "lazily" in r.message
 
 
@@ -209,12 +235,16 @@ def test_provision_sqlite_needs_no_server():
 
 def test_password_never_appears_in_result_message():
     """The entered password must never leak into any user-facing message/DSN field."""
+
     def creator(engine, host, port, user, pw, name):
         return True
 
     r = p.provision_database(
-        "postgresql", "proj9", detector=_DET_OK,
-        creator=creator, prompt_password=lambda ctx: "SUPER_SECRET_PW",
+        "postgresql",
+        "proj9",
+        detector=_DET_OK,
+        creator=creator,
+        prompt_password=lambda ctx: "SUPER_SECRET_PW",
     )
     assert "SUPER_SECRET_PW" not in r.message
     # DSN legitimately holds the password; callers mask it before printing.
@@ -229,12 +259,20 @@ def test_persist_writes_password_only_to_env_development(tmp_path: Path):
     from kaira.commands.db_cmd import _persist_provision
 
     (tmp_path / ".env").write_text("APP_ENV=development\n", encoding="utf-8")
-    (tmp_path / ".kaira.json").write_text(json.dumps({"db_type": "postgresql"}), encoding="utf-8")
+    (tmp_path / ".kaira.json").write_text(
+        json.dumps({"db_type": "postgresql"}), encoding="utf-8"
+    )
 
     result = p.ProvisionResult(
-        ok=True, mode="online", engine="postgresql", db_name="proj9",
+        ok=True,
+        mode="online",
+        engine="postgresql",
+        db_name="proj9",
         dsn="postgresql+asyncpg://postgres:s3cret@localhost:5432/proj9",
-        offline=False, created=True, password_entered=True, message="created",
+        offline=False,
+        created=True,
+        password_entered=True,
+        message="created",
     )
     _persist_provision(tmp_path, "postgresql", result)
 
@@ -246,18 +284,29 @@ def test_persist_writes_password_only_to_env_development(tmp_path: Path):
     assert "s3cret" in env_dev, "secret belongs in git-ignored .env.development"
     assert "DB_MODE=online" in env
     assert "FALLBACK_MODE=off" in env
-    assert cfg["db_name"] == "proj9" and cfg["db_provisioned"] is True and cfg["db_mode"] == "online"
+    assert (
+        cfg["db_name"] == "proj9"
+        and cfg["db_provisioned"] is True
+        and cfg["db_mode"] == "online"
+    )
 
 
 def test_persist_offline_records_offline_mode(tmp_path: Path):
     from kaira.commands.db_cmd import _persist_provision
 
     (tmp_path / ".env").write_text("APP_ENV=development\n", encoding="utf-8")
-    (tmp_path / ".kaira.json").write_text(json.dumps({"db_type": "postgresql"}), encoding="utf-8")
+    (tmp_path / ".kaira.json").write_text(
+        json.dumps({"db_type": "postgresql"}), encoding="utf-8"
+    )
 
     result = p.ProvisionResult(
-        ok=True, mode="offline", engine="sqlite", db_name="proj9",
-        dsn=p.OFFLINE_SQLITE_URL, offline=True, message="offline",
+        ok=True,
+        mode="offline",
+        engine="sqlite",
+        db_name="proj9",
+        dsn=p.OFFLINE_SQLITE_URL,
+        offline=True,
+        message="offline",
     )
     _persist_provision(tmp_path, "postgresql", result)
 
@@ -322,8 +371,20 @@ def scaffolded_pg(tmp_path, monkeypatch):
     monkeypatch.setattr("sys.stdin.isatty", lambda: False, raising=False)
     result = CliRunner().invoke(
         app,
-        ["init", "proj9", "--db", "postgresql", "--auth", "none",
-         "--no-docker", "--ci", "none", "--profile", "scale", "--yes"],
+        [
+            "init",
+            "proj9",
+            "--db",
+            "postgresql",
+            "--auth",
+            "none",
+            "--no-docker",
+            "--ci",
+            "none",
+            "--profile",
+            "scale",
+            "--yes",
+        ],
     )
     assert result.exit_code == 0, result.output
     return tmp_path / "proj9"
@@ -399,10 +460,14 @@ def test_status_command_shows_mode(scaffolded_pg: Path, monkeypatch):
 
 
 def test_default_dsn_all_engines():
-    assert p.default_dsn("mysql", "db", password="x", user="root").startswith("mysql+aiomysql://root:x@")
+    assert p.default_dsn("mysql", "db", password="x", user="root").startswith(
+        "mysql+aiomysql://root:x@"
+    )
     assert p.default_dsn("mysql", "db").startswith("mysql+aiomysql://root@")
     assert p.default_dsn("mongodb", "db").startswith("mongodb://localhost")
-    assert p.default_dsn("mongodb", "db", password="x", user="u").startswith("mongodb://u:x@")
+    assert p.default_dsn("mongodb", "db", password="x", user="u").startswith(
+        "mongodb://u:x@"
+    )
     assert p.default_dsn("sqlite", "db") == p.OFFLINE_SQLITE_URL
 
 
@@ -450,20 +515,31 @@ def test_provision_driver_missing_scaffolds_dsn():
     def creator(*_a):
         raise ImportError("asyncpg not installed")
 
-    r = p.provision_database("postgresql", "proj9", detector=_DET_OK, creator=creator, prompt_password=None)
+    r = p.provision_database(
+        "postgresql", "proj9", detector=_DET_OK, creator=creator, prompt_password=None
+    )
     assert not r.offline and not r.created and "driver" in r.message.lower()
 
 
 def test_provision_rejects_invalid_explicit_name():
-    r = p.provision_database("postgresql", "proj9", db_name="Bad Name!", detector=_DET_OK, prompt_password=None)
+    r = p.provision_database(
+        "postgresql",
+        "proj9",
+        db_name="Bad Name!",
+        detector=_DET_OK,
+        prompt_password=None,
+    )
     assert not r.ok and "invalid" in r.message.lower()
 
 
 def test_provision_announces_sanitized_name():
     seen: list[str] = []
     r = p.provision_database(
-        "postgresql", "Philceb-API",
-        detector=_DET_OK, creator=lambda *a: True, prompt_password=None,
+        "postgresql",
+        "Philceb-API",
+        detector=_DET_OK,
+        creator=lambda *a: True,
+        prompt_password=None,
         announce=seen.append,
     )
     assert r.db_name == "philceb_api"
@@ -499,8 +575,12 @@ def test_env_password_env_flows_into_provision():
         return True
 
     r = p.provision_database(
-        "postgresql", "proj9", detector=_DET_OK, creator=creator,
-        env_password="envpass", prompt_password=None,
+        "postgresql",
+        "proj9",
+        detector=_DET_OK,
+        creator=creator,
+        env_password="envpass",
+        prompt_password=None,
     )
     assert r.mode == "online" and captured["pw"] == "envpass" and not r.password_entered
 
@@ -518,7 +598,10 @@ def test_provision_privilege_failure_after_prompt():
         raise p.PrivilegeError("permission denied")
 
     r = p.provision_database(
-        "postgresql", "proj9", detector=_DET_OK, creator=creator,
+        "postgresql",
+        "proj9",
+        detector=_DET_OK,
+        creator=creator,
         prompt_password=lambda ctx: "somepass",
     )
     assert not r.offline and r.manual_sql == "CREATE DATABASE proj9;"
@@ -565,7 +648,9 @@ def _install_fake_asyncpg(monkeypatch, conn):
 def test_pg_create_creates_when_absent(monkeypatch):
     conn = _FakePGConn(existing=False)
     _install_fake_asyncpg(monkeypatch, conn)
-    created = p._run_async(p._pg_create("postgresql://postgres@localhost:5432/postgres", "proj9"))
+    created = p._run_async(
+        p._pg_create("postgresql://postgres@localhost:5432/postgres", "proj9")
+    )
     assert created is True
     assert conn.executed == ['CREATE DATABASE "proj9"']
 
@@ -573,7 +658,9 @@ def test_pg_create_creates_when_absent(monkeypatch):
 def test_pg_create_is_idempotent_when_present(monkeypatch):
     conn = _FakePGConn(existing=True)
     _install_fake_asyncpg(monkeypatch, conn)
-    created = p._run_async(p._pg_create("postgresql://postgres@localhost:5432/postgres", "proj9"))
+    created = p._run_async(
+        p._pg_create("postgresql://postgres@localhost:5432/postgres", "proj9")
+    )
     assert created is False and conn.executed == []
 
 
@@ -581,13 +668,17 @@ def test_pg_create_rejects_unsafe_identifier(monkeypatch):
     conn = _FakePGConn(existing=False)
     _install_fake_asyncpg(monkeypatch, conn)
     with pytest.raises(ValueError):
-        p._run_async(p._pg_create("postgresql://postgres@localhost:5432/postgres", "bad; drop"))
+        p._run_async(
+            p._pg_create("postgresql://postgres@localhost:5432/postgres", "bad; drop")
+        )
 
 
 def test_create_dispatch_postgres_goes_through_pg_create(monkeypatch):
     conn = _FakePGConn(existing=False)
     _install_fake_asyncpg(monkeypatch, conn)
-    created = p._create_dispatch("postgresql", "localhost", 5432, "postgres", "", "proj9")
+    created = p._create_dispatch(
+        "postgresql", "localhost", 5432, "postgres", "", "proj9"
+    )
     assert created is True and conn.executed == ['CREATE DATABASE "proj9"']
 
 

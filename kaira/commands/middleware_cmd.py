@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated
 
 import typer
 from jinja2 import Environment, FileSystemLoader
@@ -55,12 +55,19 @@ def _scan_middleware(output_root: Path) -> list[str]:
 
 @app.command("add")
 def middleware_add(
-    name: Annotated[str, typer.Argument(help="PascalCase middleware class name, e.g. LoggingMiddleware")],
-    timeout: Annotated[int, typer.Option("--timeout", help="Request timeout in seconds")] = 30,
+    name: Annotated[
+        str,
+        typer.Argument(help="PascalCase middleware class name, e.g. LoggingMiddleware"),
+    ],
+    timeout: Annotated[
+        int, typer.Option("--timeout", help="Request timeout in seconds")
+    ] = 30,
 ) -> None:
     """Scaffold a new custom middleware class."""
     if not name[0].isupper():
-        console.print("[red]❌ Middleware name must be PascalCase, e.g. LoggingMiddleware[/red]")
+        console.print(
+            "[red]❌ Middleware name must be PascalCase, e.g. LoggingMiddleware[/red]"
+        )
         raise typer.Exit(1)
 
     if name in _PROTECTED_MIDDLEWARE:
@@ -73,6 +80,7 @@ def middleware_add(
         raise typer.Exit(1)
 
     from kaira.config import get_config
+
     cfg = get_config()
     output_root = Path.cwd() / cfg.output_dir
     mw_dir = output_root / "middleware"
@@ -103,6 +111,7 @@ def middleware_add(
 def middleware_list() -> None:
     """List all middleware files registered in the project."""
     from kaira.config import get_config
+
     cfg = get_config()
     output_root = Path.cwd() / cfg.output_dir
 
@@ -120,7 +129,11 @@ def middleware_list() -> None:
     table.add_column("Protected")
 
     for i, name in enumerate(ordered, 1):
-        protected = "[green]🔒 Yes[/green]" if name in _PROTECTED_MIDDLEWARE else "[dim]No[/dim]"
+        protected = (
+            "[green]🔒 Yes[/green]"
+            if name in _PROTECTED_MIDDLEWARE
+            else "[dim]No[/dim]"
+        )
         table.add_row(str(i), name, protected)
 
     console.print(table)
@@ -143,6 +156,7 @@ def middleware_remove(
         raise typer.Exit(1)
 
     from kaira.config import get_config
+
     cfg = get_config()
     output_root = Path.cwd() / cfg.output_dir
     snake = re.sub(r"(?<!^)(?=[A-Z])", "_", name).lower()

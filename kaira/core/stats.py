@@ -36,7 +36,15 @@ def db_name_from_url(url: str, default: str = "") -> str:
             if path:
                 raw_name = path.split("?")[0]
                 if raw_name:
-                    cleaned = Path(raw_name).name if ("/" in raw_name or "\\" in raw_name or raw_name.endswith(".db")) else raw_name
+                    cleaned = (
+                        Path(raw_name).name
+                        if (
+                            "/" in raw_name
+                            or "\\" in raw_name
+                            or raw_name.endswith(".db")
+                        )
+                        else raw_name
+                    )
                     if cleaned:
                         return cleaned
         except Exception:
@@ -80,7 +88,9 @@ async def _collect_relational_stats(url: str) -> tuple[str, list[dict[str, Any]]
         for table in sorted(inspector.get_table_names()):
             columns = inspector.get_columns(table)
             try:
-                count = sync_conn.execute(text(f"SELECT COUNT(*) FROM {table}")).scalar()
+                count = sync_conn.execute(
+                    text(f"SELECT COUNT(*) FROM {table}")
+                ).scalar()
             except Exception:
                 count = 0
             rows.append({"name": table, "columns": len(columns), "count": count or 0})
@@ -127,7 +137,9 @@ def collect_db_stats(db_type: str, url: str) -> tuple[str, list[dict[str, Any]]]
         asyncio.set_event_loop(None)
 
 
-def try_collect_db_stats(db_type: str, url: str) -> tuple[str, list[dict[str, Any]]] | None:
+def try_collect_db_stats(
+    db_type: str, url: str
+) -> tuple[str, list[dict[str, Any]]] | None:
     """Best-effort :func:`collect_db_stats` that returns ``None`` on failure.
 
     Used where statistics are a convenience rather than the command's purpose —
@@ -169,7 +181,8 @@ def build_stats_table(
     unit = "Documents" if is_doc else "Rows"
 
     table = Table(
-        title=title or f"⚡ Kaira — Database Info ({db_type.upper()}: [cyan]{db_name}[/cyan])",
+        title=title
+        or f"⚡ Kaira — Database Info ({db_type.upper()}: [cyan]{db_name}[/cyan])",
         border_style="cyan",
     )
     table.add_column(entity, style="bold cyan")

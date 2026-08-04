@@ -232,18 +232,14 @@ def health_command() -> None:
     )
 
     sec_panel = Panel(
-        Align.center(
-            f"[bold {sec_color}]{security_score}[/][dim]/100[/dim]"
-        ),
+        Align.center(f"[bold {sec_color}]{security_score}[/][dim]/100[/dim]"),
         title="[bold]Security Score[/bold]",
         border_style=sec_color,
         width=24,
     )
 
     ovr_panel = Panel(
-        Align.center(
-            f"[bold {ovr_color}]{overall_score}[/][dim]/100[/dim]"
-        ),
+        Align.center(f"[bold {ovr_color}]{overall_score}[/][dim]/100[/dim]"),
         title="[bold]Overall Health[/bold]",
         border_style=ovr_color,
         width=24,

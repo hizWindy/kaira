@@ -28,9 +28,12 @@ def _get_api_client():
     """Return an httpx client configured for the AI provider."""
     try:
         import httpx
+
         return httpx
     except ImportError:
-        console.print("[bold red]✗[/bold red]  httpx is required for AI docs. Run: pip install httpx")
+        console.print(
+            "[bold red]✗[/bold red]  httpx is required for AI docs. Run: pip install httpx"
+        )
         raise typer.Exit(1)
 
 
@@ -57,7 +60,9 @@ def _call_openai(prompt: str, api_key: str, model: str) -> str:
         "max_tokens": 1500,
     }
     with httpx.Client(timeout=60) as client:
-        resp = client.post("https://api.openai.com/v1/chat/completions", json=payload, headers=headers)
+        resp = client.post(
+            "https://api.openai.com/v1/chat/completions", json=payload, headers=headers
+        )
         resp.raise_for_status()
         return resp.json()["choices"][0]["message"]["content"]
 
@@ -77,7 +82,9 @@ def _call_anthropic(prompt: str, api_key: str, model: str) -> str:
         "messages": [{"role": "user", "content": prompt}],
     }
     with httpx.Client(timeout=60) as client:
-        resp = client.post("https://api.anthropic.com/v1/messages", json=payload, headers=headers)
+        resp = client.post(
+            "https://api.anthropic.com/v1/messages", json=payload, headers=headers
+        )
         resp.raise_for_status()
         return resp.json()["content"][0]["text"]
 
@@ -92,9 +99,7 @@ def _endpoint_table(group: RouteGroup) -> list[str]:
         detail = endpoint.summary or endpoint.description or "—"
         detail = detail.replace("|", "\\|").strip()
         auth = "🔒" if endpoint.auth_required else "—"
-        lines.append(
-            f"| {endpoint.method} | `{endpoint.path}` | {auth} | {detail} |"
-        )
+        lines.append(f"| {endpoint.method} | `{endpoint.path}` | {auth} | {detail} |")
     return lines
 
 
@@ -177,12 +182,20 @@ Start at heading level 2 (`##`). Output only Markdown, no commentary."""
         if provider == "openai":
             return _call_openai(prompt, api_key, config.ai_model)
         if provider == "anthropic":
-            model = config.ai_model if "claude" in config.ai_model else "claude-3-5-sonnet-20241022"
+            model = (
+                config.ai_model
+                if "claude" in config.ai_model
+                else "claude-3-5-sonnet-20241022"
+            )
             return _call_anthropic(prompt, api_key, model)
-        console.print(f"[yellow]⚠[/yellow]  Unknown AI provider '{provider}'. Using fallback.")
+        console.print(
+            f"[yellow]⚠[/yellow]  Unknown AI provider '{provider}'. Using fallback."
+        )
         return _fallback_doc(group, fields)
     except Exception as exc:
-        console.print(f"[yellow]⚠[/yellow]  AI API call failed: {exc}. Using fallback doc.")
+        console.print(
+            f"[yellow]⚠[/yellow]  AI API call failed: {exc}. Using fallback doc."
+        )
         return _fallback_doc(group, fields)
 
 
@@ -256,7 +269,9 @@ def docs_generate(
     if custom_only:
         groups = [g for g in groups if g.is_custom]
         if not groups:
-            console.print("[dim]No custom routers found — every route is generated.[/dim]")
+            console.print(
+                "[dim]No custom routers found — every route is generated.[/dim]"
+            )
             raise typer.Exit(0)
 
     if target:
@@ -322,7 +337,9 @@ def docs_generate(
             progress.advance(task)
 
     output_file.write_text("\n\n---\n\n".join(all_docs), encoding="utf-8")
-    console.print(f"\n[bold green]✓[/bold green]  Documentation written to [cyan]{output_file}[/cyan]")
+    console.print(
+        f"\n[bold green]✓[/bold green]  Documentation written to [cyan]{output_file}[/cyan]"
+    )
     if custom_count:
         names = ", ".join(g.name for g in groups if g.is_custom)
         console.print(f"[dim]Included custom router(s): {names}[/dim]")

@@ -45,7 +45,9 @@ def _update_env_files(key: str, value: str) -> None:
         try:
             content = env_file.read_text(encoding="utf-8")
             if f"{key}=" in content:
-                content = re.sub(rf"^{key}=.*$", f"{key}={value}", content, flags=re.MULTILINE)
+                content = re.sub(
+                    rf"^{key}=.*$", f"{key}={value}", content, flags=re.MULTILINE
+                )
             else:
                 content += f"\n{key}={value}\n"
             env_file.write_text(content, encoding="utf-8")
@@ -56,6 +58,7 @@ def _update_env_files(key: str, value: str) -> None:
 def _get_routers(output_root: Path) -> list[tuple[str, str]]:
     """Scan the routers directory and return GET (method, path) pairs."""
     from kaira.config import get_config
+
     cfg = get_config()
     routers_dir = output_root / cfg.routers_dir
     get_routes: list[tuple[str, str]] = []
@@ -78,6 +81,7 @@ def _cache_key(route: str, scope: str = "all") -> str:
 def cache_init() -> None:
     """Initialise the Redis cache module for this project."""
     from kaira.config import get_config
+
     cfg = get_config()
     output_root = Path.cwd() / cfg.output_dir
     core_dir = output_root / "core"
@@ -107,7 +111,9 @@ def cache_init() -> None:
     if settings_path.exists():
         content = settings_path.read_text(encoding="utf-8")
         if "REDIS_URL" not in content:
-            content = content.rstrip() + '\n    REDIS_URL: str = "redis://localhost:6379/0"\n'
+            content = (
+                content.rstrip() + '\n    REDIS_URL: str = "redis://localhost:6379/0"\n'
+            )
             settings_path.write_text(content, encoding="utf-8")
             console.print("  [green]✅[/green] REDIS_URL added to settings.py")
 
@@ -125,11 +131,14 @@ def cache_add(
     method: Annotated[str, typer.Argument(help="HTTP method (only GET is supported)")],
     route: Annotated[str, typer.Argument(help="Route path, e.g. /users")],
     ttl: Annotated[int, typer.Option("--ttl", help="Cache TTL in seconds")] = 300,
-    all_get: Annotated[bool, typer.Option("--all-get", help="Cache all GET routes")] = False,
+    all_get: Annotated[
+        bool, typer.Option("--all-get", help="Cache all GET routes")
+    ] = False,
 ) -> None:
     """Add caching to a route or all GET routes. Only GET routes are cacheable."""
     if all_get:
         from kaira.config import get_config
+
         cfg = get_config()
         routes = _get_routers(Path.cwd() / cfg.output_dir)
         if not routes:
@@ -137,7 +146,9 @@ def cache_add(
             return
         for m, r in routes:
             key = _cache_key(r)
-            console.print(f"  [green]✅[/green] Cache key: [cyan]{key}[/cyan] (TTL: {ttl}s)")
+            console.print(
+                f"  [green]✅[/green] Cache key: [cyan]{key}[/cyan] (TTL: {ttl}s)"
+            )
         console.print(
             Panel(
                 f"[green]✅ {len(routes)} GET route(s) marked for caching with TTL={ttl}s.[/green]",
@@ -172,14 +183,20 @@ def cache_add(
 @app.command("clear")
 def cache_clear(
     route: Annotated[Optional[str], typer.Argument(help="Route path to clear")] = None,
-    all_keys: Annotated[bool, typer.Option("--all", help="Clear ALL cached keys")] = False,
+    all_keys: Annotated[
+        bool, typer.Option("--all", help="Clear ALL cached keys")
+    ] = False,
     force: Annotated[bool, typer.Option("--force", help="Skip confirmation")] = False,
 ) -> None:
     """Clear cached data for a route or clear all keys."""
     if all_keys:
-        if not typed_confirmation("cache", "This will clear ALL Redis cache keys.", force=force):
+        if not typed_confirmation(
+            "cache", "This will clear ALL Redis cache keys.", force=force
+        ):
             return
-        console.print(Panel("[green]✅ All cache keys cleared.[/green]", border_style="green"))
+        console.print(
+            Panel("[green]✅ All cache keys cleared.[/green]", border_style="green")
+        )
         return
 
     if not route:
@@ -206,7 +223,9 @@ def cache_status_cmd() -> None:
                     redis_url = line.split("=", 1)[1].strip()
                     break
 
-    masked_url = mask_credentials(redis_url) if redis_url else "[dim]REDIS_URL not set[/dim]"
+    masked_url = (
+        mask_credentials(redis_url) if redis_url else "[dim]REDIS_URL not set[/dim]"
+    )
 
     table = Table(title="⚡ Kaira — Cache Status", border_style="cyan")
     table.add_column("Property", style="dim")
@@ -227,11 +246,14 @@ def cache_status_cmd() -> None:
         table.add_row("Connection", "[dim]Not configured[/dim]")
 
     from kaira.config import get_config
+
     cfg = get_config()
     cache_module = Path.cwd() / cfg.output_dir / "core" / "cache.py"
     table.add_row(
         "Cache Module",
-        "[green]✅ core/cache.py[/green]" if cache_module.exists() else "[yellow]⚠️  Not generated[/yellow]",
+        "[green]✅ core/cache.py[/green]"
+        if cache_module.exists()
+        else "[yellow]⚠️  Not generated[/yellow]",
     )
 
     console.print(table)

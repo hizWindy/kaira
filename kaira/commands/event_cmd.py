@@ -47,6 +47,7 @@ def event_generate(
     valid = {"startup", "shutdown"}
     if event_type not in valid:
         from kaira.commands.smart_errors import smart_error
+
         smart_error(
             context=f"Unknown event type '{event_type}'.",
             typed=event_type,
@@ -56,6 +57,7 @@ def event_generate(
         )
 
     from kaira.config import get_config
+
     cfg = get_config()
     output_root = Path.cwd() / cfg.output_dir
     events_dir = output_root / "events"
@@ -78,30 +80,37 @@ def event_generate(
     console.print(f"  [green]✅[/green] Generated: [cyan]{out_path}[/cyan]")
 
     if cache_on:
-        console.print("  [dim]ℹ️  init_cache() will be called on startup (core/cache.py detected)[/dim]")
+        console.print(
+            "  [dim]ℹ️  init_cache() will be called on startup (core/cache.py detected)[/dim]"
+        )
     else:
-        console.print("  [dim]ℹ️  Cache not detected — init_cache() not included. Run kaira cache init first.[/dim]")
+        console.print(
+            "  [dim]ℹ️  Cache not detected — init_cache() not included. Run kaira cache init first.[/dim]"
+        )
 
     lifespan_snippet = (
-        "from contextlib import asynccontextmanager\n"
-        "from events.startup import on_startup\n"
-        "from events.shutdown import on_shutdown\n\n"
-        "@asynccontextmanager\n"
-        "async def lifespan(app):\n"
-        "    await on_startup()\n"
-        "    yield\n"
-        "    await on_shutdown()\n\n"
-        "app = FastAPI(lifespan=lifespan)\n"
-    ) if event_type == "startup" else (
-        "# Add on_shutdown to your lifespan context manager:\n"
-        "from events.shutdown import on_shutdown\n"
+        (
+            "from contextlib import asynccontextmanager\n"
+            "from events.startup import on_startup\n"
+            "from events.shutdown import on_shutdown\n\n"
+            "@asynccontextmanager\n"
+            "async def lifespan(app):\n"
+            "    await on_startup()\n"
+            "    yield\n"
+            "    await on_shutdown()\n\n"
+            "app = FastAPI(lifespan=lifespan)\n"
+        )
+        if event_type == "startup"
+        else (
+            "# Add on_shutdown to your lifespan context manager:\n"
+            "from events.shutdown import on_shutdown\n"
+        )
     )
 
     console.print(
         Panel(
             f"[green]✅ {event_type.capitalize()} event generated.[/green]\n\n"
-            "[dim]Register in main.py:[/dim]\n"
-            + lifespan_snippet,
+            "[dim]Register in main.py:[/dim]\n" + lifespan_snippet,
             border_style="green",
         )
     )

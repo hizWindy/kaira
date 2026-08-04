@@ -11,13 +11,170 @@ import time
 from typing import Any, Callable, Sequence, TypeVar
 
 from rich import box
+from rich.markup import escape
 from rich.panel import Panel
 from rich.table import Table
 
 from kaira.console import console
-from kaira.core.theme import Theme, is_interactive, sym
+from kaira.core.progress import State, state_style, state_symbol
+from kaira.core.theme import (
+    GUTTER,
+    LABEL_WIDTH,
+    RULE_WIDTH,
+    Theme,
+    get_banner,
+    is_interactive,
+    sym,
+    terminal_width,
+)
+
 
 F = TypeVar("F", bound=Callable[..., Any])
+
+
+# ---------------------------------------------------------------------------
+# Banner helper (Phase 7.5)
+# ---------------------------------------------------------------------------
+
+
+def render_banner() -> None:
+    """Print the Kaira banner appropriate for the current terminal.
+
+    Uses :func:`~kaira.core.theme.get_banner` for three-tier degradation.
+    Called explicitly by entry-point surfaces — never from a global Typer
+    callback.  The banner is a brand moment, not a working-command header.
+    """
+    from kaira import __version__
+
+    banner = get_banner(__version__)
+    if is_interactive():
+        console.print(banner)
+    else:
+        console.print(banner, highlight=False)
+
+
+# ---------------------------------------------------------------------------
+# Section / step vocabulary
+#
+# Long-running commands read as a sequence of named sections, each a short list
+# of steps that resolve to a final state.  Everything is laid out against one
+# content column (Theme.RULE_WIDTH) inside one gutter, so the eye tracks a
+# single left edge from the first line to the last.
+# ---------------------------------------------------------------------------
+
+
+def _symbol_cell(state: State) -> str:
+    """Return the state symbol padded to a uniform column.
+
+    ASCII fallbacks are not all the same width (``[ok]`` vs ``.``), so without
+    padding the label column would shift from line to line in exactly the
+    environments — CI logs, Windows consoles — where alignment is the only
+    structure left.
+    """
+    raw = state_symbol(state)
+    width = max(len(state_symbol(candidate)) for candidate in State)
+    return escape(raw) + " " * (width - len(raw))
+
+
+def _marker_width() -> int:
+    """Width of the symbol column, including its trailing space."""
+    return max(len(state_symbol(candidate)) for candidate in State) + 1
+
+
+def _pad(label: str) -> str:
+    """Escape *label* and pad it to the shared label column.
+
+    A label longer than the column keeps a single trailing space, so an
+    oversized label pushes its value right instead of running into it.
+    """
+    escaped = escape(label)
+    if len(label) >= LABEL_WIDTH:
+        return escaped
+    return escaped + " " * (LABEL_WIDTH - len(label))
+
+
+def rule() -> None:
+    """Print a hairline rule at the shared content width."""
+    char = "─" if is_interactive() else "-"
+    width = min(RULE_WIDTH, max(terminal_width() - len(GUTTER) - 1, 8))
+    console.print(f"{GUTTER}[{Theme.MUTED}]{char * width}[/{Theme.MUTED}]")
+
+
+def section(title: str, note: str = "") -> None:
+    """Open a section: a blank line, a lowercase title, then a hairline rule.
+
+    Args:
+        title: Section name (e.g. ``"scaffold"``).
+        note: Optional muted annotation shown after the title.
+    """
+    heading = f"{GUTTER}[{Theme.PRIMARY}]{escape(title)}[/{Theme.PRIMARY}]"
+    if note:
+        heading += f" [{Theme.MUTED}]· {escape(note)}[/{Theme.MUTED}]"
+    console.print()
+    console.print(heading)
+    rule()
+
+
+def step(
+    label: str,
+    detail: str = "",
+    state: State = State.DONE,
+) -> None:
+    """Print one step line: ``✓ label   detail``.
+
+    The label is padded to a fixed column so details line up down the section,
+    and the state symbol degrades to ASCII with the rest of the theme.
+
+    Args:
+        label: What the step did (e.g. ``"virtualenv"``).
+        detail: Muted trailing facts (e.g. ``".venv · 2.4s"``).
+        state: Outcome, driving both symbol and colour.
+    """
+    style = state_style(state)
+    line = f"{GUTTER}[{style}]{_symbol_cell(state)}[/{style}] {_pad(label)}"
+    if detail:
+        line += f" [{Theme.MUTED}]{escape(detail)}[/{Theme.MUTED}]"
+    console.print(line.rstrip())
+
+
+def note(label: str, detail: str = "") -> None:
+    """Print an observation line that makes no claim about success.
+
+    Narration such as "server detected" or "driver not installed" is neither a
+    completed step nor a failure — giving it a checkmark would overstate it and
+    a pending symbol would misdescribe it, so it gets a neutral bullet and the
+    verdict is left to the step line that follows.
+    """
+    bullet = ("·" if is_interactive() else "-").ljust(_marker_width() - 1)
+    line = f"{GUTTER}[{Theme.MUTED}]{bullet}[/{Theme.MUTED}] {_pad(label)}"
+    if detail:
+        line += f" [{Theme.MUTED}]{escape(detail)}[/{Theme.MUTED}]"
+    console.print(line.rstrip())
+
+
+def subtext(text: str) -> None:
+    """Print a muted continuation line under the previous step's value column."""
+    # gutter + symbol column + label column + separator
+    indent = GUTTER + " " * (_marker_width() + LABEL_WIDTH + 1)
+    console.print(f"{indent}[{Theme.MUTED}]{escape(text)}[/{Theme.MUTED}]")
+
+
+def field(label: str, value: str) -> None:
+    """Print an aligned ``label   value`` pair with no state symbol.
+
+    Used for settings the user chose or facts about the environment, which are
+    not steps and should not wear a checkmark.
+    """
+    indent = GUTTER + " " * _marker_width()
+    console.print(
+        f"{indent}[{Theme.MUTED}]{_pad(label)}[/{Theme.MUTED}] {escape(value)}"
+    )
+
+
+def hint(command: str) -> None:
+    """Print a muted, copy-pasteable next step: ``→ kaira run``."""
+    arrow = escape(sym("ARROW"))
+    console.print(f"{GUTTER}[{Theme.MUTED}]{arrow} {escape(command)}[/{Theme.MUTED}]")
 
 
 # ---------------------------------------------------------------------------

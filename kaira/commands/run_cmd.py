@@ -99,6 +99,7 @@ def _module_importable(name: str, python_exe: Optional[str] = None) -> bool:
             return False
     else:
         import importlib.util
+
         return importlib.util.find_spec(name) is not None
 
 
@@ -126,23 +127,35 @@ def run_command(
     ] = 8000,
     reload: Annotated[
         bool,
-        typer.Option("--reload/--no-reload", help="Enable/disable hot-reload (dev mode only)."),
+        typer.Option(
+            "--reload/--no-reload", help="Enable/disable hot-reload (dev mode only)."
+        ),
     ] = True,
     prod: Annotated[
         bool,
-        typer.Option("--prod", help="Run in production mode (fastapi run / no reload)."),
+        typer.Option(
+            "--prod", help="Run in production mode (fastapi run / no reload)."
+        ),
     ] = False,
     sql: Annotated[
         bool,
-        typer.Option("--sql", "--verbose", help="Show SQL echo for this run (KAIRA_SQL_ECHO=1)."),
+        typer.Option(
+            "--sql", "--verbose", help="Show SQL echo for this run (KAIRA_SQL_ECHO=1)."
+        ),
     ] = False,
     debug: Annotated[
         bool,
-        typer.Option("--debug", "-d", help="Verbose logs: per-layer traces, request ids, server lifecycle."),
+        typer.Option(
+            "--debug",
+            "-d",
+            help="Verbose logs: per-layer traces, request ids, server lifecycle.",
+        ),
     ] = False,
     access_log: Annotated[
         bool,
-        typer.Option("--access-log", help="Also print uvicorn's own access log line per request."),
+        typer.Option(
+            "--access-log", help="Also print uvicorn's own access log line per request."
+        ),
     ] = False,
 ) -> None:
     """Start the FastAPI server using 'fastapi dev' or 'fastapi run'.
@@ -209,13 +222,11 @@ def run_command(
 
     # Prefer the official FastAPI CLI (ships with fastapi[standard]); fall back to
     # plain uvicorn only when it is unavailable.
-    fastapi_cli = (
-        shutil.which("fastapi") is not None
-        or _module_importable("fastapi_cli", python_exe)
+    fastapi_cli = shutil.which("fastapi") is not None or _module_importable(
+        "fastapi_cli", python_exe
     )
-    uvicorn_available = (
-        shutil.which("uvicorn") is not None
-        or _module_importable("uvicorn", python_exe)
+    uvicorn_available = shutil.which("uvicorn") is not None or _module_importable(
+        "uvicorn", python_exe
     )
 
     if not fastapi_cli and not uvicorn_available:
@@ -223,7 +234,7 @@ def run_command(
             Panel(
                 "[red]Neither the [bold]fastapi[/bold] CLI ([bold]fastapi[standard][/bold]) "
                 "nor [bold]uvicorn[/bold] is installed.\n\n"
-                '[dim]Install with:[/dim]  '
+                "[dim]Install with:[/dim]  "
                 '[bold]pip install "fastapi[standard]"[/bold]',
                 title="[red]x  No server runner found[/red]",
                 border_style="red",
@@ -237,30 +248,47 @@ def run_command(
         # `fastapi dev` reloads by default; `fastapi run` is the no-reload/prod path.
         subcmd = "dev" if (not prod and reload) else "run"
         cmd = [
-            python_exe, "-m", "fastapi", subcmd,
+            python_exe,
+            "-m",
+            "fastapi",
+            subcmd,
             entry_display,
-            "--host", host,
-            "--port", str(port),
+            "--host",
+            host,
+            "--port",
+            str(port),
         ]
         runner_name = f"fastapi {subcmd}"
         runner_note = "Using the official FastAPI CLI (fastapi[standard])"
     else:
         cmd = [
-            python_exe, "-m", "uvicorn",
+            python_exe,
+            "-m",
+            "uvicorn",
             f"{module}:app",
-            "--host", host,
-            "--port", str(port),
+            "--host",
+            host,
+            "--port",
+            str(port),
         ]
         if not prod and reload:
-            cmd.extend([
-                "--reload",
-                "--reload-exclude", "*.db",
-                "--reload-exclude", "*.db-journal",
-                "--reload-exclude", "*.db-wal",
-                "--reload-exclude", "*.log",
-                "--reload-exclude", "__pycache__",
-                "--reload-exclude", "*.pyc",
-            ])
+            cmd.extend(
+                [
+                    "--reload",
+                    "--reload-exclude",
+                    "*.db",
+                    "--reload-exclude",
+                    "*.db-journal",
+                    "--reload-exclude",
+                    "*.db-wal",
+                    "--reload-exclude",
+                    "*.log",
+                    "--reload-exclude",
+                    "__pycache__",
+                    "--reload-exclude",
+                    "*.pyc",
+                ]
+            )
         runner_name = "uvicorn"
         runner_note = "fastapi CLI not found — falling back to uvicorn"
 
@@ -269,9 +297,9 @@ def run_command(
     info_table.add_column("", style="dim", width=14)
     info_table.add_column("", style="bold")
 
-    info_table.add_row("Mode",       f"[{mode_color}]{mode}[/{mode_color}]")
-    info_table.add_row("Entry",      f"[white]{entry_display}[/white]")
-    info_table.add_row("Runner",     f"[white]{runner_name}[/white]")
+    info_table.add_row("Mode", f"[{mode_color}]{mode}[/{mode_color}]")
+    info_table.add_row("Entry", f"[white]{entry_display}[/white]")
+    info_table.add_row("Runner", f"[white]{runner_name}[/white]")
     # Database + online/offline mode — the primary place a developer learns which
     # DB they're on (Phase 6, Features 2.3 & 4). Reads the resolved values only.
     db_info = _db_banner_info(cwd)
@@ -294,14 +322,14 @@ def run_command(
         if debug
         else "[white]info[/white]  [dim]one line per request — add --debug for detail[/dim]",
     )
-    info_table.add_row("URL",        f"[bold cyan]http://{host}:{port}[/bold cyan]")
-    info_table.add_row("Docs",       f"[dim]http://{host}:{port}/docs[/dim]")
-    info_table.add_row("ReDoc",      f"[dim]http://{host}:{port}/redoc[/dim]")
+    info_table.add_row("URL", f"[bold cyan]http://{host}:{port}[/bold cyan]")
+    info_table.add_row("Docs", f"[dim]http://{host}:{port}/docs[/dim]")
+    info_table.add_row("ReDoc", f"[dim]http://{host}:{port}/redoc[/dim]")
     if not prod:
         reload_label = "[green]on[/green]" if reload else "[dim]off[/dim]"
         info_table.add_row("Hot-reload", reload_label)
     if runner_note:
-        info_table.add_row("Note",   f"[dim yellow]{runner_note}[/dim yellow]")
+        info_table.add_row("Note", f"[dim yellow]{runner_note}[/dim yellow]")
 
     console.print()
     console.print(

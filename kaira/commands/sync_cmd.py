@@ -243,7 +243,9 @@ def _parse_model_fields(
 # ---------------------------------------------------------------------------
 
 
-def _snapshot_fields(entry: dict, embedded: Optional[set[str]] = None) -> list[FieldDef]:
+def _snapshot_fields(
+    entry: dict, embedded: Optional[set[str]] = None
+) -> list[FieldDef]:
     """Rebuild :class:`FieldDef` objects from a ``.kaira.json`` model entry.
 
     Embedded types are accepted alongside the scalar whitelist so a snapshotted
@@ -528,12 +530,12 @@ def _sync_seed_if_exists(
 
     # FieldDef → dict format that seed templates expect.
     fields_as_dicts = [{"name": f.name, "type": f.raw_type} for f in target_fields]
-    content, out_path = render_seed(model_name, config, output_root, fields_override=fields_as_dicts)
+    content, out_path = render_seed(
+        model_name, config, output_root, fields_override=fields_as_dicts
+    )
     result = write_with_check(out_path, content, force=True, non_interactive=False)
     ok, arrow = sym("OK"), sym("ARROW")
     if result == "written":
-        console.print(
-            f"  {ok} seed: [{Theme.PRIMARY}]{out_path}[/{Theme.PRIMARY}]"
-        )
+        console.print(f"  {ok} seed: [{Theme.PRIMARY}]{out_path}[/{Theme.PRIMARY}]")
     else:
         console.print(f"  {arrow} seed: [{Theme.MUTED}]skipped[/{Theme.MUTED}]")

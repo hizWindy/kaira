@@ -330,9 +330,7 @@ class TestSyncModel:
     def test_sync_without_force_applies_cascade(self, project):
         """Task 1: sync without --force must update cascade layers on disk."""
         self._generate_user(project, fields="name:str")
-        result = runner.invoke(
-            app, ["sync", "model", "User", "--fields", "phone:str"]
-        )
+        result = runner.invoke(app, ["sync", "model", "User", "--fields", "phone:str"])
         assert result.exit_code == 0
 
         model_code = (project / "models" / "user.py").read_text()
@@ -355,7 +353,9 @@ class TestSyncModel:
         assert "phone" not in seed_path.read_text()
 
         # Sync model with new field
-        sync_res = runner.invoke(app, ["sync", "model", "User", "--fields", "phone:str"])
+        sync_res = runner.invoke(
+            app, ["sync", "model", "User", "--fields", "phone:str"]
+        )
         assert sync_res.exit_code == 0
         assert "phone" in seed_path.read_text()
 
@@ -365,7 +365,9 @@ class TestSyncModel:
         seed_path = project / "seeds" / "seed_user.py"
         assert not seed_path.exists()
 
-        sync_res = runner.invoke(app, ["sync", "model", "User", "--fields", "phone:str"])
+        sync_res = runner.invoke(
+            app, ["sync", "model", "User", "--fields", "phone:str"]
+        )
         assert sync_res.exit_code == 0
         assert not seed_path.exists()
 
@@ -388,7 +390,9 @@ def test_delete_endpoint_response_schema(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     _write_config(tmp_path)
 
-    result = runner.invoke(app, ["generate", "model", "User", "--fields", "name:str", "--force"])
+    result = runner.invoke(
+        app, ["generate", "model", "User", "--fields", "name:str", "--force"]
+    )
     assert result.exit_code == 0
 
     message_schema_path = tmp_path / "schemas" / "message_schema.py"
@@ -453,7 +457,14 @@ def test_openapi_generation_succeeds_without_pydantic_user_error(tmp_path, monke
 
     result = runner.invoke(
         app,
-        ["generate", "model", "User", "--fields", "username:str, email:str, phone:Optional[str]", "--force"],
+        [
+            "generate",
+            "model",
+            "User",
+            "--fields",
+            "username:str, email:str, phone:Optional[str]",
+            "--force",
+        ],
     )
     assert result.exit_code == 0
 
@@ -494,5 +505,3 @@ def test_openapi_generation_succeeds_without_pydantic_user_error(tmp_path, monke
             sys.path.remove(str(tmp_path))
         globals().pop("UserUpdate", None)
         sys.modules.pop("schemas.user_schema", None)
-
-

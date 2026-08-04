@@ -542,7 +542,7 @@ def provision_database(
         )
 
     if db_name is None and name != _plain_slug(project_name):
-        announce(f'sanitized project name → database "{name}"')
+        announce(f'sanitized · project name → database "{name}"')
 
     # SQLite is file-based: nothing to provision on a server.
     if engine == "sqlite":
@@ -554,7 +554,7 @@ def provision_database(
             db_name=name,
             dsn=dsn,
             offline=False,
-            message="sqlite is file-based — no server provisioning needed",
+            message="sqlite · file-based, no server provisioning needed",
         )
 
     if skip:
@@ -565,15 +565,15 @@ def provision_database(
             db_name=name,
             dsn=default_dsn(engine, name),
             offline=False,
-            message="scaffolded DSN only (--skip / scale profile) — server not touched",
+            message="scaffolded · DSN only (--skip / scale profile), server not touched",
         )
 
     # ── 1. Detect the server ─────────────────────────────────────────────────
     detection = detector(engine, host=host)
     if not detection.reachable:
-        announce(f"no {engine} server reachable on {host}")
+        announce(f"unreachable · no {engine} server on {host}")
         return _offline_result(engine, name, reason=f"no {engine} server reachable")
-    announce(f"{engine} detected  ·  {detection.detail}")
+    announce(f"detected · {engine} {detection.detail}")
 
     port = detection.port or DEFAULT_PORTS.get(engine, 0)
     user = DEFAULT_USERS.get(engine, "")
@@ -598,7 +598,7 @@ def provision_database(
     except PrivilegeError as exc:
         return _privilege_result(engine, name, host, port, user, first_password, exc)
     except ImportError:
-        announce(f"{engine} driver not installed — scaffolding DSN only")
+        announce(f"driver missing · {engine} · scaffolding DSN only")
         return ProvisionResult(
             ok=True,
             mode="online",
@@ -606,7 +606,7 @@ def provision_database(
             db_name=name,
             dsn=default_dsn(engine, name, user=user),
             offline=False,
-            message=f"{engine} driver not installed; DSN scaffolded, run `kaira db create` after installing",
+            message=f"driver missing · {engine} · DSN scaffolded, run `kaira db create` after installing",
         )
 
     # ── 3. Prompt for a password (interactive only), retry up to max_attempts ─
@@ -614,8 +614,8 @@ def provision_database(
         # Non-interactive / CI: never block on a prompt.
         env_var = "PGPASSWORD" if engine == "postgresql" else "MYSQL_PWD"
         announce(
-            f"authentication required and none provided — set {env_var} or put the "
-            f"password in DATABASE_URL, then run `kaira db create`"
+            f"auth required · set {env_var} or put the password in "
+            f"DATABASE_URL, then run `kaira db create`"
         )
         return _offline_result(engine, name, reason="auth required, non-interactive")
 
@@ -633,7 +633,7 @@ def provision_database(
         password = prompt_password(ctx)
         if not password:
             # Blank = graceful skip → offline SQLite.
-            announce("no password entered — using offline SQLite instead")
+            announce("skipped · no password entered, using offline SQLite")
             return _offline_result(engine, name, reason="password skipped")
         try:
             created = do_create(engine, host, port, user, password, name)
@@ -642,7 +642,7 @@ def provision_database(
             )
         except AuthError:
             if attempt >= max_attempts:
-                announce(f"couldn't authenticate after {max_attempts} attempts")
+                announce(f"auth failed · {max_attempts} attempts")
                 return _offline_result(engine, name, reason="auth failed 3x")
             # loop re-prompts with an incremented attempt counter
         except PrivilegeError as exc:
@@ -687,11 +687,11 @@ def _created_result(
     """Build the success result for an online provision."""
     dsn = default_dsn(engine, name, password=password, user=user)
     if engine == "mongodb":
-        msg = f'confirmed mongodb server; "{name}" is created lazily on first write'
+        msg = f'confirmed · mongodb server · "{name}" created lazily on first write'
     elif created:
-        msg = f'created database "{name}"  ·  user "{user}"  ·  {host}:{port}'
+        msg = f"created · {name} · user {user} · {host}:{port}"
     else:
-        msg = f'database "{name}" already exists — no changes'
+        msg = f"exists · {name} · no changes"
     return ProvisionResult(
         ok=True,
         mode="online",

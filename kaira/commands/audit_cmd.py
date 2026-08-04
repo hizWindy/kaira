@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Annotated, Optional
 
 import typer
 from rich.panel import Panel
@@ -40,37 +39,39 @@ def audit_routes() -> None:
 
     router_files = sorted(routers_dir.glob("*_router.py"))
     if not router_files:
-        console.print(f"[{Theme.MUTED}]No router files found in {routers_dir}[/{Theme.MUTED}]")
+        console.print(
+            f"[{Theme.MUTED}]No router files found in {routers_dir}[/{Theme.MUTED}]"
+        )
         return
 
     api_version = getattr(config, "api_version", "v1")
     api_prefix = f"/api/{api_version}"
 
     METHOD_COLORS = {
-        "GET":    "bold green",
-        "POST":   "bold blue",
-        "PUT":    "bold yellow",
-        "PATCH":  "bold magenta",
+        "GET": "bold green",
+        "POST": "bold blue",
+        "PUT": "bold yellow",
+        "PATCH": "bold magenta",
         "DELETE": "bold red",
         "WEBSOCKET": "bold cyan",
     }
 
     table = Table(
         title=f"[bold {Theme.PRIMARY}]Kaira — API Route Audit[/bold {Theme.PRIMARY}]  "
-              f"[dim]{api_prefix}/*[/dim]",
+        f"[dim]{api_prefix}/*[/dim]",
         box=box.ROUNDED,
         border_style=Theme.BORDER_PRIMARY,
         header_style=f"bold {Theme.PRIMARY}",
         show_lines=True,
         expand=False,
     )
-    table.add_column("#",               style="dim",              width=4,  justify="right")
-    table.add_column("Method",          width=9,                  justify="center")
-    table.add_column("Full Route",      style=f"bold {Theme.PRIMARY}", min_width=30)
-    table.add_column("Handler",         style="cyan",             min_width=18)
-    table.add_column("Auth",            width=13,                 justify="center")
-    table.add_column("Rate Limit",      style=Theme.MUTED,        width=12, justify="center")
-    table.add_column("File",            style=Theme.MUTED,        min_width=16)
+    table.add_column("#", style="dim", width=4, justify="right")
+    table.add_column("Method", width=9, justify="center")
+    table.add_column("Full Route", style=f"bold {Theme.PRIMARY}", min_width=30)
+    table.add_column("Handler", style="cyan", min_width=18)
+    table.add_column("Auth", width=13, justify="center")
+    table.add_column("Rate Limit", style=Theme.MUTED, width=12, justify="center")
+    table.add_column("File", style=Theme.MUTED, min_width=16)
 
     http_methods = ["GET", "POST", "PUT", "PATCH", "DELETE", "WEBSOCKET"]
     row_num = 0
@@ -136,12 +137,16 @@ def audit_routes() -> None:
                 elif sub_path and not sub_path.startswith("/"):
                     sub_path = "/" + sub_path
 
-                full_route = re.sub(r"/+", "/", f"{api_prefix}{router_prefix}{sub_path}")
+                full_route = re.sub(
+                    r"/+", "/", f"{api_prefix}{router_prefix}{sub_path}"
+                )
 
                 # Find the handler function name
                 for off in range(1, 20):
                     if idx + off < len(lines):
-                        fn_m = re.match(r"(?:async\s+)?def\s+(\w+)\s*\(", lines[idx + off].strip())
+                        fn_m = re.match(
+                            r"(?:async\s+)?def\s+(\w+)\s*\(", lines[idx + off].strip()
+                        )
                         if fn_m:
                             handler = fn_m.group(1)
                             # Check auth in function signature
@@ -152,7 +157,10 @@ def audit_routes() -> None:
                                     if "):" in lines[idx + off + so]:
                                         break
                             sig_str = "".join(sig_lines)
-                            has_auth = "get_current_user" in sig_str or "validate_api_key" in sig_str
+                            has_auth = (
+                                "get_current_user" in sig_str
+                                or "validate_api_key" in sig_str
+                            )
                             break
 
                 if handler is None:
@@ -168,7 +176,7 @@ def audit_routes() -> None:
                     else f"[dim red]{sym('WARN')} Public[/dim red]"
                 )
 
-                rl_display = current_rate_limit or f"[dim]—[/dim]"
+                rl_display = current_rate_limit or "[dim]—[/dim]"
                 rl_str = (
                     f"[{Theme.MUTED}]{rl_display}[/{Theme.MUTED}]"
                     if current_rate_limit
@@ -200,8 +208,14 @@ def audit_routes() -> None:
 
     # Summary footer
     unsecured = total - secured
-    sec_color = Theme.SUCCESS if unsecured == 0 else Theme.WARNING if unsecured <= 2 else Theme.ERROR
-    rl_color  = Theme.SUCCESS if rate_limited == total else Theme.WARNING
+    sec_color = (
+        Theme.SUCCESS
+        if unsecured == 0
+        else Theme.WARNING
+        if unsecured <= 2
+        else Theme.ERROR
+    )
+    rl_color = Theme.SUCCESS if rate_limited == total else Theme.WARNING
 
     summary = (
         f"  [{Theme.MUTED}]Total routes :[/{Theme.MUTED}]  [bold]{total}[/bold]\n"
@@ -239,36 +253,51 @@ def audit_security() -> None:
             endpoints = re.findall(
                 r"@(router\.(get|post|put|delete|patch|websocket))\(\s*\"([^\"]+)\"[^)]*\)\s*(?:@[^\n]+\s*)*(?:async\s+)?def\s+(\w+)",
                 content,
-                re.MULTILINE
+                re.MULTILINE,
             )
             # Find function body blocks to check for Depends and limiter
             for deco, method, path, handler in endpoints:
                 checked_routes += 1
                 route_issues = []
-                
+
                 # Check for auth guards
                 func_pattern = rf"(def\s+{handler}\(.*?\)\s*->\s*.*?:)"
                 func_match = re.search(func_pattern, content, re.DOTALL)
                 if func_match:
                     func_sig = func_match.group(1)
-                    if "get_current_user" not in func_sig and "validate_api_key" not in func_sig:
+                    if (
+                        "get_current_user" not in func_sig
+                        and "validate_api_key" not in func_sig
+                    ):
                         # Exclude auth route itself
                         if "auth" not in path:
                             route_issues.append("No auth guard")
                 else:
                     # Generic check
-                    if "get_current_user" not in content and "validate_api_key" not in content and "auth" not in path:
-                         route_issues.append("No auth guard")
+                    if (
+                        "get_current_user" not in content
+                        and "validate_api_key" not in content
+                        and "auth" not in path
+                    ):
+                        route_issues.append("No auth guard")
 
                 # Check for rate limits
                 # Find if @limiter.limit decoration sits above the def
                 block_pattern = rf"(@limiter\.limit\(.*?\)\s*)*@router\.{method}\(.*?\)\s*(?:@limiter\.limit\(.*?\)\s*)*(?:async\s+)?def\s+{handler}"
                 limit_match = re.search(block_pattern, content, re.DOTALL)
                 if not limit_match or "@limiter.limit" not in limit_match.group(0):
-                     route_issues.append("No rate limit")
+                    route_issues.append("No rate limit")
 
                 if route_issues:
-                    issues.append((f"{path} ({method.upper()})", ", ".join(route_issues), "❌ High" if "auth" in "".join(route_issues) else "⚠️  Medium"))
+                    issues.append(
+                        (
+                            f"{path} ({method.upper()})",
+                            ", ".join(route_issues),
+                            "❌ High"
+                            if "auth" in "".join(route_issues)
+                            else "⚠️  Medium",
+                        )
+                    )
                 else:
                     passed_routes += 1
 
@@ -279,23 +308,37 @@ def audit_security() -> None:
             content = f.read_text(encoding="utf-8")
             if "class" in content and "Response" in content:
                 # Find response schemas
-                resp_schema = re.search(r"class\s+\w+Response\(.*?\):(.*?)class", content + "\nclass", re.DOTALL)
+                resp_schema = re.search(
+                    r"class\s+\w+Response\(.*?\):(.*?)class",
+                    content + "\nclass",
+                    re.DOTALL,
+                )
                 if resp_schema:
                     body = resp_schema.group(1)
                     if "password" in body:
-                        issues.append((f.name, "Exposes password in Response schema", "❌ High"))
+                        issues.append(
+                            (f.name, "Exposes password in Response schema", "❌ High")
+                        )
                     if "id: int" in body:
-                        issues.append((f.name, "Exposes auto-increment id in Response schema", "⚠️  Medium"))
+                        issues.append(
+                            (
+                                f.name,
+                                "Exposes auto-increment id in Response schema",
+                                "⚠️  Medium",
+                            )
+                        )
 
     # 3. Audit Environment files
     envs = ["development", "staging", "production"]
     gitignore_path = output_root / ".gitignore"
     gitignore_exists = gitignore_path.exists()
     gi_content = gitignore_path.read_text(encoding="utf-8") if gitignore_exists else ""
-    
+
     if gitignore_exists:
         if ".env" not in gi_content and ".env.*" not in gi_content:
-            issues.append((".gitignore", ".env files are not added to .gitignore", "❌ High"))
+            issues.append(
+                (".gitignore", ".env files are not added to .gitignore", "❌ High")
+            )
     else:
         issues.append((".gitignore", ".gitignore file is missing", "❌ High"))
 
@@ -312,15 +355,33 @@ def audit_security() -> None:
 
             secret = env_keys.get("JWT_SECRET_KEY", "")
             if secret and len(secret) < 32:
-                issues.append((f".env.{env_name}", "JWT_SECRET_KEY is shorter than 32 chars", "❌ High"))
-                
+                issues.append(
+                    (
+                        f".env.{env_name}",
+                        "JWT_SECRET_KEY is shorter than 32 chars",
+                        "❌ High",
+                    )
+                )
+
             debug = env_keys.get("DEBUG", "False").lower() == "true"
             if env_name == "production" and debug:
-                issues.append((f".env.{env_name}", "DEBUG is enabled in production environment", "❌ High"))
+                issues.append(
+                    (
+                        f".env.{env_name}",
+                        "DEBUG is enabled in production environment",
+                        "❌ High",
+                    )
+                )
 
             origins = env_keys.get("ALLOWED_ORIGINS", "")
             if env_name == "production" and "*" in origins:
-                 issues.append((f".env.{env_name}", "CORS wildcard '*' is allowed in production", "❌ High"))
+                issues.append(
+                    (
+                        f".env.{env_name}",
+                        "CORS wildcard '*' is allowed in production",
+                        "❌ High",
+                    )
+                )
 
     # Print results
     table = Table(title="Kaira Security Audit", border_style="cyan")
@@ -345,7 +406,9 @@ def audit_security() -> None:
     score = max(0, score)
 
     score_color = "green" if score >= 80 else ("yellow" if score >= 60 else "red")
-    console.print(f"\n[bold]Security Score: [{score_color}]{score}/100[/{score_color}][/bold]")
+    console.print(
+        f"\n[bold]Security Score: [{score_color}]{score}/100[/{score_color}][/bold]"
+    )
 
 
 @app.command("unused")
@@ -381,4 +444,6 @@ def audit_unused() -> None:
     if unused:
         console.print(table)
     else:
-        console.print("[green]✔ No unused generated assets found. All registered in main.py![/green]")
+        console.print(
+            "[green]✔ No unused generated assets found. All registered in main.py![/green]"
+        )

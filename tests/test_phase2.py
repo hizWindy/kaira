@@ -12,9 +12,11 @@ from kaira.main import app
 runner = CliRunner()
 cli = get_command(app)
 
+
 def run(*args):
     """Invoke the kaira CLI with the given arguments."""
     return runner.invoke(cli, list(args))
+
 
 class TestPhase2Commands:
     def test_health_command(self, tmp_path):
@@ -70,7 +72,10 @@ class TestPhase2Commands:
             # Validate environment
             result_val = run("env", "validate")
             assert result_val.exit_code == 0
-            assert "validation warnings" in result_val.output or "checks passed" in result_val.output
+            assert (
+                "validation warnings" in result_val.output
+                or "checks passed" in result_val.output
+            )
 
     def test_docker_init(self, tmp_path):
         with runner.isolated_filesystem(temp_dir=tmp_path):
@@ -104,7 +109,14 @@ class TestPhase2Commands:
         with runner.isolated_filesystem(temp_dir=tmp_path):
             cwd = Path.cwd()
             # First generate a model so config has it tracked
-            run("generate", "model", "Product", "--fields", "name:str,price:float", "--force")
+            run(
+                "generate",
+                "model",
+                "Product",
+                "--fields",
+                "name:str,price:float",
+                "--force",
+            )
             result = run("seed", "generate", "Product", "--force")
             assert result.exit_code == 0
             assert (cwd / "seeds" / "seed_product.py").exists()

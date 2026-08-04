@@ -303,7 +303,9 @@ def test_docs_generate_custom_only_filter(tmp_path, monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     _make_project(tmp_path)
 
-    assert runner.invoke(app, ["docs", "generate", "--custom", "--source"]).exit_code == 0
+    assert (
+        runner.invoke(app, ["docs", "generate", "--custom", "--source"]).exit_code == 0
+    )
     doc = (tmp_path / "docs" / "api.md").read_text(encoding="utf-8")
     assert "## Analytics" in doc
     assert "## Widget" not in doc
@@ -315,9 +317,9 @@ def test_docs_generate_single_section(tmp_path, monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     _make_project(tmp_path)
 
-    assert runner.invoke(
-        app, ["docs", "generate", "Analytics", "--source"]
-    ).exit_code == 0
+    assert (
+        runner.invoke(app, ["docs", "generate", "Analytics", "--source"]).exit_code == 0
+    )
     assert (tmp_path / "docs" / "Analytics.md").exists()
 
 

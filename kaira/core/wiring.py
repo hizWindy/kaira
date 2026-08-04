@@ -8,7 +8,9 @@ ROUTER_MARKER = "# [ROUTER_REGISTRATION]"
 IMPORT_ANCHOR = "from rate_limit import limiter\n"
 
 
-def register_router_in_main(main_path: Path, import_line: str, include_line: str) -> str:
+def register_router_in_main(
+    main_path: Path, import_line: str, include_line: str
+) -> str:
     """Splice a router import and ``include_router`` call into ``main.py``.
 
     The include line is inserted just above the ``# [ROUTER_REGISTRATION]``
@@ -33,7 +35,9 @@ def register_router_in_main(main_path: Path, import_line: str, include_line: str
 
     if import_line not in content:
         if IMPORT_ANCHOR in content:
-            content = content.replace(IMPORT_ANCHOR, f"{IMPORT_ANCHOR}{import_line}\n", 1)
+            content = content.replace(
+                IMPORT_ANCHOR, f"{IMPORT_ANCHOR}{import_line}\n", 1
+            )
         else:
             content = f"{import_line}\n{content}"
 

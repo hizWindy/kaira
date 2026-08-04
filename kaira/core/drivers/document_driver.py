@@ -43,9 +43,13 @@ class DocumentEngineDriver(BaseEngineDriver):
         """Return Beanie ODM document link or embedded snippet."""
         if embedded:
             if relation_type in ("has-many", "many-to-many"):
-                field_code = f'    {target_model.lower()}s: list["{target_model}Schema"] = []'
+                field_code = (
+                    f'    {target_model.lower()}s: list["{target_model}Schema"] = []'
+                )
             else:
-                field_code = f'    {target_model.lower()}: "{target_model}Schema" | None = None'
+                field_code = (
+                    f'    {target_model.lower()}: "{target_model}Schema" | None = None'
+                )
             return {
                 "imports": ["from typing import List, Optional"],
                 "field_code": field_code,
@@ -54,9 +58,13 @@ class DocumentEngineDriver(BaseEngineDriver):
 
         # Linked document mode (Beanie Link[TargetModel])
         if relation_type in ("has-many", "many-to-many"):
-            field_code = f'    {target_model.lower()}s: list[Link["{target_model}"]] = []'
+            field_code = (
+                f'    {target_model.lower()}s: list[Link["{target_model}"]] = []'
+            )
         else:
-            field_code = f'    {target_model.lower()}: Link["{target_model}"] | None = None'
+            field_code = (
+                f'    {target_model.lower()}: Link["{target_model}"] | None = None'
+            )
 
         return {
             "imports": ["from beanie import Link"],

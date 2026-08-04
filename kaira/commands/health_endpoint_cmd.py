@@ -9,7 +9,6 @@ Cache check is only included when core/cache.py is present.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Annotated
 
 import typer
 from jinja2 import Environment, FileSystemLoader
@@ -44,6 +43,7 @@ def health_endpoint_generate() -> None:
     - Is rate-limited at ~300/min via slowapi
     """
     from kaira.config import get_config
+
     cfg = get_config()
     output_root = Path.cwd() / cfg.output_dir
 
@@ -76,7 +76,9 @@ def health_endpoint_generate() -> None:
     if cache_enabled:
         console.print("  [dim]ℹ️  Cache check included (core/cache.py detected)[/dim]")
     else:
-        console.print("  [dim]ℹ️  Cache check not included (run kaira cache init to enable)[/dim]")
+        console.print(
+            "  [dim]ℹ️  Cache check not included (run kaira cache init to enable)[/dim]"
+        )
 
     console.print(
         Panel(
@@ -91,6 +93,8 @@ def health_endpoint_generate() -> None:
 
     next_steps: list[str] = []
     if not cache_enabled:
-        next_steps.append("[cyan]kaira cache init[/cyan] — enable cache check in /health")
+        next_steps.append(
+            "[cyan]kaira cache init[/cyan] — enable cache check in /health"
+        )
     next_steps.append("[cyan]kaira api test GET /health[/cyan] — test the endpoint")
     print_next_steps(next_steps)

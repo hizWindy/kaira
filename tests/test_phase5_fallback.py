@@ -98,10 +98,16 @@ class TestFallbackQueue:
         import bcrypt
 
         raw_password = "plaintext_password"
-        hashed = bcrypt.hashpw(raw_password.encode(), bcrypt.gensalt(rounds=12)).decode()
+        hashed = bcrypt.hashpw(
+            raw_password.encode(), bcrypt.gensalt(rounds=12)
+        ).decode()
 
         # The queue entry should contain the hashed value, not the raw
-        queue_entry = {"id": "uuid-1", "operation": "POST", "data": {"password": hashed}}
+        queue_entry = {
+            "id": "uuid-1",
+            "operation": "POST",
+            "data": {"password": hashed},
+        }
         entry_str = json.dumps(queue_entry)
         assert raw_password not in entry_str
         assert "$2b$" in entry_str  # bcrypt hash marker
@@ -226,7 +232,10 @@ class TestFallbackStatusSecurity:
         queue_file = queue_dir / "write_queue.jsonl"
         # Write entries with sensitive data
         for _ in range(3):
-            entry = {"id": "uuid-x", "data": {"password": "$2b$12$hashed", "name": "Alice"}}
+            entry = {
+                "id": "uuid-x",
+                "data": {"password": "$2b$12$hashed", "name": "Alice"},
+            }
             queue_file.write_text(json.dumps(entry) + "\n")
 
         from kaira.commands.cloud_cmd import _queue_line_count
@@ -263,15 +272,19 @@ class TestFallbackEngineGenerate:
         # Create minimal project structure
         app_dir = tmp_path / "app"
         app_dir.mkdir()
-        (tmp_path / ".kaira.json").write_text(json.dumps({
-            "output_dir": "app",
-            "db_type": "supabase",
-            "models_dir": "models",
-            "repositories_dir": "repositories",
-            "schemas_dir": "schemas",
-            "services_dir": "services",
-            "routers_dir": "routers",
-        }))
+        (tmp_path / ".kaira.json").write_text(
+            json.dumps(
+                {
+                    "output_dir": "app",
+                    "db_type": "supabase",
+                    "models_dir": "models",
+                    "repositories_dir": "repositories",
+                    "schemas_dir": "schemas",
+                    "services_dir": "services",
+                    "routers_dir": "routers",
+                }
+            )
+        )
 
         from kaira.core.fallback_engine import generate_fallback_module
 
@@ -287,15 +300,19 @@ class TestFallbackEngineGenerate:
         monkeypatch.chdir(tmp_path)
         app_dir = tmp_path / "app"
         app_dir.mkdir()
-        (tmp_path / ".kaira.json").write_text(json.dumps({
-            "output_dir": "app",
-            "db_type": "supabase",
-            "models_dir": "models",
-            "repositories_dir": "repositories",
-            "schemas_dir": "schemas",
-            "services_dir": "services",
-            "routers_dir": "routers",
-        }))
+        (tmp_path / ".kaira.json").write_text(
+            json.dumps(
+                {
+                    "output_dir": "app",
+                    "db_type": "supabase",
+                    "models_dir": "models",
+                    "repositories_dir": "repositories",
+                    "schemas_dir": "schemas",
+                    "services_dir": "services",
+                    "routers_dir": "routers",
+                }
+            )
+        )
 
         from kaira.core.fallback_engine import generate_fallback_module
 
@@ -310,15 +327,19 @@ class TestFallbackEngineGenerate:
         monkeypatch.chdir(tmp_path)
         app_dir = tmp_path / "app"
         app_dir.mkdir()
-        (tmp_path / ".kaira.json").write_text(json.dumps({
-            "output_dir": "app",
-            "db_type": "atlas",
-            "models_dir": "models",
-            "repositories_dir": "repositories",
-            "schemas_dir": "schemas",
-            "services_dir": "services",
-            "routers_dir": "routers",
-        }))
+        (tmp_path / ".kaira.json").write_text(
+            json.dumps(
+                {
+                    "output_dir": "app",
+                    "db_type": "atlas",
+                    "models_dir": "models",
+                    "repositories_dir": "repositories",
+                    "schemas_dir": "schemas",
+                    "services_dir": "services",
+                    "routers_dir": "routers",
+                }
+            )
+        )
 
         from kaira.core.fallback_engine import generate_fallback_module
 
@@ -327,5 +348,5 @@ class TestFallbackEngineGenerate:
         # The comment "contents are never logged" must be present
         assert "never" in content.lower()
         # Should not log entry data directly
-        assert 'logger.info(entry)' not in content
-        assert 'logger.debug(entry)' not in content
+        assert "logger.info(entry)" not in content
+        assert "logger.debug(entry)" not in content

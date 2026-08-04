@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated
 
 import typer
 from jinja2 import Environment, FileSystemLoader
@@ -30,9 +30,15 @@ def _get_env() -> Environment:
 
 @app.command("generate")
 def websocket_generate(
-    channel_name: Annotated[str, typer.Argument(help="Name of the WebSocket channel, e.g. Chat")],
-    ws_type: Annotated[str, typer.Option("--type", help="Boilerplate type: chat, notifications")] = "chat",
-    force: Annotated[bool, typer.Option("--force", help="Overwrite existing files.")] = False,
+    channel_name: Annotated[
+        str, typer.Argument(help="Name of the WebSocket channel, e.g. Chat")
+    ],
+    ws_type: Annotated[
+        str, typer.Option("--type", help="Boilerplate type: chat, notifications")
+    ] = "chat",
+    force: Annotated[
+        bool, typer.Option("--force", help="Overwrite existing files.")
+    ] = False,
 ) -> None:
     """Generate secure WebSocket router, connection manager, and message schemas."""
     config = get_config()
@@ -63,9 +69,11 @@ def websocket_generate(
         write_with_check(out_path, content, force=force)
         console.print(f"  [green bold]✓[/green bold]  Written: [cyan]{out_path}[/cyan]")
 
-    console.print(Panel(
-        f"[green]WebSocket ({ws_type}) scaffolding complete for {channel_name}![/green]\n"
-        "Features JWT auth on handshake, connection rate limits, and output escaping.",
-        title="Kaira — WebSockets",
-        border_style="green",
-    ))
+    console.print(
+        Panel(
+            f"[green]WebSocket ({ws_type}) scaffolding complete for {channel_name}![/green]\n"
+            "Features JWT auth on handshake, connection rate limits, and output escaping.",
+            title="Kaira — WebSockets",
+            border_style="green",
+        )
+    )

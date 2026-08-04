@@ -65,7 +65,9 @@ def guide_main(
             "  [bold cyan]kaira guide db-provision[/bold cyan]      Automatic database provisioning\n"
             "  [bold cyan]kaira guide offline[/bold cyan]           Offline / online database engine\n"
             "  [bold magenta]── Phase 7 ──────────────────────────────────[/bold magenta]\n"
-            "  [bold cyan]kaira guide export[/bold cyan]            Data export — CLI files & API endpoints"
+            "  [bold cyan]kaira guide export[/bold cyan]            Data export — CLI files & API endpoints\n"
+            "  [bold magenta]── Phase 7.5 ────────────────────────────────[/bold magenta]\n"
+            "  [bold cyan]kaira guide commands[/bold cyan]          Command index & discovery"
         )
         print_guide_panel("Index", content, "Run any guide for examples and usage.")
 
@@ -801,7 +803,7 @@ def guide_offline() -> None:
         "  read-only / read-write are specified but NOT built yet — do not enable.\n\n"
         "[bold green]Where the mode is reported:[/bold green]\n"
         "  • kaira run banner        engine · name · online/offline\n"
-        "  • GET /health             {\"database\": {engine, name, mode}} (no DSN)\n"
+        '  • GET /health             {"database": {engine, name, mode}} (no DSN)\n'
         "  • every response header   X-Kaira-DB-Mode: online | offline\n"
         "  • kaira status            Database:  postgresql · proj9 · ✅ online\n"
         "  • the welcome dashboard   DB row with a mode badge\n"
@@ -858,4 +860,29 @@ def guide_export() -> None:
         "export",
         content,
         "Use --limit for pdf/docx on large tables — they are page-oriented formats.",
+    )
+
+
+@app.command("commands")
+def guide_commands() -> None:
+    """Guide for the command index and command discovery."""
+    content = (
+        "[bold green]Static Command Reference Sheet:[/bold green]\n"
+        "  Scan or search all registered Kaira commands:\n\n"
+        "  [cyan]kaira commands[/cyan]                    List all commands grouped by category\n"
+        "  [cyan]kaira commands --group db[/cyan]         Show only database commands\n"
+        "  [cyan]kaira commands --group scaffolding[/cyan]  Show scaffolding commands\n"
+        "  [cyan]kaira commands --search export[/cyan]    Filter across command names & descriptions\n\n"
+        "[bold green]Relationship to other discovery tools:[/bold green]\n"
+        "  • [bold]kaira commands[/bold]   Static reference sheet — scan or grep everything\n"
+        "  • [bold]kaira menu[/bold]       Interactive fuzzy picker — find and execute commands\n"
+        "  • [bold]kaira guide[/bold]      Detailed teaching guides with worked examples\n\n"
+        "[bold green]Tip:[/bold green]\n"
+        "  Introspects registered Typer commands automatically, so it never\n"
+        "  drifts when new subcommands are added."
+    )
+    print_guide_panel(
+        "commands",
+        content,
+        "Combine --group and --search to quickly pinpoint specific CLI capabilities.",
     )

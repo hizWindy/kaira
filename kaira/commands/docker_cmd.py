@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated
 
 import typer
 from jinja2 import Environment, FileSystemLoader
@@ -30,15 +30,22 @@ def _get_env() -> Environment:
 
 @app.command("init")
 def docker_init(
-    with_compose: Annotated[bool, typer.Option("--with-compose", help="Scaffold docker-compose files.")] = False,
-    force: Annotated[bool, typer.Option("--force", help="Overwrite existing files.")] = False,
+    with_compose: Annotated[
+        bool, typer.Option("--with-compose", help="Scaffold docker-compose files.")
+    ] = False,
+    force: Annotated[
+        bool, typer.Option("--force", help="Overwrite existing files.")
+    ] = False,
 ) -> None:
     """Scaffold Dockerfile, .dockerignore, and docker-compose files with security hardening."""
     config = get_config()
     output_root = Path.cwd() / config.output_dir
 
     env = _get_env()
-    ctx = {"project_name": Path.cwd().name, "project_slug": Path.cwd().name.lower().replace("-", "_")}
+    ctx = {
+        "project_name": Path.cwd().name,
+        "project_slug": Path.cwd().name.lower().replace("-", "_"),
+    }
 
     # Dockerfile
     df_tmpl = env.get_template("docker_dockerfile.j2")
@@ -66,16 +73,20 @@ def docker_init(
         write_with_check(dcp_path, dcp_tmpl.render(**ctx), force=force)
         console.print(f"  [green bold]✓[/green bold]  Written: [cyan]{dcp_path}[/cyan]")
 
-    console.print(Panel(
-        f"[green]Docker environment initialized successfully![/green]",
-        title="Kaira — Docker Scaffold",
-        border_style="green",
-    ))
+    console.print(
+        Panel(
+            "[green]Docker environment initialized successfully![/green]",
+            title="Kaira — Docker Scaffold",
+            border_style="green",
+        )
+    )
 
 
 @app.command("build")
 def docker_build(
-    tag: Annotated[str, typer.Option("-t", "--tag", help="Build tag name.")] = "kaira-app",
+    tag: Annotated[
+        str, typer.Option("-t", "--tag", help="Build tag name.")
+    ] = "kaira-app",
 ) -> None:
     """Build the docker container image."""
     console.print(f"[cyan]Building Docker image [bold]{tag}[/bold]...[/cyan]")
@@ -90,22 +101,33 @@ def docker_build(
 
 @app.command("run")
 def docker_run(
-    tag: Annotated[str, typer.Option("-t", "--tag", help="Tag name of the image to run.")] = "kaira-app",
+    tag: Annotated[
+        str, typer.Option("-t", "--tag", help="Tag name of the image to run.")
+    ] = "kaira-app",
     port: Annotated[int, typer.Option("-p", "--port", help="Port mapping.")] = 8000,
 ) -> None:
     """Run the secure docker container instance."""
-    console.print(f"[cyan]Running Docker image [bold]{tag}[/bold] on port {port}...[/cyan]")
+    console.print(
+        f"[cyan]Running Docker image [bold]{tag}[/bold] on port {port}...[/cyan]"
+    )
     cmd = [
-        "docker", "run", "-d",
-        "-p", f"{port}:8000",
+        "docker",
+        "run",
+        "-d",
+        "-p",
+        f"{port}:8000",
         "--read-only",
-        "--security-opt", "no-new-privileges:true",
-        "--env-file", ".env",
-        tag
+        "--security-opt",
+        "no-new-privileges:true",
+        "--env-file",
+        ".env",
+        tag,
     ]
     try:
         subprocess.run(cmd, check=True)
-        console.print(f"[green]✔ Container running successfully. Access at http://localhost:{port}[/green]")
+        console.print(
+            f"[green]✔ Container running successfully. Access at http://localhost:{port}[/green]"
+        )
     except Exception as e:
         console.print(f"[red]Error: Failed to run Docker container: {e}[/red]")
         raise typer.Exit(1)
