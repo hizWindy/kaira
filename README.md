@@ -499,6 +499,77 @@ Scaffold 15 integration providers across 6 categories:
 
 ---
 
+## Docker (`kaira docker`)
+
+Docker configuration is **reactive to project state**. The compose services and
+the Dockerfile's system build dependencies are rendered from `.kaira.json`, so
+enabling a subsystem changes what Docker generates — no hand-editing, no
+re-running `init` and losing your setup.
+
+| Project state | Docker reacts |
+| --- | --- |
+| `db_type: postgresql` / `supabase` | Builder stage gets `gcc libpq-dev` |
+| `db_type: mysql` | Builder stage gets `gcc default-libmysqlclient-dev pkg-config` |
+| `db_type: mongodb` / `atlas` / `sqlite` / `firebase` | No system build deps at all — the `apt-get` layer is omitted |
+| `db_type: postgresql` / `mysql` / `mongodb` | Compose gets a database service with a healthcheck and a named volume |
+| `db_type: sqlite` / `supabase` / `atlas` / `firebase` | No database service — file-based or cloud-hosted |
+| `cache_enabled: true` | Compose gets Redis with a healthcheck |
+| `task_enabled: true` | Compose gets a Celery worker plus the Redis broker |
+| `search_provider: elasticsearch` / `meilisearch` | Compose gets that search engine with a healthcheck and volume |
+| Any integration SDK | Lands in `requirements.txt` — pip installs it during build, no Dockerfile change |
+
+### Commands
+
+```bash
+# Scaffold
+kaira docker init --with-compose --python 3.12   # --python accepts 3.10–3.13
+kaira docker sync                                # regenerate from current state
+kaira docker sync --dry-run                      # show the diff, write nothing
+
+# Build and run a single container
+kaira docker build --tag myapp                   # spinner, image size, smart errors
+kaira docker build --verbose                     # full Docker output
+kaira docker run --tag myapp                     # --init, --read-only, no-new-privileges
+
+# Compose lifecycle
+kaira docker up                                  # dev stack + .env.development
+kaira docker up --prod --build                   # prod stack (typed confirmation)
+kaira docker down                                # stop containers, remove network
+kaira docker down --volumes                      # also destroy data (typed confirm)
+kaira docker status                              # health, ports, image + volume size
+
+# Security
+kaira docker scan --fix                          # exits 1 on HIGH/CRITICAL
+```
+
+`kaira docker up` picks the right compose file and env file for the environment;
+`kaira docker scan` auto-detects `docker scout`, `trivy`, or `grype` (in that
+order), renders a severity-sorted table, and scans local images only unless you
+pass `--remote`.
+
+### Staying in sync
+
+Commands that change project state — `cache init`, `task init`, `integrate`,
+`db switch`, `cloud connect` — offer to regenerate the Docker files when they
+detect drift. Pass `--quiet` to skip the prompt in CI; you then run
+`kaira docker sync` yourself.
+
+### What the generated Dockerfile guarantees
+
+Multi-stage build; base image pinned to a full patch version; `--user` pip
+install copied into the runtime stage; `--no-install-recommends` with
+same-layer apt cleanup; `--no-cache-dir` on pip; dependency manifest copied
+before source for layer caching; non-root `addgroup --system` user; in-image
+`HEALTHCHECK` using stdlib `urllib` (so `curl` is never installed); exec-form
+`CMD`; `EXPOSE` as a documentation contract; and a comprehensive
+`.dockerignore` that keeps `.env` out while explicitly allowing `.env.example`.
+
+Production compose adds `read_only`, a size-capped `tmpfs`, `no-new-privileges`,
+`json-file` log rotation, resource limits, and keeps database, cache, and search
+ports off the host.
+
+---
+
 ## Phase 6: Auto DB Provisioning, `run` Overhaul & Offline/Online Engine
 
 ### Auto database provisioning

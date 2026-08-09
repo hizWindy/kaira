@@ -78,7 +78,12 @@ def _cache_key(route: str, scope: str = "all") -> str:
 
 
 @app.command("init")
-def cache_init() -> None:
+def cache_init(
+    quiet: Annotated[
+        bool,
+        typer.Option("--quiet", help="Non-interactive: never prompt (CI-friendly)."),
+    ] = False,
+) -> None:
     """Initialise the Redis cache module for this project."""
     from kaira.config import get_config
 
@@ -124,6 +129,13 @@ def cache_init() -> None:
             border_style="green",
         )
     )
+
+    # Project state changed — Docker now needs a Redis service.
+    from kaira.config import set_config_values
+    from kaira.core.docker_render import maybe_autosync
+
+    set_config_values(cache_enabled=True)
+    maybe_autosync(quiet=quiet)
 
 
 @app.command("add")

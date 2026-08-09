@@ -18,7 +18,7 @@ from rich.markup import escape
 
 from kaira.config import KairaConfig
 from kaira.console import console
-from kaira.core import ui
+from kaira.core import docker_render, docker_state, ui
 from kaira.core.detector import write_with_check
 from kaira.core.progress import (
     ProgressItem,
@@ -816,36 +816,28 @@ def init_project(
         cwd / ".env.example", example_content, force=True, non_interactive=True
     )
 
-    # 9. Docker setup
+    # 9. Docker setup — rendered from the same dynamic registry `kaira docker
+    # sync` uses, so a fresh project and a synced one produce identical output.
+    # No .kaira.json exists yet at this point (written in step 12 below), so the
+    # state is built directly from what init already knows rather than through
+    # docker_state.resolve_state(), which reads it from disk.
+    docker_python = docker_state.resolve_python_version(None)
     if docker:
-        df_tmpl = env.get_template("docker_dockerfile.j2")
-        write_with_check(
-            cwd / "Dockerfile", df_tmpl.render(**ctx), force=True, non_interactive=True
+        # Docker's slug must match what `docker sync` recomputes later from the
+        # directory name via docker_state.resolve_state() — not the DB-name
+        # slug above, which keeps hyphens `_pascal_to_slug` doesn't touch.
+        # A mismatch here makes a freshly scaffolded project look drifted the
+        # moment `kaira docker sync` runs against it.
+        docker_project_state = docker_state.ProjectState(
+            project_name=name,
+            project_slug=docker_state.slugify_project_name(name),
+            db_type=db,
+            python_version=docker_python,
         )
-
-        di_tmpl = env.get_template("docker_ignore.j2")
-        write_with_check(
-            cwd / ".dockerignore",
-            di_tmpl.render(**ctx),
-            force=True,
-            non_interactive=True,
-        )
-
-        dc_tmpl = env.get_template("docker_compose.j2")
-        write_with_check(
-            cwd / "docker-compose.yml",
-            dc_tmpl.render(**ctx),
-            force=True,
-            non_interactive=True,
-        )
-
-        dcp_tmpl = env.get_template("docker_compose_prod.j2")
-        write_with_check(
-            cwd / "docker-compose.prod.yml",
-            dcp_tmpl.render(**ctx),
-            force=True,
-            non_interactive=True,
-        )
+        for filename, content in docker_render.render_files(
+            docker_project_state, with_compose=True
+        ).items():
+            write_with_check(cwd / filename, content, force=True, non_interactive=True)
 
     # 10. CI/CD workflow setup
     if ci == "github":
@@ -919,7 +911,14 @@ def init_project(
     )
 
     # 12. Local Kaira settings configuration file
-    config = KairaConfig(db_type=db, auth_type=auth, output_dir=".")
+    config = KairaConfig(
+        db_type=db,
+        auth_type=auth,
+        output_dir=".",
+        docker_enabled=docker,
+        docker_compose=docker,
+        docker_python=docker_python if docker else "",
+    )
     # Save config directly inside the project directory
     config_path = cwd / ".kaira.json"
     import json

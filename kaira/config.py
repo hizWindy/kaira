@@ -106,6 +106,16 @@ class KairaConfig:
     db_name: str = ""  # sanitized database identifier
     db_provisioned: bool = False  # True once the DB has been created/confirmed
     db_mode: str = "online"  # online | offline | auto (Layer-1 default: online)
+    # Feature flags read by the Docker services registry.  Commands that enable
+    # a subsystem record it here so `kaira docker sync` can render the matching
+    # compose service without re-deriving it from the filesystem every time.
+    cache_enabled: bool = False  # Redis cache initialised
+    task_enabled: bool = False  # Celery background tasks initialised
+    search_provider: str = ""  # elasticsearch | meilisearch | ""
+    monitor_provider: str = ""  # sentry | datadog | newrelic | ""
+    docker_enabled: bool = False  # Dockerfile has been scaffolded
+    docker_compose: bool = False  # compose files are part of the surface
+    docker_python: str = ""  # Python version pinned in the Dockerfile
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -154,6 +164,33 @@ def save_config(config: KairaConfig) -> None:
     config_path = Path.cwd() / CONFIG_FILE
     with open(config_path, "w", encoding="utf-8") as f:
         json.dump(config.to_dict(), f, indent=2)
+
+
+def set_config_values(**values: Any) -> None:
+    """Patch individual keys in the project's .kaira.json, leaving the rest alone.
+
+    Used by feature commands to record state (``cache_enabled``,
+    ``search_provider``, …) without round-tripping the whole config through
+    :class:`KairaConfig`, which would drop any key a newer Kaira wrote.
+
+    Silently does nothing outside a Kaira project, so calling it is always safe.
+
+    Args:
+        **values: Config keys to set.
+    """
+    config_path = find_config_path()
+    if not config_path.exists():
+        return
+    try:
+        with open(config_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if not isinstance(data, dict):
+            return
+        data.update(values)
+        with open(config_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+    except (OSError, json.JSONDecodeError):
+        pass  # Never crash a command because a flag could not be recorded
 
 
 def get_output_root(config: Optional[KairaConfig] = None) -> Path:

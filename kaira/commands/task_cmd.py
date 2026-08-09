@@ -60,7 +60,12 @@ def _update_env_files(key: str, value: str) -> None:
 
 
 @app.command("init")
-def task_init() -> None:
+def task_init(
+    quiet: Annotated[
+        bool,
+        typer.Option("--quiet", help="Non-interactive: never prompt (CI-friendly)."),
+    ] = False,
+) -> None:
     """Initialise Celery for this project."""
     from kaira.config import get_config
 
@@ -111,6 +116,13 @@ def task_init() -> None:
             border_style="green",
         )
     )
+
+    # Project state changed — Docker now needs a worker and a broker service.
+    from kaira.config import set_config_values
+    from kaira.core.docker_render import maybe_autosync
+
+    set_config_values(task_enabled=True)
+    maybe_autosync(quiet=quiet)
 
 
 @app.command("generate")

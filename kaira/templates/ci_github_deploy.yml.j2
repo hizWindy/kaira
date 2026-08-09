@@ -24,3 +24,15 @@ jobs:
           context: .
           push: true
           tags: {% raw %}${{ secrets.DOCKER_REGISTRY }}/${{ secrets.DOCKER_IMAGE_NAME }}:latest,${{ secrets.DOCKER_REGISTRY }}/${{ secrets.DOCKER_IMAGE_NAME }}:${{ github.sha }}{% endraw %}
+
+      # Fails the pipeline on HIGH/CRITICAL CVEs — the same gate as
+      # `kaira docker scan`, so local and CI verdicts always agree.
+      - name: Scan image for vulnerabilities
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: {% raw %}${{ secrets.DOCKER_REGISTRY }}/${{ secrets.DOCKER_IMAGE_NAME }}:${{ github.sha }}{% endraw %}
+
+          format: table
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'

@@ -1122,6 +1122,12 @@ def db_switch(
 
         install_packages(drivers)
 
+    # db_type drives both the Dockerfile's system build deps and which database
+    # service (if any) belongs in compose — always a Docker-relevant change.
+    from kaira.core.docker_render import maybe_autosync
+
+    maybe_autosync()
+
     console.print(
         Panel(
             f"[green]✅ Switched to [bold]{db_type}[/bold].\n"

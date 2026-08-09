@@ -237,16 +237,35 @@ def guide_test() -> None:
 def guide_docker() -> None:
     """Guide for Docker configuration."""
     content = (
-        "Docker environment setup:\n\n"
-        "Initialize Docker config files:\n"
-        "  kaira docker init --with-compose\n\n"
-        "Build application Docker image:\n"
-        "  kaira docker build --tag myapp\n\n"
-        "Run Docker image locally with environment configuration:\n"
-        "  kaira docker run --tag myapp"
+        "Scaffold\n"
+        "  kaira docker init --with-compose --python 3.12\n"
+        "  kaira docker sync                 Regenerate from current project state\n"
+        "  kaira docker sync --dry-run       Show the diff without writing\n\n"
+        "Build and run\n"
+        "  kaira docker build --tag myapp    Spinner, image size, smart errors\n"
+        "  kaira docker build --verbose      Full Docker output\n"
+        "  kaira docker run --tag myapp      Hardened defaults, --init by default\n\n"
+        "Compose lifecycle\n"
+        "  kaira docker up                   Dev stack + .env.development\n"
+        "  kaira docker up --prod --build    Prod stack (typed confirmation)\n"
+        "  kaira docker down                 Stop containers, remove network\n"
+        "  kaira docker down --volumes       Also destroy data (typed confirm)\n"
+        "  kaira docker status               Health, ports, image and volume size\n\n"
+        "Security\n"
+        "  kaira docker scan --fix           Exits 1 on HIGH/CRITICAL (CI gate)\n\n"
+        "Docker is dynamic: compose services are rendered from .kaira.json.\n"
+        "Enabling cache adds Redis, tasks add a Celery worker, a search\n"
+        "integration adds its engine, and db_type decides both the database\n"
+        "service and the Dockerfile's system build deps.\n\n"
+        "Generated images follow the full hardening checklist: pinned patch\n"
+        "base image, multi-stage build, --user pip install, --no-install-recommends\n"
+        "with same-layer cleanup, deps before source, non-root user, in-image\n"
+        "HEALTHCHECK over urllib, exec-form CMD, read-only root filesystem."
     )
     print_guide_panel(
-        "docker", content, "Docker run uses security-hardened flags by default."
+        "docker",
+        content,
+        "After any command that changes project state, run kaira docker sync.",
     )
 
 

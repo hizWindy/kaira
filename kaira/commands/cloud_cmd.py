@@ -439,6 +439,12 @@ def cloud_connect(
     console.print(
         f"  [{Theme.MUTED}]{arrow} Env keys written to all .env* files[/{Theme.MUTED}]"
     )
+    # A cloud database removes the local DB service from compose (and, for
+    # Supabase, still needs libpq in the builder stage) — Docker must follow.
+    from kaira.core.docker_render import maybe_autosync
+
+    maybe_autosync()
+
     console.print(
         f"\n[{Theme.MUTED}]Next:[/{Theme.MUTED}] [{Theme.PRIMARY}]kaira cloud status[/{Theme.PRIMARY}] "
         f"  [{Theme.MUTED}]·[/{Theme.MUTED}]  [{Theme.PRIMARY}]kaira cloud fallback enable[/{Theme.PRIMARY}]"

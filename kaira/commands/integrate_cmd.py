@@ -132,6 +132,10 @@ def integrate_add(
             help="Provider spec: <category>/<provider>, e.g. email/sendgrid",
         ),
     ],
+    quiet: Annotated[
+        bool,
+        typer.Option("--quiet", help="Non-interactive: never prompt (CI-friendly)."),
+    ] = False,
 ) -> None:
     """Add a third-party integration."""
     if "/" not in category:
@@ -217,6 +221,18 @@ def integrate_add(
             border_style="green",
         )
     )
+
+    # Search and monitoring change what Docker should contain — search adds a
+    # compose service, monitoring is env wiring only but is still recorded so
+    # `kaira docker status` can report it.
+    from kaira.config import set_config_values
+    from kaira.core.docker_render import maybe_autosync
+
+    if cat == "search":
+        set_config_values(search_provider=prov)
+    elif cat == "monitor":
+        set_config_values(monitor_provider=prov)
+    maybe_autosync(quiet=quiet)
 
 
 @app.command("list")

@@ -1,0 +1,96 @@
+{#
+  Shared Docker Compose rendering macros.
+
+  Both compose templates render every service through `service_block`, driven by
+  the dicts produced by kaira/core/docker_state.py.  The macro is deliberately
+  generic — it knows about compose keys, not about Redis or Celery or Postgres.
+  That is what keeps "add the 10th service" as cheap as "add the 2nd".
+
+  This file generates no output of its own; it is imported, never written.
+#}
+{% macro service_block(svc) %}
+{% if svc.comment %}
+  # {{ svc.comment }}
+{% endif %}
+  {{ svc.name }}:
+{% if svc.build %}
+    build:
+      context: .
+      dockerfile: Dockerfile
+{% else %}
+    image: {{ svc.image }}
+{% endif %}
+{% if svc.command %}
+    command: {{ svc.command | yaml_flow }}
+{% endif %}
+{% if svc.environment %}
+    environment:
+{% for key, value in svc.environment.items() %}
+      {{ key }}: "{{ value }}"
+{% endfor %}
+{% endif %}
+{% if svc.env_file %}
+    env_file:
+      - {{ svc.env_file }}
+{% endif %}
+{% if svc.ports %}
+    ports:
+{% for port in svc.ports %}
+      - "{{ port }}"
+{% endfor %}
+{% endif %}
+{% if svc.volumes %}
+    volumes:
+{% for volume in svc.volumes %}
+      - {{ volume }}
+{% endfor %}
+{% endif %}
+{% if svc.depends_on %}
+    depends_on:
+{% for dep, condition in svc.depends_on.items() %}
+      {{ dep }}:
+        condition: {{ condition }}
+{% endfor %}
+{% endif %}
+{% if svc.healthcheck %}
+    healthcheck:
+      test: {{ svc.healthcheck.test | yaml_flow }}
+      interval: {{ svc.healthcheck.interval }}
+      timeout: {{ svc.healthcheck.timeout }}
+      retries: {{ svc.healthcheck.retries }}
+{% if svc.healthcheck.start_period %}
+      start_period: {{ svc.healthcheck.start_period }}
+{% endif %}
+{% endif %}
+    restart: {{ svc.restart }}
+{% if svc.read_only %}
+    # Read-only root filesystem: the container may not modify its own image
+    # layers, so a compromised process cannot drop a payload on disk.
+    read_only: true
+{% endif %}
+{% if svc.tmpfs %}
+    # Size-capped writable temp dir — required alongside read_only because
+    # parts of the Python stdlib and several libraries need a real /tmp.
+    tmpfs:
+{% for mount in svc.tmpfs %}
+      - {{ mount }}
+{% endfor %}
+{% endif %}
+    security_opt:
+      - no-new-privileges:true
+{% if svc.logging %}
+    # Bounded logs — the default json-file driver grows until the disk is full.
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "{{ svc.logging.max_size }}"
+        max-file: "{{ svc.logging.max_file }}"
+{% endif %}
+{% if svc.deploy %}
+    deploy:
+      resources:
+        limits:
+          memory: {{ svc.deploy.memory }}
+          cpus: "{{ svc.deploy.cpus }}"
+{% endif %}
+{% endmacro %}
