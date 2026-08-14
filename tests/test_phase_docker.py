@@ -766,6 +766,38 @@ class TestScannerParsers:
         context, fix = _build_failure_hint("Temporary failure in name resolution")
         assert "network" in context.lower()
 
+    def test_build_failure_ignores_docker_desktop_dashboard_link(self):
+        """Regression: the desktop-linux builder's trailing dashboard link is
+        not an error and must never be surfaced as the failure explanation.
+        """
+        from kaira.commands.docker_cmd import _build_failure_hint
+
+        output = (
+            "#4 [builder 2/5] RUN apt-get update && apt-get install -y gcc\n"
+            "#4 ERROR: process did not complete successfully: exit code: 100\n"
+            "\n"
+            'ERROR: failed to solve: process "/bin/sh -c apt-get update && '
+            'apt-get install -y gcc" did not complete successfully: exit code: 100\n'
+            "View build details: docker-desktop://dashboard/build/desktop-linux/"
+            "desktop-linux/imtl37956ckwyt9lp7gd8we6j\n"
+        )
+        context, fix = _build_failure_hint(output)
+        assert "docker-desktop://" not in context
+        assert "View build details" not in context
+        assert "exit code: 100" in context
+        assert fix
+
+    def test_build_failure_falls_back_when_no_error_line_present(self):
+        from kaira.commands.docker_cmd import _build_failure_hint
+
+        output = (
+            "Successfully built abc123\n"
+            "View build details: docker-desktop://dashboard/build/x/y/z\n"
+        )
+        context, _ = _build_failure_hint(output)
+        assert "docker-desktop://" not in context
+        assert context == "Successfully built abc123"
+
 
 # ---------------------------------------------------------------------------
 # Commands that talk to a Docker daemon — mocked, so these run without one.

@@ -10,6 +10,7 @@ file, pre-flight checks, drift detection, and CI-compatible scan exit codes.
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess  # nosec B404 - the whole point of this module is driving docker
 import time
@@ -349,14 +350,35 @@ _BUILD_HINTS: list[tuple[str, str, str]] = [
 ]
 
 
+_BUILD_NOISE_RE = re.compile(
+    r"view build details:|docker-desktop://|^#\d+ ", re.IGNORECASE
+)
+"""Lines that are never the actual error.
+
+The Docker Desktop `desktop-linux` builder ends failed output with a link to
+open the GUI dashboard rather than the error itself, and BuildKit prefixes
+every progress line with a `#<step>` marker — both would otherwise look like
+"the last line" and get surfaced as if they explained the failure.
+"""
+
+
 def _build_failure_hint(output: str) -> tuple[str, str]:
     """Map raw Docker build output to ``(explanation, fix)``."""
     lowered = output.lower()
     for needle, context, fix in _BUILD_HINTS:
         if needle in lowered:
             return context, fix
-    lines = [line for line in output.strip().splitlines() if line.strip()]
-    detail = lines[-1] if lines else "Docker build failed."
+
+    lines = [
+        line.strip()
+        for line in output.strip().splitlines()
+        if line.strip() and not _BUILD_NOISE_RE.search(line)
+    ]
+    # BuildKit reports the real cause on an "ERROR:" line, usually followed by
+    # noise (the dashboard link) or blank lines — so the last ERROR line beats
+    # whatever line happens to be last.
+    error_lines = [line for line in lines if "error" in line.lower()]
+    detail = (error_lines or lines or ["Docker build failed."])[-1]
     return detail[:200], "kaira docker build --verbose"
 
 
