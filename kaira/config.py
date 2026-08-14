@@ -113,6 +113,14 @@ class KairaConfig:
     task_enabled: bool = False  # Celery background tasks initialised
     search_provider: str = ""  # elasticsearch | meilisearch | ""
     monitor_provider: str = ""  # sentry | datadog | newrelic | ""
+    # Monitoring surface (`kaira monitor init`).  Recorded per feature rather
+    # than as one boolean so `monitor status` and Docker rendering can tell a
+    # metrics-only project apart from one that also runs the mini dashboard.
+    monitor_metrics: bool = False  # core/metrics.py + GET /metrics scaffolded
+    monitor_probes: bool = False  # /healthz + /readyz scaffolded (/health untouched)
+    monitor_dashboard: bool = False  # /_kaira/monitor mini dashboard scaffolded
+    monitor_dashboard_auth: str = ""  # reuse | token | "" (dashboard disabled)
+    monitor_json_logs: bool = False  # logger understands KAIRA_LOG_FORMAT=json
     docker_enabled: bool = False  # Dockerfile has been scaffolded
     docker_compose: bool = False  # compose files are part of the surface
     docker_python: str = ""  # Python version pinned in the Dockerfile

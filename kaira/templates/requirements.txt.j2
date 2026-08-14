@@ -34,3 +34,9 @@ sqlalchemy[asyncio]>=2.0.36,<3.0.0
 aiosqlite>=0.20.0
 alembic>=1.14.0
 {% endif %}
+{% if monitor_metrics %}
+
+# Monitoring (kaira monitor init) — in-process metrics for GET /metrics.
+# The app still boots without it; only /metrics goes quiet.
+prometheus-client>=0.20.0
+{% endif %}

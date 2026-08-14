@@ -166,6 +166,7 @@ class ProjectState:
     task: bool = False
     search: str = ""
     monitor: str = ""
+    metrics: bool = False
 
     @property
     def needs_db_service(self) -> bool:
@@ -220,6 +221,16 @@ def detect_monitor(root: Path) -> str:
     return ""
 
 
+def detect_metrics(root: Path) -> bool:
+    """True when Kaira's own in-process metrics have been scaffolded in *root*.
+
+    Distinct from :func:`detect_monitor`, which reports a *third-party* provider.
+    A project can have either, both, or neither: ``kaira monitor init`` needs no
+    account, and ``kaira integrate --provider monitor/sentry`` needs no metrics.
+    """
+    return (root / "core" / "metrics.py").is_file()
+
+
 def slugify_project_name(name: str) -> str:
     """Return the Docker-safe project slug for *name*.
 
@@ -268,6 +279,7 @@ def resolve_state(
         task=bool(getattr(cfg, "task_enabled", False)) or detect_task(root),
         search=(getattr(cfg, "search_provider", "") or detect_search(root)).lower(),
         monitor=(getattr(cfg, "monitor_provider", "") or detect_monitor(root)).lower(),
+        metrics=bool(getattr(cfg, "monitor_metrics", False)) or detect_metrics(root),
     )
 
 
@@ -729,6 +741,8 @@ def enabled_features(state: ProjectState) -> list[str]:
         features.append("tasks (Celery)")
     if state.search:
         features.append(f"search ({state.search})")
+    if state.metrics:
+        features.append("metrics (/metrics)")
     if state.monitor:
         features.append(f"monitoring ({state.monitor})")
     return features
@@ -761,6 +775,7 @@ class DockerContext:
             "task": self.state.task,
             "search": self.state.search,
             "monitor": self.state.monitor,
+            "metrics": self.state.metrics,
             "env": self.env,
             "env_file": _env_file(self.env),
             "services": self.services,

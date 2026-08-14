@@ -1,0 +1,162 @@
+"""
+core/monitor_sdk.py
+
+{{ provider_label }} initialisation for {{ project_name }}.
+
+``kaira integrate --provider monitor/{{ provider }}`` installs the SDK and writes
+the env keys; this module is the part that actually *starts* it. Call
+:func:`init_monitoring` once from the ``lifespan`` startup block in ``main.py``.
+
+Entirely opt-in
+---------------
+Nothing in Kaira's monitoring tier needs this file. ``/metrics``, ``/healthz``,
+``/readyz`` and the mini dashboard are in-process and account-free; a project
+that never runs ``kaira integrate --provider monitor/...`` is not affected by
+anything here.
+
+Cost-conscious by default
+-------------------------
+{{ provider_label }} is a paid service with a metered free tier, and the fastest
+way to a surprise invoice is a default of "send everything". Performance traces
+are therefore sampled at ``settings.MONITOR_TRACES_SAMPLE_RATE`` — {{ dev_rate }}
+in development, {{ prod_rate }} in production — read from settings, never
+hardcoded here, so tuning it is a config change rather than a code change.
+Error events are not sampled: an exception you never see is worse than an
+exception you pay a fraction of a cent for.
+
+Safety
+------
+* A missing credential means monitoring stays off and the app boots normally.
+  An observability tool must never be the reason a service fails to start.
+* The credential is read from ``settings`` and never logged. The startup log
+  line reports that {{ provider_label }} is enabled and at what sample rate —
+  not the key.
+"""
+
+from __future__ import annotations
+
+from config.settings import settings
+from core.logger import detail, logger
+
+
+def _sample_rate() -> float:
+    """Return the configured trace sample rate, clamped to ``0.0..1.0``."""
+    try:
+        rate = float(getattr(settings, "MONITOR_TRACES_SAMPLE_RATE", {{ prod_rate }}))
+    except (TypeError, ValueError):
+        rate = {{ prod_rate }}
+    return min(1.0, max(0.0, rate))
+
+
+def init_monitoring() -> bool:
+    """Initialise the {{ provider_label }} SDK for this process.
+
+    Safe to call unconditionally: it returns ``False`` and logs one line when the
+    credential is absent or the SDK is not installed.
+
+    Returns:
+        True when the SDK was initialised.
+    """
+{% if provider == "sentry" %}
+    dsn = (getattr(settings, "SENTRY_DSN", "") or "").strip()
+    if not dsn:
+        logger.debug("Sentry not initialised — SENTRY_DSN is not set")
+        return False
+
+    try:
+        import sentry_sdk
+        from sentry_sdk.integrations.fastapi import FastApiIntegration
+        from sentry_sdk.integrations.starlette import StarletteIntegration
+    except ImportError:
+        logger.warning("SENTRY_DSN is set but sentry-sdk is not installed")
+        return False
+
+    rate = _sample_rate()
+    sentry_sdk.init(
+        dsn=dsn,
+        environment=settings.APP_ENV,
+        # Errors are always reported; only performance traces are sampled.
+        traces_sample_rate=rate,
+        # PII stays out by default. Turning this on sends request bodies,
+        # headers and user identifiers to a third party — an explicit decision,
+        # never a generated default.
+        send_default_pii=False,
+        integrations=[StarletteIntegration(), FastApiIntegration()],
+    )
+{% elif provider == "datadog" %}
+    api_key = (getattr(settings, "DATADOG_API_KEY", "") or "").strip()
+    if not api_key:
+        logger.debug("Datadog not initialised — DATADOG_API_KEY is not set")
+        return False
+
+    try:
+        import datadog
+    except ImportError:
+        logger.warning("DATADOG_API_KEY is set but the datadog SDK is not installed")
+        return False
+
+    rate = _sample_rate()
+    datadog.initialize(
+        api_key=api_key,
+        app_key=(getattr(settings, "DATADOG_APP_KEY", "") or "").strip() or None,
+    )
+
+    # `datadog` is the metrics/API client. APM tracing is a separate package
+    # (`ddtrace`), so it is wired only when it is actually present rather than
+    # made a hard requirement of enabling Datadog at all.
+    try:
+        import os
+
+        from ddtrace import config as dd_config
+        from ddtrace import patch_all
+
+        os.environ.setdefault("DD_TRACE_SAMPLE_RATE", str(rate))
+        dd_config.env = settings.APP_ENV
+        dd_config.service = settings.APP_NAME
+        patch_all()
+    except ImportError:
+        logger.debug("ddtrace not installed — Datadog metrics only, no APM traces")
+{% elif provider == "newrelic" %}
+    license_key = (getattr(settings, "NEW_RELIC_LICENSE_KEY", "") or "").strip()
+    if not license_key:
+        logger.debug("New Relic not initialised — NEW_RELIC_LICENSE_KEY is not set")
+        return False
+
+    try:
+        import os
+
+        import newrelic.agent
+    except ImportError:
+        logger.warning(
+            "NEW_RELIC_LICENSE_KEY is set but the newrelic agent is not installed"
+        )
+        return False
+
+    rate = _sample_rate()
+    # The agent is configured from the environment rather than a newrelic.ini,
+    # so a container needs no extra file mounted to report correctly.
+    os.environ.setdefault("NEW_RELIC_LICENSE_KEY", license_key)
+    os.environ.setdefault("NEW_RELIC_APP_NAME", settings.APP_NAME)
+    os.environ.setdefault("NEW_RELIC_ENVIRONMENT", settings.APP_ENV)
+    # New Relic samples adaptively rather than by a fixed rate; the ceiling on
+    # stored span events is the knob that maps to billed volume, so the
+    # configured rate scales it against the agent's 2000-event default.
+    os.environ.setdefault(
+        "NEW_RELIC_SPAN_EVENTS_MAX_SAMPLES_STORED", str(int(2000 * rate))
+    )
+
+    try:
+        newrelic.agent.initialize()
+    except Exception as exc:  # noqa: BLE001 - never fail startup over telemetry
+        logger.warning(f"New Relic agent could not start: {type(exc).__name__}")
+        return False
+{% endif %}
+
+    logger.success(
+        "{{ provider_label }} monitoring enabled"
+        + detail(environment=settings.APP_ENV, traces_sample_rate=rate)
+    )
+    return True
+
+
+__all__ = ["init_monitoring"]

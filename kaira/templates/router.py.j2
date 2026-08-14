@@ -35,6 +35,15 @@ from auth.dependencies import get_current_user
 {% endif %}
 
 
+KAIRA_MODEL = "{{ model_name }}"
+"""The model this router serves.
+
+One constant, read by the metrics middleware to attribute requests to a model
+rather than to a URL prefix — which is the thing a generic monitoring tool
+cannot do, because it never saw the model definition. Nothing in this router
+reads it, and a project without monitoring scaffolded ignores it entirely.
+"""
+
 router = APIRouter(
     prefix="/{{ snake_name }}s",
     tags=["{{ model_name }}"],

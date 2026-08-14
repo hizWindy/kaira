@@ -1,0 +1,789 @@
+"""
+core/metrics.py
+
+In-process application metrics for {{ project_name }}.
+
+No external service is required — this module only *exposes numbers*; scraping
+or visualising them is the operator's choice. Two consumers read from here:
+
+* ``GET {{ metrics_route }}`` renders the Prometheus counters and histogram.
+* ``GET {{ monitor_namespace }}/data`` renders the in-memory rolling window that
+  backs the mini dashboard.
+
+Scope — read this before trusting the dashboard numbers
+-------------------------------------------------------
+**The rolling window is per-process.** Every counter, percentile and top-route
+list below lives in this worker's memory and dies with it. Under a single
+uvicorn worker (development, and small single-container deployments) the numbers
+are the whole truth. Under ``gunicorn -w 4`` you are looking at whichever worker
+answered the dashboard request — roughly a quarter of your traffic, not a
+quarter-scale copy of it.
+
+The Prometheus side has the same property, and that is fine: a scraper hits every
+replica and aggregates. It is the dashboard's single-process view that would
+mislead, so it says so on its own face rather than quietly averaging.
+
+Aggregating across workers needs a shared backend (Redis-backed counters, or
+``prometheus_client``'s multiprocess mode). That is deliberately not built here.
+
+Privacy
+-------
+Labels carry the **route template** (``/api/{{ api_version }}/users/{uuid}``),
+never the concrete path — a label per user id is an unbounded label set, which
+takes down the metrics backend before it tells you anything. No request bodies,
+no headers, no query strings, no user identifiers are recorded anywhere in this
+module.
+"""
+
+from __future__ import annotations
+
+import os
+import random
+import time
+from collections import deque
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Deque, Iterable, Optional
+
+# ── Prometheus client (optional at runtime) ──────────────────────────────────
+#
+# The dependency is declared in requirements.txt, but the app must still boot if
+# it is missing — losing /metrics is an inconvenience, refusing to start is an
+# outage. The no-op shims below keep every call site unconditional.
+
+try:
+    from prometheus_client import (  # type: ignore[import]
+        CONTENT_TYPE_LATEST,
+        Counter,
+        Histogram,
+        generate_latest,
+    )
+
+    PROMETHEUS_AVAILABLE = True
+except ImportError:  # pragma: no cover - exercised only without the dependency
+    PROMETHEUS_AVAILABLE = False
+    CONTENT_TYPE_LATEST = "text/plain; charset=utf-8"
+
+    class _NoopMetric:
+        """Stand-in that accepts every prometheus_client call and records nothing."""
+
+        def labels(self, *_: object, **__: object) -> "_NoopMetric":
+            return self
+
+        def inc(self, *_: object, **__: object) -> None:
+            return None
+
+        def observe(self, *_: object, **__: object) -> None:
+            return None
+
+    def Counter(*_: object, **__: object) -> _NoopMetric:  # type: ignore[misc]
+        return _NoopMetric()
+
+    def Histogram(*_: object, **__: object) -> _NoopMetric:  # type: ignore[misc]
+        return _NoopMetric()
+
+    def generate_latest(*_: object, **__: object) -> bytes:  # type: ignore[misc]
+        return b"# prometheus_client is not installed\n"
+
+
+# ── Prometheus metrics ───────────────────────────────────────────────────────
+
+REQUEST_COUNT = Counter(
+    "kaira_requests_total", "Total requests", ["method", "path", "status"]
+)
+REQUEST_LATENCY = Histogram(
+    "kaira_request_duration_seconds", "Request latency", ["method", "path"]
+)
+ERROR_COUNT = Counter(
+    "kaira_errors_total", "Total error responses", ["method", "path", "status"]
+)
+
+
+def render_prometheus() -> tuple[bytes, str]:
+    """Return ``(body, content_type)`` in Prometheus exposition format."""
+    return generate_latest(), CONTENT_TYPE_LATEST
+
+
+# ── Tunables ─────────────────────────────────────────────────────────────────
+
+WINDOW_MINUTES = {{ window_minutes }}
+"""Per-minute buckets retained. One hour of history at ~1 KB per bucket."""
+
+BASELINE_DAYS = {{ baseline_days }}
+"""Daily p95 buckets kept per route for the self-baseline anomaly flag."""
+
+ANOMALY_FACTOR = {{ anomaly_factor }}
+"""How far above its own baseline a route's p95 must run before it is flagged."""
+
+MAX_ROUTES = 200
+"""Distinct route templates tracked before the rest collapse into ``other``.
+
+A second cardinality backstop: the middleware already labels by route template,
+but a project that mounts a catch-all path would otherwise grow this dict until
+the process runs out of memory.
+"""
+
+MAX_SAMPLES_PER_BUCKET = 512
+"""Latency samples retained per minute, per route. Beyond this the bucket
+reservoir-samples, so percentiles stay representative at bounded cost."""
+
+SECURITY_FEED_SIZE = 50
+"""Recent auth/rate-limit events kept for the dashboard's security panel."""
+
+STORAGE_CHECK_TTL_SECONDS = 900
+"""Minimum gap between database-size queries — this is a periodic check, never
+a per-request one."""
+
+STORAGE_HISTORY = 30
+"""Size samples retained for the linear growth projection."""
+
+OTHER_ROUTE = "other"
+UNKNOWN_MODEL = "unattributed"
+
+_STARTED_AT = time.time()
+
+_HISTORY_PATH = Path(".kaira") / "history.jsonl"
+_CHANGE_MARKER_COMMANDS = frozenset(
+    {
+{% for command in change_marker_commands %}
+        "{{ command }}",
+{% endfor %}
+    }
+)
+
+
+# ── Percentile helper ────────────────────────────────────────────────────────
+
+
+def percentile(samples: list[float], fraction: float) -> float:
+    """Return the *fraction* percentile of *samples* by nearest rank.
+
+    Nearest rank rather than interpolation: with the small per-minute sample
+    counts a single service usually sees, an interpolated p99 invents a value
+    that no request actually experienced.
+
+    Args:
+        samples: Durations in seconds; may be unsorted. Empty returns ``0.0``.
+        fraction: Target quantile in ``0..1`` (``0.95`` for p95).
+
+    Returns:
+        The sampled duration in seconds.
+    """
+    if not samples:
+        return 0.0
+    ordered = sorted(samples)
+    index = max(0, min(len(ordered) - 1, int(round(fraction * len(ordered))) - 1))
+    return ordered[index]
+
+
+# ── Rolling window ───────────────────────────────────────────────────────────
+
+
+@dataclass
+class RouteStat:
+    """Per-route traffic inside one minute bucket."""
+
+    count: int = 0
+    errors: int = 0
+    seen: int = 0
+    samples: list[float] = field(default_factory=list)
+
+    def observe(self, duration_s: float, is_error: bool) -> None:
+        """Record one completed request against this route."""
+        self.count += 1
+        self.seen += 1
+        if is_error:
+            self.errors += 1
+        if len(self.samples) < MAX_SAMPLES_PER_BUCKET:
+            self.samples.append(duration_s)
+            return
+        # Reservoir sampling keeps the retained set an unbiased sample of the
+        # whole minute instead of only its first 512 requests.
+        slot = random.randrange(self.seen)  # nosec B311 - sampling, not security
+        if slot < MAX_SAMPLES_PER_BUCKET:
+            self.samples[slot] = duration_s
+
+
+@dataclass
+class Bucket:
+    """One minute of traffic."""
+
+    minute: int
+    count: int = 0
+    errors: int = 0
+    routes: dict[str, RouteStat] = field(default_factory=dict)
+    models: dict[str, list[int]] = field(default_factory=dict)
+    security: dict[str, int] = field(default_factory=dict)
+    samples: list[float] = field(default_factory=list)
+    seen: int = 0
+
+    def observe(
+        self, route: str, model: str, duration_s: float, is_error: bool
+    ) -> None:
+        """Record one completed request into this bucket."""
+        self.count += 1
+        self.seen += 1
+        if is_error:
+            self.errors += 1
+
+        if len(self.samples) < MAX_SAMPLES_PER_BUCKET:
+            self.samples.append(duration_s)
+        else:
+            slot = random.randrange(self.seen)  # nosec B311 - sampling, not security
+            if slot < MAX_SAMPLES_PER_BUCKET:
+                self.samples[slot] = duration_s
+
+        if route not in self.routes and len(self.routes) >= MAX_ROUTES:
+            route = OTHER_ROUTE
+        self.routes.setdefault(route, RouteStat()).observe(duration_s, is_error)
+
+        entry = self.models.setdefault(model, [0, 0])
+        entry[0] += 1
+        if is_error:
+            entry[1] += 1
+
+
+class MetricsWindow:
+    """A bounded, in-memory view of recent traffic.
+
+    Everything the dashboard shows is derived from this object. It is
+    intentionally simple: a deque of per-minute buckets, plus a small amount of
+    per-route daily history for the anomaly baseline.
+
+    Not thread-safe by lock, and deliberately so — the operations are single
+    ``dict``/``list`` mutations under CPython's GIL, and a lock on the hot path
+    of every request is a real cost to pay for a monitoring nicety. A lost
+    increment under extreme concurrency skews a dashboard tile; it does not
+    corrupt state.
+    """
+
+    def __init__(self) -> None:
+        self._buckets: Deque[Bucket] = deque(maxlen=WINDOW_MINUTES)
+        self._baselines: dict[str, Deque[tuple[str, float]]] = {}
+        self._daily: dict[str, tuple[str, list[float]]] = {}
+        self._security_feed: Deque[dict[str, Any]] = deque(maxlen=SECURITY_FEED_SIZE)
+        self._total_requests = 0
+        self._total_errors = 0
+
+    # -- recording ---------------------------------------------------------
+
+    def _current(self) -> Bucket:
+        """Return the bucket for the current minute, rotating when it turns."""
+        minute = int(time.time() // 60)
+        if not self._buckets or self._buckets[-1].minute != minute:
+            self._buckets.append(Bucket(minute=minute))
+        return self._buckets[-1]
+
+    def record(
+        self,
+        method: str,
+        route: str,
+        status: int,
+        duration_s: float,
+        model: str = UNKNOWN_MODEL,
+    ) -> None:
+        """Record one completed request.
+
+        Args:
+            method: HTTP method.
+            route: Route *template* — never a path containing real ids.
+            status: Response status code.
+            duration_s: Handling time in seconds, taken from the timing the
+                security middleware already computed for ``X-Response-Time``.
+            model: Owning model name, resolved from the router's metadata.
+        """
+        is_error = status >= 400
+        self._total_requests += 1
+        if is_error:
+            self._total_errors += 1
+
+        key = f"{method} {route}"
+        self._current().observe(key, model or UNKNOWN_MODEL, duration_s, is_error)
+        self._record_daily(key, duration_s)
+
+        if status in (401, 403):
+            self._record_security("auth_failed" if status == 401 else "forbidden", key)
+        elif status == 429:
+            self._record_security("rate_limited", key)
+
+    def _record_security(self, kind: str, route: str) -> None:
+        """Count a security-relevant response the app already produced.
+
+        This is a *feed*, not a detector: the auth guard returns the 401 and
+        slowapi returns the 429 exactly as before, and this counts them.
+        """
+        bucket = self._current()
+        bucket.security[kind] = bucket.security.get(kind, 0) + 1
+        self._security_feed.append(
+            {
+                "kind": kind,
+                "route": route,
+                "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            }
+        )
+
+    def _record_daily(self, route: str, duration_s: float) -> None:
+        """Fold today's samples into the route's rolling daily baseline."""
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        day, samples = self._daily.get(route, (today, []))
+        if day != today:
+            # The day rolled over: freeze yesterday's p95 into the baseline.
+            history = self._baselines.setdefault(route, deque(maxlen=BASELINE_DAYS))
+            history.append((day, percentile(samples, 0.95)))
+            day, samples = today, []
+        if len(samples) < MAX_SAMPLES_PER_BUCKET:
+            samples.append(duration_s)
+        self._daily[route] = (day, samples)
+
+    # -- reading -----------------------------------------------------------
+
+    @property
+    def uptime_seconds(self) -> float:
+        """Seconds since this process imported the metrics module."""
+        return time.time() - _STARTED_AT
+
+    def _recent(self, minutes: int) -> list[Bucket]:
+        """Return the buckets covering the last *minutes* minutes."""
+        cutoff = int(time.time() // 60) - minutes
+        return [bucket for bucket in self._buckets if bucket.minute > cutoff]
+
+    def timeline(self) -> list[dict[str, Any]]:
+        """Return per-minute request/error/p95 points, oldest first."""
+        return [
+            {
+                "minute": bucket.minute * 60,
+                "count": bucket.count,
+                "errors": bucket.errors,
+                "p95_ms": round(percentile(bucket.samples, 0.95) * 1000, 2),
+            }
+            for bucket in self._buckets
+        ]
+
+    def latency(self, minutes: int = WINDOW_MINUTES) -> dict[str, float]:
+        """Return p50/p95/p99 in milliseconds over the last *minutes*."""
+        samples: list[float] = []
+        for bucket in self._recent(minutes):
+            samples.extend(bucket.samples)
+        return {
+            "p50_ms": round(percentile(samples, 0.50) * 1000, 2),
+            "p95_ms": round(percentile(samples, 0.95) * 1000, 2),
+            "p99_ms": round(percentile(samples, 0.99) * 1000, 2),
+        }
+
+    def _route_rollup(self, minutes: int) -> dict[str, RouteStat]:
+        """Merge per-bucket route stats across the last *minutes* minutes."""
+        merged: dict[str, RouteStat] = {}
+        for bucket in self._recent(minutes):
+            for name, stat in bucket.routes.items():
+                target = merged.setdefault(name, RouteStat())
+                target.count += stat.count
+                target.errors += stat.errors
+                target.samples.extend(stat.samples)
+        return merged
+
+    def top_routes(
+        self, minutes: int = WINDOW_MINUTES, limit: int = 5
+    ) -> dict[str, list[dict[str, Any]]]:
+        """Return the busiest and the slowest routes in the window."""
+        merged = self._route_rollup(minutes)
+        rows = [
+            {
+                "route": name,
+                "count": stat.count,
+                "errors": stat.errors,
+                "p95_ms": round(percentile(stat.samples, 0.95) * 1000, 2),
+            }
+            for name, stat in merged.items()
+        ]
+        return {
+            "by_traffic": sorted(rows, key=lambda r: -int(r["count"]))[:limit],
+            "by_latency": sorted(rows, key=lambda r: -float(r["p95_ms"]))[:limit],
+        }
+
+    def model_activity(self, minutes: int = WINDOW_MINUTES) -> list[dict[str, Any]]:
+        """Return per-model request and error counts.
+
+        Possible because every generated router declares which model it belongs
+        to — a generic monitoring tool sees ``/api/{{ api_version }}/orders`` and
+        has to be told that it is the Order model.
+        """
+        merged: dict[str, list[int]] = {}
+        for bucket in self._recent(minutes):
+            for name, (count, errors) in bucket.models.items():
+                entry = merged.setdefault(name, [0, 0])
+                entry[0] += count
+                entry[1] += errors
+        rows = [
+            {"model": name, "count": count, "errors": errors}
+            for name, (count, errors) in merged.items()
+        ]
+        return sorted(rows, key=lambda r: -int(r["count"]))
+
+    def anomalies(self, minutes: int = 15) -> list[dict[str, Any]]:
+        """Flag routes running hotter than their own recent baseline.
+
+        No model, no external service, no cross-project comparison: a route is
+        only ever compared against the p95 *it* recorded on previous days, so a
+        route that is legitimately slow never trips the flag by being slow.
+
+        Args:
+            minutes: How much recent traffic counts as "now".
+
+        Returns:
+            One row per flagged route, worst ratio first. Empty until a route
+            has at least one completed day of history.
+        """
+        merged = self._route_rollup(minutes)
+        flagged: list[dict[str, Any]] = []
+        for name, stat in merged.items():
+            history = self._baselines.get(name)
+            if not history:
+                continue
+            baseline = sum(value for _, value in history) / len(history)
+            if baseline <= 0:
+                continue
+            current = percentile(stat.samples, 0.95)
+            if current > baseline * ANOMALY_FACTOR:
+                flagged.append(
+                    {
+                        "route": name,
+                        "current_p95_ms": round(current * 1000, 2),
+                        "baseline_p95_ms": round(baseline * 1000, 2),
+                        "ratio": round(current / baseline, 2),
+                        "days_of_baseline": len(history),
+                    }
+                )
+        return sorted(flagged, key=lambda r: -float(r["ratio"]))
+
+    def security_events(self, minutes: int = WINDOW_MINUTES) -> dict[str, Any]:
+        """Return counts and a recent feed of auth / rate-limit events."""
+        counts: dict[str, int] = {}
+        for bucket in self._recent(minutes):
+            for kind, value in bucket.security.items():
+                counts[kind] = counts.get(kind, 0) + value
+        return {"counts": counts, "recent": list(self._security_feed)[-20:]}
+
+    def totals(self) -> dict[str, Any]:
+        """Return lifetime counters and the window's error rate."""
+        recent = self._recent(WINDOW_MINUTES)
+        windowed = sum(bucket.count for bucket in recent)
+        windowed_errors = sum(bucket.errors for bucket in recent)
+        return {
+            "requests_total": self._total_requests,
+            "errors_total": self._total_errors,
+            "requests_window": windowed,
+            "errors_window": windowed_errors,
+            "error_rate": round(windowed_errors / windowed, 4) if windowed else 0.0,
+        }
+
+    def reset(self) -> None:
+        """Drop every recorded sample. Used by tests, never by the app."""
+        self._buckets.clear()
+        self._baselines.clear()
+        self._daily.clear()
+        self._security_feed.clear()
+        self._total_requests = 0
+        self._total_errors = 0
+
+
+WINDOW = MetricsWindow()
+"""The process-wide window. One per worker — see the module docstring."""
+
+
+def record_request(
+    method: str,
+    route: str,
+    status: int,
+    duration_s: float,
+    model: str = UNKNOWN_MODEL,
+) -> None:
+    """Record one request into both Prometheus and the in-memory window.
+
+    The single entry point the metrics middleware calls, so the two consumers
+    can never disagree about what happened.
+
+    Args:
+        method: HTTP method.
+        route: Route template, e.g. ``/api/{{ api_version }}/users/{uuid}``.
+        status: Response status code.
+        duration_s: Handling time in seconds.
+        model: Owning model name, or :data:`UNKNOWN_MODEL`.
+    """
+    status_label = str(status)
+    REQUEST_COUNT.labels(method=method, path=route, status=status_label).inc()
+    REQUEST_LATENCY.labels(method=method, path=route).observe(duration_s)
+    if status >= 400:
+        ERROR_COUNT.labels(method=method, path=route, status=status_label).inc()
+    WINDOW.record(method, route, status, duration_s, model)
+
+
+# ── Change markers ───────────────────────────────────────────────────────────
+
+
+def change_markers(limit: int = 10) -> list[dict[str, Any]]:
+    """Return recent Kaira operations worth overlaying on the latency timeline.
+
+    Read-only consumption of ``.kaira/history.jsonl``, which the CLI has written
+    since Phase 4. Nothing here writes to it, and a project without the file
+    simply gets an empty overlay.
+
+    Args:
+        limit: Maximum markers to return, newest last.
+
+    Returns:
+        ``[{"command": ..., "at": ...}]`` for the commands that plausibly change
+        runtime behaviour (migrations, model syncs, deploys).
+    """
+    if not _HISTORY_PATH.is_file():
+        return []
+    import json
+
+    markers: list[dict[str, Any]] = []
+    try:
+        lines = _HISTORY_PATH.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return []
+    for line in lines[-500:]:
+        try:
+            record = json.loads(line)
+        except ValueError:
+            continue
+        command = str(record.get("command", ""))
+        if command in _CHANGE_MARKER_COMMANDS:
+            markers.append({"command": command, "at": record.get("timestamp", "")})
+    return markers[-limit:]
+
+
+# ── Storage runway ───────────────────────────────────────────────────────────
+
+_storage_samples: Deque[tuple[float, int]] = deque(maxlen=STORAGE_HISTORY)
+_storage_checked_at = 0.0
+_storage_error = ""
+
+
+def storage_limit_bytes() -> int:
+    """Return the plan's storage ceiling from ``KAIRA_STORAGE_LIMIT_MB``.
+
+    Hosted database plans do not advertise their quota over the wire, so the
+    ceiling is the operator's to declare. Zero means "unknown", and the runway
+    is reported as growth-per-day with no end date rather than a made-up one.
+    """
+    try:
+        return int(float(os.getenv("KAIRA_STORAGE_LIMIT_MB", "0")) * 1024 * 1024)
+    except ValueError:
+        return 0
+
+
+{% if db_type == "mongodb" %}
+async def _measure_storage() -> Optional[int]:
+    """Return the database size in bytes, or ``None`` when unavailable."""
+    try:
+        from core.database import get_database  # type: ignore[import]
+
+        database = get_database()
+        stats = await database.command("dbStats")
+        return int(stats.get("dataSize", 0)) + int(stats.get("indexSize", 0))
+    except Exception:  # noqa: BLE001 - a size probe must never break a request
+        return None
+{% else %}
+_SIZE_QUERIES = {
+    "postgresql": "SELECT pg_database_size(current_database())",
+    "mysql": (
+        "SELECT COALESCE(SUM(data_length + index_length), 0) "
+        "FROM information_schema.tables WHERE table_schema = DATABASE()"
+    ),
+    "sqlite": "SELECT page_count * page_size FROM pragma_page_count(), pragma_page_size()",
+}
+
+
+async def _measure_storage() -> Optional[int]:
+    """Return the database size in bytes, or ``None`` when unavailable."""
+    try:
+        from sqlalchemy import text
+
+        from core.database import engine  # type: ignore[import]
+
+        dialect = engine.dialect.name.lower()
+        statement = _SIZE_QUERIES.get(
+            "postgresql"
+            if dialect.startswith("postgres")
+            else "mysql"
+            if dialect.startswith(("mysql", "maria"))
+            else "sqlite"
+        )
+        if not statement:
+            return None
+        async with engine.connect() as connection:
+            result = await connection.execute(text(statement))
+            value = result.scalar()
+        return int(value) if value is not None else None
+    except Exception:  # noqa: BLE001 - a size probe must never break a request
+        return None
+{% endif %}
+
+
+async def storage_runway(force: bool = False) -> dict[str, Any]:
+    """Return current database size and a linear projection to the plan limit.
+
+    Deliberately *periodic*, not per-request: the query is skipped unless
+    ``STORAGE_CHECK_TTL_SECONDS`` have passed since the last one, so loading the
+    dashboard repeatedly costs one query per quarter hour, not one per refresh.
+
+    The projection is a straight line through the recorded samples. That is the
+    honest model for storage: it answers "if the last few days repeat, when do I
+    run out", and it says nothing at all until it has two samples to draw
+    through.
+
+    Args:
+        force: Run the query even if the TTL has not elapsed.
+
+    Returns:
+        ``{"bytes", "growth_per_day", "days_remaining", "limit_bytes",
+        "samples", "error"}``; ``days_remaining`` is ``None`` when the growth
+        rate is flat or negative, or when no plan limit was declared.
+    """
+    global _storage_checked_at, _storage_error
+
+    now = time.time()
+    if force or now - _storage_checked_at >= STORAGE_CHECK_TTL_SECONDS:
+        _storage_checked_at = now
+        size = await _measure_storage()
+        if size is None:
+            _storage_error = "database size is not readable for this engine"
+        else:
+            _storage_error = ""
+            _storage_samples.append((now, size))
+
+    limit = storage_limit_bytes()
+    current = _storage_samples[-1][1] if _storage_samples else 0
+    growth_per_day: Optional[float] = None
+    days_remaining: Optional[float] = None
+
+    if len(_storage_samples) >= 2:
+        (first_at, first_size), (last_at, last_size) = (
+            _storage_samples[0],
+            _storage_samples[-1],
+        )
+        elapsed_days = (last_at - first_at) / 86400
+        if elapsed_days > 0:
+            growth_per_day = (last_size - first_size) / elapsed_days
+            if limit and growth_per_day > 0:
+                days_remaining = max(0.0, (limit - last_size) / growth_per_day)
+
+    return {
+        "bytes": current,
+        "limit_bytes": limit,
+        "growth_per_day": growth_per_day,
+        "days_remaining": days_remaining,
+        "samples": len(_storage_samples),
+        "error": _storage_error,
+    }
+
+
+# ── Dependency health ────────────────────────────────────────────────────────
+
+
+async def dependency_health() -> dict[str, str]:
+    """Return a coarse ``ok``/``unavailable`` per dependency.
+
+    The same checks ``{{ readiness_route }}`` runs, reported for the dashboard's
+    dependency tile. Never returns a DSN, a host, or an exception message — a
+    dashboard behind an auth gate is still not the place to leak a connection
+    string.
+    """
+    status: dict[str, str] = {}
+
+    try:
+{% if db_type == "mongodb" %}
+        from core.database import get_database  # type: ignore[import]
+
+        await get_database().command("ping")
+{% else %}
+        from sqlalchemy import text
+
+        from core.database import engine  # type: ignore[import]
+
+        async with engine.connect() as connection:
+            await connection.execute(text("SELECT 1"))
+{% endif %}
+        status["database"] = "ok"
+    except Exception:  # noqa: BLE001 - the probe reports, it does not raise
+        status["database"] = "unavailable"
+
+{% if cache_enabled %}
+    try:
+        from core.cache import cache_status  # type: ignore[import]
+
+        result = await cache_status()
+        status["cache"] = "ok" if result.get("connected") else "unavailable"
+    except Exception:  # noqa: BLE001 - the probe reports, it does not raise
+        status["cache"] = "unavailable"
+{% endif %}
+
+    return status
+
+
+# ── Dashboard payload ────────────────────────────────────────────────────────
+
+
+async def dashboard_payload() -> dict[str, Any]:
+    """Assemble everything ``GET {{ monitor_namespace }}/data`` returns.
+
+    Returns:
+        A JSON-serialisable dict. ``scope`` is included on purpose so any client
+        of this endpoint carries the single-worker caveat with the data.
+    """
+    return {
+        "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "uptime_seconds": round(WINDOW.uptime_seconds, 1),
+        "scope": {
+            "process_id": os.getpid(),
+            "window_minutes": WINDOW_MINUTES,
+            "note": (
+                "In-memory, per-process. Under multiple workers this is one "
+                "worker's view, not an aggregate."
+            ),
+        },
+        "totals": WINDOW.totals(),
+        "latency": WINDOW.latency(),
+        "timeline": WINDOW.timeline(),
+        "routes": WINDOW.top_routes(),
+        "models": WINDOW.model_activity(),
+        "anomalies": WINDOW.anomalies(),
+        "security": WINDOW.security_events(),
+        "dependencies": await dependency_health(),
+        "storage": await storage_runway(),
+        "markers": change_markers(),
+        "prometheus": PROMETHEUS_AVAILABLE,
+    }
+
+
+def iter_route_names() -> Iterable[str]:
+    """Yield every route template currently tracked. Used by tests and tooling."""
+    seen: set[str] = set()
+    for bucket in WINDOW._buckets:  # noqa: SLF001 - same module, internal by design
+        for name in bucket.routes:
+            if name not in seen:
+                seen.add(name)
+                yield name
+
+
+__all__ = [
+    "ANOMALY_FACTOR",
+    "BASELINE_DAYS",
+    "ERROR_COUNT",
+    "PROMETHEUS_AVAILABLE",
+    "REQUEST_COUNT",
+    "REQUEST_LATENCY",
+    "WINDOW",
+    "WINDOW_MINUTES",
+    "MetricsWindow",
+    "change_markers",
+    "dashboard_payload",
+    "dependency_health",
+    "percentile",
+    "record_request",
+    "render_prometheus",
+    "storage_runway",
+]

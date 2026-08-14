@@ -232,6 +232,13 @@ def integrate_add(
         set_config_values(search_provider=prov)
     elif cat == "monitor":
         set_config_values(monitor_provider=prov)
+        # The generated service.py is generic boilerplate — it never called the
+        # provider's init(). This wires the real SDK startup, with a
+        # cost-conscious default sample rate, through the standard diff/confirm
+        # prompt so main.py is never rewritten silently.
+        from kaira.commands.monitor_cmd import wire_provider_sdk
+
+        wire_provider_sdk(output_root, prov, quiet=quiet)
     maybe_autosync(quiet=quiet)
 
 

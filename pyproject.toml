@@ -44,6 +44,10 @@ dev = [
     "ruff>=0.4.0",
     "bandit>=1.7.0",
     "PyYAML>=6.0.0",
+    # Not a Kaira runtime dependency — a *generated* project declares it. Kept
+    # here so the monitoring tests exercise the real exposition path rather than
+    # only the no-op shim core/metrics.py falls back to.
+    "prometheus-client>=0.20.0",
 ]
 cache = [
     "redis>=5.0.0",

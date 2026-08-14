@@ -34,11 +34,26 @@ Environment
                       richer, single line per request.
 ``KAIRA_DIAGNOSE``    ``1``/``0`` to force Loguru's variable-value tracebacks on
                       or off. Defaults to on outside production.
+``KAIRA_LOG_FORMAT``  ``json`` switches the sink to one JSON object per line,
+                      **still on stdout**. Default is the human-readable format
+                      above, so setting nothing changes nothing.
 ``NO_COLOR``          Standard opt-out; also implied when stdout is not a TTY.
+
+Structured output
+-----------------
+``KAIRA_LOG_FORMAT=json`` is how you ship these logs to a platform's aggregator
+— Railway, Render, Fly, CloudWatch, Loki. They all capture the process's stdout,
+so a JSON *formatter* is all that is needed.
+
+There is no file sink, and there will not be one. A log file inside a container
+is invisible to the platform collecting stdout, grows until it fills the disk,
+and needs rotation config to survive — three problems in exchange for nothing
+the platform does not already do better.
 """
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import sys
@@ -49,6 +64,15 @@ from loguru import logger
 
 LOG_LEVEL = os.getenv("KAIRA_LOG_LEVEL", "INFO").upper()
 APP_ENV = os.getenv("APP_ENV", "development")
+LOG_FORMAT = os.getenv("KAIRA_LOG_FORMAT", "text").strip().lower()
+
+JSON_LOGS = LOG_FORMAT == "json"
+"""One JSON object per line instead of the aligned human format.
+
+A formatter switch on the existing stdout sink — not a second sink, and never a
+file. Colour is disabled implicitly in this mode: ANSI escapes inside a JSON
+string are noise to every aggregator that would read it.
+"""
 
 _ACCESS_LOG = os.getenv("KAIRA_ACCESS_LOG") == "1"
 # Colour when attached to a terminal; FORCE_COLOR keeps it through a pipe (CI,
@@ -180,6 +204,57 @@ def _http_body(extra: dict) -> str:
     return body
 
 
+_JSON_RESERVED = {"kaira_http", "show_id"}
+"""Keys the terminal formatter uses for presentation only — not facts about the
+event, so they are dropped from the structured form rather than shipped."""
+
+
+def _json_line(record: dict) -> str:
+    """Render one record as a single-line JSON object on stdout.
+
+    Field names follow the shape aggregators already index: ``timestamp``,
+    ``level``, ``message``, plus the request fields flat at the top level so a
+    query like ``status:500`` works without a nested path.
+
+    Args:
+        record: Loguru's record dict.
+
+    Returns:
+        The JSON line, newline-terminated.
+    """
+    extra = record["extra"]
+    payload: dict = {
+        "timestamp": record["time"].isoformat(),
+        "level": record["level"].name,
+        "message": record["message"],
+        "logger": record["name"],
+    }
+
+    if extra.get("kaira_http"):
+        payload["event"] = "request"
+        payload["method"] = extra.get("method")
+        payload["path"] = extra.get("path")
+        payload["status"] = extra.get("status")
+        payload["duration_ms"] = round(float(extra.get("duration_ms", 0.0)), 2)
+        payload["request_id"] = extra.get("request_id")
+        payload["client"] = extra.get("client")
+
+    for key, value in extra.items():
+        if key not in _JSON_RESERVED and key not in payload:
+            payload[key] = value
+
+    exception = record.get("exception")
+    if exception is not None:
+        payload["exception"] = {
+            "type": getattr(exception.type, "__name__", str(exception.type)),
+            "value": str(exception.value),
+        }
+
+    # `default=str` keeps a stray datetime or UUID in `extra` from turning a log
+    # line into a serialisation crash inside the logger.
+    return json.dumps(payload, default=str) + "\n"
+
+
 def _formatter(record: dict) -> str:
     """Return the Loguru format string for a single record.
 
@@ -215,18 +290,43 @@ def _formatter(record: dict) -> str:
 
 logger.remove()
 
-logger.add(
-    sys.stdout,
-    format=_formatter,
-    level=LOG_LEVEL,
-    colorize=_COLOR,
-    enqueue=True,
-    # `backtrace` extends a traceback with the frames *above* the catch point —
-    # for a web request that is ~20 identical lines of runpy/click/asyncio before
-    # anything about this application appears. Reserved for --debug.
-    backtrace=is_debug(),
-    diagnose=DIAGNOSE,
-)
+
+def _json_sink(message: object) -> None:
+    """Write one structured record to stdout.
+
+    A sink rather than a format string: Loguru's formatter path adds its own
+    newline and exception block, which would append a traceback *after* the JSON
+    object and break every line-oriented parser downstream.
+    """
+    sys.stdout.write(_json_line(message.record))  # type: ignore[attr-defined]
+
+
+if JSON_LOGS:
+    # Same stdout, same level, same single sink — only the rendering changes.
+    logger.add(
+        _json_sink,
+        level=LOG_LEVEL,
+        enqueue=True,
+        backtrace=is_debug(),
+        # Loguru's `diagnose` prints local variable *values*. Those are already
+        # unacceptable in production; embedding them in a machine-readable line
+        # that gets shipped to a third-party aggregator is strictly worse, so
+        # structured mode never enables it.
+        diagnose=False,
+    )
+else:
+    logger.add(
+        sys.stdout,
+        format=_formatter,
+        level=LOG_LEVEL,
+        colorize=_COLOR,
+        enqueue=True,
+        # `backtrace` extends a traceback with the frames *above* the catch point —
+        # for a web request that is ~20 identical lines of runpy/click/asyncio before
+        # anything about this application appears. Reserved for --debug.
+        backtrace=is_debug(),
+        diagnose=DIAGNOSE,
+    )
 
 
 # ── Request logging ──────────────────────────────────────────────────────────
@@ -389,5 +489,7 @@ __all__ = [
     "status_style",
     "is_debug",
     "INDENT",
+    "JSON_LOGS",
+    "LOG_FORMAT",
     "LOG_LEVEL",
 ]

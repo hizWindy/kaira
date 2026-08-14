@@ -64,6 +64,9 @@ from kaira.commands.export_cmd import app as export_app
 # ── Phase 7.5 command apps ───────────────────────────────────────────────────
 from kaira.commands.commands_cmd import app as commands_app
 
+# ── Monitoring phase command apps ────────────────────────────────────────────
+from kaira.commands.monitor_cmd import app as monitor_app
+
 # ── Import standalone command functions ───────────────────────────────────────
 from kaira.commands.project import init_command
 from kaira.commands.info import info_command
@@ -220,6 +223,14 @@ app.add_typer(
     commands_app,
     name="commands",
     help="Index of all available Kaira commands.",
+)
+
+# ── Sub-command groups — Monitoring ───────────────────────────────────────────
+
+app.add_typer(
+    monitor_app,
+    name="monitor",
+    help="Runtime monitoring — metrics, probes, mini dashboard, alerts.",
 )
 
 

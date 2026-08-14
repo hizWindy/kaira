@@ -1,0 +1,601 @@
+"""
+core/monitor_dashboard.py
+
+The self-hosted mini dashboard's HTML for {{ project_name }}.
+
+Separated from the router so the route stays about auth and data, and the view
+stays about presentation. Nothing here talks to the database or the metrics
+window: the page is static HTML that polls
+``{{ monitor_namespace }}/data`` and renders whatever it gets.
+
+Design tokens
+-------------
+:data:`TOKENS` mirrors ``kaira/core/theme.py`` — the same primary/success/
+warning/error/muted roles the CLI uses, expressed as hex so a browser can render
+them. One vocabulary across the terminal and the page: an amber number means the
+same thing in ``kaira monitor status`` as it does here.
+
+The page carries no external requests — no CDN, no font host, no analytics. It
+is served from inside your own application, behind your own auth gate, and it
+should not phone anywhere. It also degrades: ``prefers-color-scheme: light``
+swaps the palette, ``prefers-reduced-motion`` drops the transitions, and a
+browser with JavaScript disabled is told where the raw endpoints are instead of
+being shown an empty shell.
+"""
+
+from __future__ import annotations
+
+DATA_ROUTE = "{{ monitor_namespace }}/data"
+"""Default path the page polls — Kaira's reserved namespace."""
+
+{% raw %}
+TOKENS: dict[str, str] = {
+    # Roles carried over from kaira/core/theme.py's Theme class.
+    "primary": "#22d3ee",
+    "success": "#4ade80",
+    "warning": "#fbbf24",
+    "error": "#f87171",
+    "muted": "#949494",
+    "accent": "#d946ef",
+    # Surfaces. Dark by default — this is an operator's tool, and it is usually
+    # opened next to a terminal.
+    "bg": "#0b0d10",
+    "surface": "#13171d",
+    "border": "#232a33",
+    "text": "#e6e9ee",
+}
+
+LIGHT_TOKENS: dict[str, str] = {
+    "primary": "#0e7490",
+    "success": "#15803d",
+    "warning": "#a16207",
+    "error": "#b91c1c",
+    "muted": "#5b616b",
+    "accent": "#a21caf",
+    "bg": "#f7f8fa",
+    "surface": "#ffffff",
+    "border": "#dfe3e8",
+    "text": "#11151a",
+}
+
+_TOKEN_SLOT = "/*KAIRA_TOKENS*/"  # nosec B105 - a CSS placeholder, not a credential
+_DATA_URL_SLOT = "__KAIRA_DATA_URL__"
+
+_HTML = """<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Kaira Monitor</title>
+<style>
+/*KAIRA_TOKENS*/
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--k-bg);
+  color: var(--k-text);
+  font: 14px/1.5 ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+a { color: var(--k-primary); }
+header {
+  display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
+  padding: 20px 24px 12px;
+  border-bottom: 1px solid var(--k-border);
+}
+h1 { font-size: 16px; margin: 0; color: var(--k-primary); letter-spacing: .04em; }
+.sub { color: var(--k-muted); font-size: 12px; }
+main { padding: 20px 24px 48px; max-width: 1200px; }
+.scope {
+  margin: 0 0 20px; padding: 10px 14px;
+  border: 1px solid var(--k-border); border-left: 3px solid var(--k-warning);
+  border-radius: 4px; color: var(--k-muted); font-size: 12px;
+  background: var(--k-surface);
+}
+.grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+.card {
+  background: var(--k-surface); border: 1px solid var(--k-border);
+  border-radius: 6px; padding: 14px 16px;
+}
+.card .label { color: var(--k-muted); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
+.card .value { font-size: 26px; margin-top: 6px; }
+.card .note { color: var(--k-muted); font-size: 11px; margin-top: 4px; }
+section { margin-top: 28px; }
+section > h2 {
+  font-size: 12px; text-transform: uppercase; letter-spacing: .1em;
+  color: var(--k-muted); margin: 0 0 10px; font-weight: 600;
+}
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th {
+  text-align: left; color: var(--k-muted); font-weight: 500; font-size: 11px;
+  text-transform: uppercase; letter-spacing: .06em;
+  padding: 6px 10px; border-bottom: 1px solid var(--k-border);
+}
+td { padding: 7px 10px; border-bottom: 1px solid var(--k-border); }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+tbody tr:last-child td { border-bottom: 0; }
+.empty { color: var(--k-muted); font-size: 12px; padding: 10px 0; }
+.ok { color: var(--k-success); }
+.warn { color: var(--k-warning); }
+.bad { color: var(--k-error); }
+.dim { color: var(--k-muted); }
+.pill {
+  display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 11px;
+  border: 1px solid currentColor;
+}
+.chart { background: var(--k-surface); border: 1px solid var(--k-border); border-radius: 6px; padding: 12px; }
+svg { display: block; width: 100%; height: 120px; }
+.legend { color: var(--k-muted); font-size: 11px; margin-top: 8px; display: flex; gap: 16px; flex-wrap: wrap; }
+.two { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+.feed { list-style: none; margin: 0; padding: 0; font-size: 12px; }
+.feed li { padding: 5px 0; border-bottom: 1px solid var(--k-border); }
+.feed li:last-child { border-bottom: 0; }
+footer { color: var(--k-muted); font-size: 11px; margin-top: 32px; }
+@media (prefers-reduced-motion: no-preference) {
+  .card, .chart { transition: border-color .2s ease; }
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>&#9889; Kaira Monitor</h1>
+  <span class="sub" id="meta">connecting&hellip;</span>
+</header>
+<main>
+  <p class="scope" id="scope">
+    In-memory metrics are per-process. Under multiple workers this page shows
+    one worker's view, not an aggregate.
+  </p>
+
+  <noscript>
+    <p class="scope">
+      This page renders with JavaScript. Without it, read the raw data directly:
+      <code>__KAIRA_DATA_URL__</code> for JSON, <code>/metrics</code> for
+      Prometheus exposition.
+    </p>
+  </noscript>
+
+  <div class="grid" id="tiles"></div>
+
+  <section>
+    <h2>Latency &amp; traffic &middot; last hour</h2>
+    <div class="chart">
+      <svg id="spark" viewBox="0 0 600 120" preserveAspectRatio="none" role="img"
+           aria-label="Per-minute p95 latency with request volume"></svg>
+      <div class="legend">
+        <span class="ok">&#9472;&#9472; p95 latency</span>
+        <span class="dim">&#9608; requests / min</span>
+        <span class="warn">&#9474; change marker</span>
+      </div>
+    </div>
+  </section>
+
+  <div class="two">
+    <section>
+      <h2>Top routes by traffic</h2>
+      <table><thead><tr>
+        <th>Route</th><th class="num">Reqs</th><th class="num">Errors</th><th class="num">p95</th>
+      </tr></thead><tbody id="traffic"></tbody></table>
+    </section>
+
+    <section>
+      <h2>Top routes by latency</h2>
+      <table><thead><tr>
+        <th>Route</th><th class="num">p95</th><th class="num">Reqs</th>
+      </tr></thead><tbody id="slow"></tbody></table>
+    </section>
+  </div>
+
+  <div class="two">
+    <section>
+      <h2>Model activity</h2>
+      <table><thead><tr>
+        <th>Model</th><th class="num">Reqs</th><th class="num">Errors</th>
+      </tr></thead><tbody id="models"></tbody></table>
+    </section>
+
+    <section>
+      <h2>Baseline anomalies</h2>
+      <table><thead><tr>
+        <th>Route</th><th class="num">Now</th><th class="num">Baseline</th><th class="num">&times;</th>
+      </tr></thead><tbody id="anomalies"></tbody></table>
+    </section>
+  </div>
+
+  <div class="two">
+    <section>
+      <h2>Security events</h2>
+      <div id="security-counts" class="legend"></div>
+      <ul class="feed" id="security"></ul>
+    </section>
+
+    <section>
+      <h2>Dependencies &amp; storage</h2>
+      <table><tbody id="deps"></tbody></table>
+    </section>
+  </div>
+
+  <section>
+    <h2>Recent changes</h2>
+    <ul class="feed" id="markers"></ul>
+  </section>
+
+  <footer id="footer"></footer>
+</main>
+<script>
+(function () {
+  var DATA_URL = "__KAIRA_DATA_URL__";
+  var POLL_MS = 5000;
+  var latest = null;
+
+  function el(id) { return document.getElementById(id); }
+  function text(value) { return document.createTextNode(String(value)); }
+
+  function ms(value) {
+    if (value === null || value === undefined) { return "—"; }
+    if (value >= 1000) { return (value / 1000).toFixed(2) + "s"; }
+    return value.toFixed(1) + "ms";
+  }
+
+  function bytes(value) {
+    if (!value) { return "—"; }
+    var units = ["B", "KB", "MB", "GB", "TB"];
+    var index = 0;
+    var size = value;
+    while (size >= 1024 && index < units.length - 1) { size /= 1024; index += 1; }
+    return size.toFixed(index === 0 ? 0 : 1) + " " + units[index];
+  }
+
+  function duration(seconds) {
+    var s = Math.floor(seconds);
+    var d = Math.floor(s / 86400);
+    var h = Math.floor((s % 86400) / 3600);
+    var m = Math.floor((s % 3600) / 60);
+    if (d) { return d + "d " + h + "h"; }
+    if (h) { return h + "h " + m + "m"; }
+    return m + "m " + (s % 60) + "s";
+  }
+
+  function rateClass(rate) {
+    if (rate >= 0.05) { return "bad"; }
+    if (rate > 0) { return "warn"; }
+    return "ok";
+  }
+
+  function clear(node) { while (node.firstChild) { node.removeChild(node.firstChild); } }
+
+  function cell(value, className) {
+    var td = document.createElement("td");
+    if (className) { td.className = className; }
+    td.appendChild(text(value));
+    return td;
+  }
+
+  function emptyRow(body, span, message) {
+    var tr = document.createElement("tr");
+    var td = document.createElement("td");
+    td.colSpan = span;
+    td.className = "empty";
+    td.appendChild(text(message));
+    tr.appendChild(td);
+    body.appendChild(tr);
+  }
+
+  function tile(label, value, note, className) {
+    var card = document.createElement("div");
+    card.className = "card";
+    var l = document.createElement("div");
+    l.className = "label";
+    l.appendChild(text(label));
+    var v = document.createElement("div");
+    v.className = "value " + (className || "");
+    v.appendChild(text(value));
+    card.appendChild(l);
+    card.appendChild(v);
+    if (note) {
+      var n = document.createElement("div");
+      n.className = "note";
+      n.appendChild(text(note));
+      card.appendChild(n);
+    }
+    return card;
+  }
+
+  function renderTiles(data) {
+    var host = el("tiles");
+    clear(host);
+    var totals = data.totals || {};
+    var latency = data.latency || {};
+    host.appendChild(tile("Uptime", duration(data.uptime_seconds || 0),
+      "pid " + ((data.scope || {}).process_id || "?")));
+    host.appendChild(tile("Requests", totals.requests_window || 0, "last hour"));
+    host.appendChild(tile("Error rate",
+      ((totals.error_rate || 0) * 100).toFixed(2) + "%",
+      (totals.errors_window || 0) + " errors",
+      rateClass(totals.error_rate || 0)));
+    host.appendChild(tile("p50", ms(latency.p50_ms), "median"));
+    host.appendChild(tile("p95", ms(latency.p95_ms), "last hour"));
+    host.appendChild(tile("p99", ms(latency.p99_ms), "last hour"));
+  }
+
+  function renderSpark(data) {
+    var svg = el("spark");
+    clear(svg);
+    var points = data.timeline || [];
+    var W = 600, H = 120, PAD = 8;
+    if (!points.length) {
+      var note = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      note.setAttribute("x", "12");
+      note.setAttribute("y", "64");
+      note.setAttribute("fill", "var(--k-muted)");
+      note.setAttribute("font-size", "12");
+      note.appendChild(text("no traffic recorded yet"));
+      svg.appendChild(note);
+      return;
+    }
+    var maxLatency = 1, maxCount = 1;
+    points.forEach(function (p) {
+      if (p.p95_ms > maxLatency) { maxLatency = p.p95_ms; }
+      if (p.count > maxCount) { maxCount = p.count; }
+    });
+    var step = points.length > 1 ? (W - PAD * 2) / (points.length - 1) : 0;
+
+    points.forEach(function (p, i) {
+      var h = (p.count / maxCount) * (H - PAD * 2) * 0.55;
+      var bar = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+      bar.setAttribute("x", String(PAD + i * step - 1));
+      bar.setAttribute("y", String(H - PAD - h));
+      bar.setAttribute("width", String(Math.max(2, step * 0.6)));
+      bar.setAttribute("height", String(Math.max(0, h)));
+      bar.setAttribute("fill", "var(--k-border)");
+      svg.appendChild(bar);
+    });
+
+    var d = points.map(function (p, i) {
+      var x = PAD + i * step;
+      var y = H - PAD - (p.p95_ms / maxLatency) * (H - PAD * 2);
+      return (i ? "L" : "M") + x.toFixed(1) + " " + y.toFixed(1);
+    }).join(" ");
+    var line = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    line.setAttribute("d", d);
+    line.setAttribute("fill", "none");
+    line.setAttribute("stroke", "var(--k-success)");
+    line.setAttribute("stroke-width", "1.5");
+    svg.appendChild(line);
+
+    // Deploy / change markers: a vertical rule at the minute the command ran,
+    // so "latency jumped right after this migration" is visible rather than
+    // inferred.
+    var first = points[0].minute, last = points[points.length - 1].minute;
+    (data.markers || []).forEach(function (marker) {
+      var at = Date.parse(marker.at) / 1000;
+      if (!at || at < first || at > last || last === first) { return; }
+      var x = PAD + ((at - first) / (last - first)) * (W - PAD * 2);
+      var rule = document.createElementNS("http://www.w3.org/2000/svg", "line");
+      rule.setAttribute("x1", String(x));
+      rule.setAttribute("x2", String(x));
+      rule.setAttribute("y1", String(PAD));
+      rule.setAttribute("y2", String(H - PAD));
+      rule.setAttribute("stroke", "var(--k-warning)");
+      rule.setAttribute("stroke-dasharray", "3 3");
+      var title = document.createElementNS("http://www.w3.org/2000/svg", "title");
+      title.appendChild(text(marker.command + " · " + marker.at));
+      rule.appendChild(title);
+      svg.appendChild(rule);
+    });
+
+    var peak = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    peak.setAttribute("x", String(W - PAD));
+    peak.setAttribute("y", "14");
+    peak.setAttribute("text-anchor", "end");
+    peak.setAttribute("fill", "var(--k-muted)");
+    peak.setAttribute("font-size", "10");
+    peak.appendChild(text("peak p95 " + ms(maxLatency)));
+    svg.appendChild(peak);
+  }
+
+  function renderRoutes(data) {
+    var routes = data.routes || {};
+    var traffic = el("traffic");
+    clear(traffic);
+    (routes.by_traffic || []).forEach(function (row) {
+      var tr = document.createElement("tr");
+      tr.appendChild(cell(row.route));
+      tr.appendChild(cell(row.count, "num"));
+      tr.appendChild(cell(row.errors, "num " + (row.errors ? "bad" : "dim")));
+      tr.appendChild(cell(ms(row.p95_ms), "num"));
+      traffic.appendChild(tr);
+    });
+    if (!(routes.by_traffic || []).length) { emptyRow(traffic, 4, "no requests yet"); }
+
+    var slow = el("slow");
+    clear(slow);
+    (routes.by_latency || []).forEach(function (row) {
+      var tr = document.createElement("tr");
+      tr.appendChild(cell(row.route));
+      tr.appendChild(cell(ms(row.p95_ms), "num"));
+      tr.appendChild(cell(row.count, "num dim"));
+      slow.appendChild(tr);
+    });
+    if (!(routes.by_latency || []).length) { emptyRow(slow, 3, "no requests yet"); }
+  }
+
+  function renderModels(data) {
+    var body = el("models");
+    clear(body);
+    var rows = data.models || [];
+    rows.forEach(function (row) {
+      var tr = document.createElement("tr");
+      tr.appendChild(cell(row.model));
+      tr.appendChild(cell(row.count, "num"));
+      var errCell = cell(row.errors + (row.errors ? "  ⚠" : ""),
+        "num " + (row.errors ? "warn" : "dim"));
+      tr.appendChild(errCell);
+      body.appendChild(tr);
+    });
+    if (!rows.length) { emptyRow(body, 3, "no model traffic yet"); }
+  }
+
+  function renderAnomalies(data) {
+    var body = el("anomalies");
+    clear(body);
+    var rows = data.anomalies || [];
+    rows.forEach(function (row) {
+      var tr = document.createElement("tr");
+      tr.appendChild(cell(row.route));
+      tr.appendChild(cell(ms(row.current_p95_ms), "num warn"));
+      tr.appendChild(cell(ms(row.baseline_p95_ms), "num dim"));
+      tr.appendChild(cell(row.ratio + "×", "num warn"));
+      body.appendChild(tr);
+    });
+    if (!rows.length) {
+      emptyRow(body, 4, "nothing above its own baseline (needs a full day of history)");
+    }
+  }
+
+  function renderSecurity(data) {
+    var security = data.security || {};
+    var counts = el("security-counts");
+    clear(counts);
+    var names = Object.keys(security.counts || {});
+    if (!names.length) {
+      var quiet = document.createElement("span");
+      quiet.className = "dim";
+      quiet.appendChild(text("no auth failures or rate-limit trips this hour"));
+      counts.appendChild(quiet);
+    }
+    names.forEach(function (name) {
+      var pill = document.createElement("span");
+      pill.className = "pill " + (name === "rate_limited" ? "warn" : "bad");
+      pill.appendChild(text(name.replace("_", " ") + " · " + security.counts[name]));
+      counts.appendChild(pill);
+    });
+
+    var feed = el("security");
+    clear(feed);
+    (security.recent || []).slice().reverse().forEach(function (event) {
+      var li = document.createElement("li");
+      li.appendChild(text(event.at + "  " + event.kind + "  " + event.route));
+      feed.appendChild(li);
+    });
+  }
+
+  function depRow(body, label, value, className) {
+    var tr = document.createElement("tr");
+    tr.appendChild(cell(label, "dim"));
+    tr.appendChild(cell(value, className || ""));
+    body.appendChild(tr);
+  }
+
+  function renderDeps(data) {
+    var body = el("deps");
+    clear(body);
+    var deps = data.dependencies || {};
+    Object.keys(deps).forEach(function (name) {
+      depRow(body, name, deps[name], deps[name] === "ok" ? "ok" : "bad");
+    });
+
+    var storage = data.storage || {};
+    depRow(body, "database size", bytes(storage.bytes));
+    if (storage.limit_bytes) {
+      depRow(body, "plan limit", bytes(storage.limit_bytes));
+    }
+    if (storage.growth_per_day !== null && storage.growth_per_day !== undefined) {
+      depRow(body, "growth", bytes(storage.growth_per_day) + " / day");
+    }
+    if (storage.days_remaining !== null && storage.days_remaining !== undefined) {
+      depRow(body, "runway", "~" + Math.round(storage.days_remaining) + " days",
+        storage.days_remaining < 14 ? "bad" : "warn");
+    } else if (storage.error) {
+      depRow(body, "runway", storage.error, "dim");
+    } else if (!storage.limit_bytes) {
+      depRow(body, "runway", "set KAIRA_STORAGE_LIMIT_MB to project a date", "dim");
+    } else {
+      depRow(body, "runway", "needs a second sample", "dim");
+    }
+  }
+
+  function renderMarkers(data) {
+    var feed = el("markers");
+    clear(feed);
+    var markers = (data.markers || []).slice().reverse();
+    if (!markers.length) {
+      var li = document.createElement("li");
+      li.className = "dim";
+      li.appendChild(text("no migrations, syncs or deploys recorded"));
+      feed.appendChild(li);
+      return;
+    }
+    markers.forEach(function (marker) {
+      var li = document.createElement("li");
+      li.appendChild(text(marker.at + "  kaira " + marker.command));
+      feed.appendChild(li);
+    });
+  }
+
+  function render(data) {
+    latest = data;
+    renderTiles(data);
+    renderSpark(data);
+    renderRoutes(data);
+    renderModels(data);
+    renderAnomalies(data);
+    renderSecurity(data);
+    renderDeps(data);
+    renderMarkers(data);
+    var scope = data.scope || {};
+    el("scope").textContent = scope.note || "";
+    el("meta").textContent = "updated " + (data.generated_at || "");
+    el("footer").textContent = data.prometheus
+      ? "Prometheus exposition available at /metrics"
+      : "prometheus_client is not installed — /metrics is empty; pip install prometheus-client";
+  }
+
+  function poll() {
+    fetch(DATA_URL, { credentials: "same-origin", headers: { "Accept": "application/json" } })
+      .then(function (response) {
+        if (!response.ok) { throw new Error("HTTP " + response.status); }
+        return response.json();
+      })
+      .then(render)
+      .catch(function (error) {
+        el("meta").textContent = "disconnected · " + error.message;
+      });
+  }
+
+  poll();
+  setInterval(poll, POLL_MS);
+})();
+</script>
+</body>
+</html>
+"""
+
+
+def _css_variables() -> str:
+    """Render the token block: dark by default, light under the media query."""
+    dark = "\n".join(f"  --k-{name}: {value};" for name, value in TOKENS.items())
+    light = "\n".join(f"    --k-{name}: {value};" for name, value in LIGHT_TOKENS.items())
+    return (
+        f":root {{\n{dark}\n}}\n"
+        f"@media (prefers-color-scheme: light) {{\n  :root {{\n{light}\n  }}\n}}"
+    )
+
+
+def render_dashboard(data_url: str = DATA_ROUTE) -> str:
+    """Return the complete dashboard HTML document.
+
+    Args:
+        data_url: Path the page polls for JSON. Defaults to :data:`DATA_ROUTE`,
+            under the reserved ``/_kaira/`` namespace.
+
+    Returns:
+        A self-contained HTML document — no external scripts, styles, or fonts.
+    """
+    return _HTML.replace(_TOKEN_SLOT, _css_variables()).replace(
+        _DATA_URL_SLOT, data_url
+    )
+
+
+__all__ = ["LIGHT_TOKENS", "TOKENS", "render_dashboard"]
+{% endraw %}

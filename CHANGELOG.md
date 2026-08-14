@@ -4,6 +4,146 @@ All notable changes to Kaira (formerly DevFlow) will be documented in this file.
 
 ---
 
+## Monitoring Phase — Metrics, Probes, Dashboard & Alerts
+
+Kaira could scaffold a production backend and then tell you nothing about it once
+it was running. This phase adds runtime monitoring, in three tiers, and adds it
+strictly on top of what already existed — `/health`, the security middleware, and
+the `integrate monitor` stub are all still exactly where they were.
+
+### Tier 1 — Essentials
+
+`kaira monitor init` scaffolds `core/metrics.py` (Prometheus counters and a
+latency histogram), `middleware/metrics.py`, and `routers/probes_router.py`,
+then wires them into `main.py` **through the standard diff/confirm prompt**.
+
+Three new routes, all unauthenticated for the same reason `/health` is — a
+scraper and a kubelet have no credentials — and all rate-limited at `300/minute`:
+
+```
+GET /metrics    Prometheus exposition: counts, latency, errors
+GET /healthz    liveness  — process is up, checks nothing external
+GET /readyz     readiness — dependencies reachable, 503 when not
+```
+
+`/health` is untouched. The probes are added beside it, because a single endpoint
+wired to both probe types is how a 30-second database blip gets a healthy process
+restarted. Docker's `HEALTHCHECK` still points at `/health`, and a regression test
+asserts the `health_check` function is byte-identical before and after.
+
+The metrics middleware registers **after** `register_security_middleware(app)` —
+which, because Starlette applies user middleware outermost-last, wraps it rather
+than displacing it. That ordering is also what lets it read the duration the
+security middleware already computed for `X-Response-Time`: one stopwatch per
+request, not two.
+
+Labels carry the route template (`/api/v1/users/{uuid}`), never the concrete
+path. A label per resource id is unbounded cardinality — it exhausts the metrics
+backend before it tells you anything. Unmatched requests collapse to a single
+`unmatched` label, so URL spraying cannot inflate the label set either.
+
+### Tier 2 — Mini dashboard
+
+`kaira monitor init --dashboard` adds a self-hosted page at `/_kaira/monitor`,
+backed by an in-memory rolling window and polling `/_kaira/monitor/data`. Uptime,
+error rate, p50/p95/p99, a latency sparkline with volume bars, top routes by
+traffic and by latency, dependency health.
+
+Self-contained: no CDN, no font host, no analytics. Styled from Kaira's own
+design tokens, and it respects `prefers-color-scheme` and
+`prefers-reduced-motion`.
+
+It ships **off** and cannot be turned on halfway. `KAIRA_MONITOR_ENABLED=true` is
+required or both routes return 404 — the same answer an unmounted path gives — and
+an auth strategy must be chosen at scaffold time: reuse the project's own guard,
+or a generated bearer token in `KAIRA_MONITOR_TOKEN` with a constant-time compare
+and a 24-character floor. There is no public option; unlike `/health`, this page
+is a map of a system's soft spots.
+
+**Scope, stated rather than implied:** the window is per-process. Under one
+uvicorn worker it is the whole truth; under `gunicorn -w 4` it is one worker's
+view. The page says so on its own face, the payload carries it in `scope`, and
+`kaira monitor status` repeats it. Cross-worker aggregation needs a shared
+backend and is not built here.
+
+### Tier 3 — What only Kaira can see
+
+Possible because Kaira owns the model → router pipeline and the command history:
+
+- **Model activity** — traffic and errors per *model*, not per URL prefix. Each
+  generated router now declares `KAIRA_MODEL`; existing projects fall back to the
+  router tag, so nothing needs regenerating.
+- **Change markers** — `migrate run`, `sync model`, `deploy run` read from
+  `.kaira/history.jsonl` and drawn on the latency timeline. Read-only; this phase
+  adds no logging surface.
+- **Self-baseline anomalies** — a route compared only against its own p95 over a
+  rolling 7 days. No ML, no external service, and a legitimately slow route never
+  trips the flag by being slow.
+- **Security event feed** — the 401/403/429 the auth guard and slowapi already
+  return, counted. A feed, not a detector.
+- **Storage runway** — a periodic (≥15 min) database-size query and a linear
+  projection: *"at current growth, ~19 days to your plan's limit."* Declares
+  nothing until it has two samples to draw through.
+
+### New commands
+
+```
+kaira monitor init [--dashboard] [--auth reuse|token] [--force] [--quiet]
+kaira monitor status [--url ...]
+kaira monitor watch [--interval] [--error-rate] [--p95] [--once]
+kaira monitor diff [--since yesterday|week|hour|<ISO timestamp>]
+```
+
+`watch` alerts by desktop notification — no alerting service, no account —
+firing on the *transition* into a breach rather than on every poll. An optional
+`KAIRA_MONITOR_WEBHOOK_URL` also posts to Discord or Slack; that URL is a
+credential, so it is only ever printed masked. It reads the dashboard endpoint
+when available and falls back to parsing `/metrics`, so it works on a Tier 1
+project with no dashboard.
+
+`diff` compares snapshots written by `status` and `watch`, in the same `+`/`-`
+language as `sync model --dry-run`, with direction that knows more requests is
+good and more errors is not.
+
+### JSON log mode
+
+`KAIRA_LOG_FORMAT=json` switches `core/logger.py`'s existing sink to one JSON
+object per line, **on stdout**. That is how Railway, Render, Fly and CloudWatch
+ingest logs. Default output is unchanged.
+
+Still no log files — a file inside a container is invisible to the platform
+collecting stdout, grows until the disk fills, and needs rotation config to
+survive. Structured mode also never enables Loguru's `diagnose`, which would ship
+local variable values to a third-party aggregator.
+
+### Real SDK initialisation
+
+`kaira integrate --provider monitor/sentry|datadog|newrelic` installed the SDK
+and wrote env keys but never called `init()`. It now generates
+`core/monitor_sdk.py` and starts it from the lifespan, through the same
+diff/confirm prompt.
+
+Sampling is cost-conscious because these are metered services: traces at `0.2` in
+production, `1.0` in development, via `settings.MONITOR_TRACES_SAMPLE_RATE`
+rather than a hardcoded call-site value. Errors are never sampled. Sentry is
+initialised with `send_default_pii=False`. A missing credential logs one line and
+boots normally — observability must never be the reason a service fails to start.
+
+Entirely opt-in: nothing in Tiers 1–3 needs a provider account.
+
+### Also
+
+- `kaira guide monitor`, a `docs/MONITORING_USAGE.md` command reference, and a
+  README section.
+- Docker recognises monitoring through the existing dynamic rendering — one
+  registry-driven header line, no compose service, no special-casing. There is
+  no Prometheus/Grafana/Loki stack in this phase, by design.
+- New `.kaira.json` flags: `monitor_metrics`, `monitor_probes`,
+  `monitor_dashboard`, `monitor_dashboard_auth`, `monitor_json_logs`.
+- 133 new tests, including regressions pinning `/health` and middleware order.
+
+---
+
 ## Phase 8 — Runtime Display & Error Handling
 
 The generated app printed five to six lines for a single `GET`, in three

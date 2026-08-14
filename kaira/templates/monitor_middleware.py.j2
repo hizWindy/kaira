@@ -1,0 +1,191 @@
+"""
+middleware/metrics.py
+
+Request instrumentation for {{ project_name }}.
+
+Registered from ``main.py`` *after* ``register_security_middleware(app)`` and
+never before it. Two consequences, both deliberate:
+
+1. **Security stays first.** CORS and the security headers keep the registration
+   position they have had since the Docker phase. Nothing about their ordering,
+   their headers, or the error envelope changes because this file exists.
+
+2. **The duration is not measured twice.** Starlette applies user middleware
+   outermost-last, so registering after security puts this middleware *around*
+   it — which means the security middleware has already finished timing the
+   request and written ``X-Response-Time`` by the time control returns here.
+   This module reads that value. There is exactly one stopwatch per request, and
+   it is the one that was already there.
+
+Label discipline
+----------------
+Metrics are labelled with the **route template** resolved by Starlette's router
+(``/api/{{ api_version }}/users/{uuid}``), never the concrete path. A label per
+resource id is unbounded cardinality: it exhausts the metrics backend and tells
+you nothing that the template does not. When no route matched — a 404, a
+malformed path — the raw path is normalised before it is used, so an attacker
+spraying random URLs cannot inflate the label set either.
+"""
+
+from __future__ import annotations
+
+import re
+import sys
+import time
+from typing import Any, Callable, Optional
+
+from fastapi import FastAPI, Request
+
+from core.metrics import UNKNOWN_MODEL, record_request
+
+# Path segments that are obviously identifiers get collapsed before a raw path
+# is ever used as a label. Numeric ids, UUIDs, and long hex/opaque tokens.
+_NUMERIC = re.compile(r"^\d+$")
+_UUID = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.IGNORECASE
+)
+_OPAQUE = re.compile(r"^[0-9a-zA-Z_-]{24,}$")
+
+_MAX_SEGMENTS = 8
+"""Path depth kept when falling back to a raw path — deeper than any generated
+route, and a hard stop on pathological URLs."""
+
+_UNMATCHED = "unmatched"
+"""Single label for every request that matched no route at all."""
+
+
+def normalise_path(path: str) -> str:
+    """Return a bounded, id-free label for a path with no matched route.
+
+    Args:
+        path: The raw request path.
+
+    Returns:
+        The path with identifier-looking segments replaced by ``{id}``, capped
+        at :data:`_MAX_SEGMENTS` segments.
+    """
+    parts = [segment for segment in path.split("/") if segment]
+    if not parts:
+        return "/"
+    kept: list[str] = []
+    for segment in parts[:_MAX_SEGMENTS]:
+        if _NUMERIC.match(segment) or _UUID.match(segment) or _OPAQUE.match(segment):
+            kept.append("{id}")
+        else:
+            kept.append(segment)
+    suffix = "/..." if len(parts) > _MAX_SEGMENTS else ""
+    return "/" + "/".join(kept) + suffix
+
+
+def route_template(request: Request) -> str:
+    """Return the matched route's template, or a normalised fallback.
+
+    Starlette records the matched route in the ASGI scope during routing, which
+    has already happened by the time this middleware sees the response.
+    """
+    route = request.scope.get("route")
+    template = getattr(route, "path_format", None) or getattr(route, "path", None)
+    if template:
+        root = request.scope.get("root_path") or ""
+        return f"{root}{template}" if root else str(template)
+    if request.scope.get("endpoint") is None and not route:
+        return _UNMATCHED
+    return normalise_path(request.url.path)
+
+
+def owning_model(request: Request) -> str:
+    """Return the model a request belongs to, or :data:`UNKNOWN_MODEL`.
+
+    This is the piece a generic monitoring tool cannot do: Kaira generates the
+    router, so the router knows its model. Two sources, in order:
+
+    1. ``KAIRA_MODEL`` on the router module — written by the router template.
+    2. The router's first tag, which generated routers have always carried. This
+       is what makes the model panel work for projects generated before the
+       constant existed, with no regeneration required.
+    """
+    route = request.scope.get("route")
+    endpoint = getattr(route, "endpoint", None)
+    module = sys.modules.get(getattr(endpoint, "__module__", ""), None)
+    declared = getattr(module, "KAIRA_MODEL", "")
+    if declared:
+        return str(declared)
+
+    tags = getattr(route, "tags", None) or []
+    for tag in tags:
+        text = str(tag)
+        if text and text[0].isupper():
+            return text
+    return UNKNOWN_MODEL
+
+
+def _duration_seconds(response: Any, fallback_start: float) -> float:
+    """Return the request duration, preferring the timing already computed.
+
+    The security middleware writes ``X-Response-Time`` from its own stopwatch.
+    Reading it back is what keeps this middleware from timing the same request a
+    second time. The fallback only applies when that header is absent — a
+    response built outside the security middleware, or a project whose middleware
+    was hand-edited.
+    """
+    header = ""
+    try:
+        header = response.headers.get("X-Response-Time", "")
+    except AttributeError:
+        header = ""
+    if header.endswith("ms"):
+        try:
+            return float(header[:-2]) / 1000
+        except ValueError:
+            pass
+    return time.perf_counter() - fallback_start
+
+
+def register_metrics_middleware(app: FastAPI) -> None:
+    """Instrument every request on *app*.
+
+    Must be called **after** ``register_security_middleware(app)``. Registering
+    it before would place it inside the security middleware, where
+    ``X-Response-Time`` does not exist yet and the security headers have not been
+    applied — so the ordering is not a style preference, it is what makes the
+    "one stopwatch" guarantee hold.
+
+    Args:
+        app: The FastAPI application instance.
+    """
+
+    @app.middleware("http")
+    async def collect_metrics(request: Request, call_next: Callable) -> Any:
+        """Record one request into Prometheus and the in-memory window."""
+        started = time.perf_counter()
+        status: Optional[int] = None
+        response = None
+        try:
+            response = await call_next(request)
+            status = response.status_code
+            return response
+        except Exception:
+            # A crashed request is the most important one to count. The security
+            # middleware logs it and the exception handler builds the 500; this
+            # only records that it happened, then re-raises untouched.
+            status = 500
+            raise
+        finally:
+            try:
+                record_request(
+                    method=request.method,
+                    route=route_template(request),
+                    status=status or 500,
+                    duration_s=_duration_seconds(response, started),
+                    model=owning_model(request),
+                )
+            except Exception:  # noqa: BLE001 - metrics never break a response
+                pass  # nosec B110 - a failed metric must not fail the request
+
+
+__all__ = [
+    "normalise_path",
+    "owning_model",
+    "register_metrics_middleware",
+    "route_template",
+]

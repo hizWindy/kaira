@@ -67,7 +67,9 @@ def guide_main(
             "  [bold magenta]── Phase 7 ──────────────────────────────────[/bold magenta]\n"
             "  [bold cyan]kaira guide export[/bold cyan]            Data export — CLI files & API endpoints\n"
             "  [bold magenta]── Phase 7.5 ────────────────────────────────[/bold magenta]\n"
-            "  [bold cyan]kaira guide commands[/bold cyan]          Command index & discovery"
+            "  [bold cyan]kaira guide commands[/bold cyan]          Command index & discovery\n"
+            "  [bold magenta]── Monitoring ───────────────────────────────[/bold magenta]\n"
+            "  [bold cyan]kaira guide monitor[/bold cyan]           Metrics, probes, dashboard & alerts"
         )
         print_guide_panel("Index", content, "Run any guide for examples and usage.")
 
@@ -904,4 +906,83 @@ def guide_commands() -> None:
         "commands",
         content,
         "Combine --group and --search to quickly pinpoint specific CLI capabilities.",
+    )
+
+
+@app.command("monitor")
+def guide_monitor() -> None:
+    """Guide for runtime application monitoring — all three tiers."""
+    content = (
+        "Runtime monitoring for a generated project. Zero infrastructure,\n"
+        "zero accounts — everything below runs inside your own app.\n\n"
+        "[bold green]1. Scaffold it (opt-in, nothing happens until you run this):[/bold green]\n"
+        "  kaira monitor init                          metrics + probes\n"
+        "  kaira monitor init --dashboard --auth token  and the mini dashboard\n"
+        "  kaira monitor init --dashboard --auth reuse  gate it with your own auth\n"
+        "  kaira monitor init --force                   skip the overwrite prompts\n\n"
+        "  Gives you:\n"
+        "  [cyan]GET /metrics[/cyan]   Prometheus exposition — counts, latency, errors\n"
+        "  [cyan]GET /healthz[/cyan]   liveness — process is up, checks nothing external\n"
+        "  [cyan]GET /readyz[/cyan]    readiness — dependencies reachable, 503 when not\n\n"
+        "  [bold]/health is not touched.[/bold] Phase 4 owns it, Docker's HEALTHCHECK\n"
+        "  points at it, and it behaves exactly as it did before.\n\n"
+        "[bold green]2. Look at it:[/bold green]\n"
+        "  kaira monitor status                        configured + live self-check\n"
+        "  kaira monitor status --url http://127.0.0.1:9000\n\n"
+        "[bold green]3. The mini dashboard (Tier 2):[/bold green]\n"
+        "  [cyan]GET /_kaira/monitor[/cyan]        HTML page, styled from Kaira's theme\n"
+        "  [cyan]GET /_kaira/monitor/data[/cyan]   the JSON it polls every 5s\n\n"
+        "  It ships OFF and cannot be turned on halfway:\n"
+        "    KAIRA_MONITOR_ENABLED=true   required, or both routes 404\n"
+        "    KAIRA_MONITOR_TOKEN=…        with --auth token (32+ chars, generated for you)\n\n"
+        "  Unlike /health this exposes route-level operational data, so there is\n"
+        "  no 'public' option — reuse your auth guard or use a bearer token.\n\n"
+        "[bold yellow]  Scope — read this before trusting the numbers:[/bold yellow]\n"
+        "  The dashboard's metrics are [bold]in-memory and per-process[/bold]. Under a\n"
+        "  single uvicorn worker they are the whole truth. Under `gunicorn -w 4`\n"
+        "  you are seeing whichever worker answered — roughly a quarter of your\n"
+        "  traffic, not a quarter-scale copy of it. /metrics has the same\n"
+        "  property, and that is fine: a scraper hits every replica and\n"
+        "  aggregates. Cross-worker aggregation needs a shared backend and is\n"
+        "  deliberately not built here.\n\n"
+        "[bold green]4. What only Kaira can show you (Tier 3):[/bold green]\n"
+        "  [bold]Model activity[/bold]     traffic per model, not per URL prefix — the\n"
+        "                     router declares which model it serves\n"
+        "  [bold]Change markers[/bold]     migrations, syncs and deploys from\n"
+        "                     .kaira/history.jsonl drawn on the latency timeline\n"
+        "  [bold]Self-baseline[/bold]      a route flagged only against its own 7-day p95,\n"
+        "                     so a legitimately slow route never trips it\n"
+        "  [bold]Security feed[/bold]      401/403/429 the auth guard and slowapi already\n"
+        "                     produce, counted — not a new detection system\n"
+        "  [bold]Storage runway[/bold]     periodic DB size + linear projection:\n"
+        "                     'at current growth, ~19 days to your plan limit'\n"
+        "                     Set KAIRA_STORAGE_LIMIT_MB to get a date.\n\n"
+        "[bold green]5. Alerts and comparison:[/bold green]\n"
+        "  kaira monitor watch                         desktop notification on breach\n"
+        "  kaira monitor watch --error-rate 0.02 --p95 500\n"
+        "  kaira monitor watch --once                  one poll, CI-friendly\n"
+        "  kaira monitor diff --since yesterday        compare two saved snapshots\n"
+        "  kaira monitor diff --since week\n\n"
+        "  Optional webhook: KAIRA_MONITOR_WEBHOOK_URL (Discord/Slack).\n"
+        "  It is a credential, so Kaira only ever prints it masked.\n"
+        "  Snapshots are written by `monitor status` and once a minute by\n"
+        "  `monitor watch` — a diff reaches back only as far as you have looked.\n\n"
+        "[bold green]6. Structured logs:[/bold green]\n"
+        "  KAIRA_LOG_FORMAT=json    one JSON object per line, [bold]on stdout[/bold]\n\n"
+        "  That is how Railway, Render, Fly and CloudWatch ingest logs — they\n"
+        "  capture stdout. Kaira never writes a log file, and never will.\n\n"
+        "[bold green]7. Third-party providers (entirely optional):[/bold green]\n"
+        "  kaira integrate --provider monitor/sentry\n"
+        "  kaira integrate --provider monitor/datadog\n"
+        "  kaira integrate --provider monitor/newrelic\n\n"
+        "  Now actually calls the SDK's init in your lifespan, with\n"
+        "  cost-conscious sampling: traces at 0.2 in production, 1.0 in\n"
+        "  development, via settings.MONITOR_TRACES_SAMPLE_RATE. Errors are\n"
+        "  never sampled. Nothing in Tiers 1–3 needs a provider account."
+    )
+    print_guide_panel(
+        "monitor",
+        content,
+        "Start with `kaira monitor init` — it prompts before touching main.py, "
+        "and /health is never modified.",
     )
