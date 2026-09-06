@@ -96,6 +96,20 @@ GUTTER = "  "
 LABEL_WIDTH = 14
 """Column the step/field label is padded to, so values line up."""
 
+METER_WIDTH = 20
+"""Cells a completion bar is drawn across.
+
+Short enough to sit inside the content column beside its label and fraction,
+and even enough that a fifth of the work moves it by a visible four cells.
+"""
+
+METER_MIN_WIDTH = 6
+"""Floor the bar shrinks to on a narrow terminal.
+
+Below six cells the fill stops being readable as a proportion, and the
+fraction beside it is carrying the whole message anyway.
+"""
+
 
 # ---------------------------------------------------------------------------
 # Banner — two lockups, one hierarchy
@@ -196,6 +210,20 @@ SMALL_BANNER_MAX_WIDTH = 80
 
 SMALL_BANNER_MIN_RULE = 4
 """Below this the rule is dropped entirely rather than truncated."""
+
+SMALL_BANNER_SWEEP_FRAMES = 10
+"""Number of frames a highlight takes to cross the rule, once, on arrival.
+
+Ten is enough to read as travel rather than as a flicker, and few enough that
+the motion layer's budget still divides into steps a terminal can actually
+repaint.
+"""
+
+SMALL_BANNER_SWEEP_WINDOW = 7
+"""Width of the highlighted run inside the rule.
+
+A single bright character reads as a defect; a run reads as a sweep.
+"""
 
 
 # --- Degradation ladder ----------------------------------------------------
@@ -362,43 +390,105 @@ def large_banner_tagline() -> "Text":
     return Text(f"{BANNER_INDENT}{BANNER_TAGLINE}", style=Theme.MUTED)
 
 
-def small_banner_line(version: str | None) -> "Text":
-    """Return the small lockup: mark, rule, and optional right-aligned version.
+def _small_banner_rule_length(version_text: str) -> int:
+    """Return how many rule characters fit between the mark and the version.
 
-    The rule fills whatever is left between mark and version, which is what
-    lets the small banner act as a divider rather than only a label.  It is
-    measured in terminal cells rather than characters because the bolt is
+    Measured in terminal cells rather than characters because the bolt is
     double-width: sizing by ``len`` would push the line one column past the
     right margin and wrap it, which is the one thing a rule must never do.
-
-    Args:
-        version: Version string without the ``v`` prefix, or ``None`` to omit
-            the version and let the rule run to the right margin.
     """
     from rich.cells import cell_len
-    from rich.text import Text
 
     mark = f"{Symbols.BOLT} {SMALL_BANNER_NAME}"
-    version_text = f"v{version}" if version is not None else ""
-
     width = min(banner_width(), SMALL_BANNER_MAX_WIDTH)
     padding = 2 if version_text else 1
-    rule_length = width - cell_len(mark) - cell_len(version_text) - padding
+    return width - cell_len(mark) - cell_len(version_text) - padding
+
+
+def _small_banner_text(version_text: str, rule: "Text | None") -> "Text":
+    """Assemble the small lockup from an already-styled *rule*.
+
+    Args:
+        version_text: Rendered version (``"v1.0.0"``) or ``""`` to omit it.
+        rule: The divider, styled by the caller, or ``None`` when there is no
+            room for one.
+    """
+    from rich.text import Text
 
     text = Text()
     text.append(Symbols.BOLT, style=Theme.ACCENT_BANNER)
     text.append(" ")
     text.append(SMALL_BANNER_NAME, style=Theme.ACCENT_BANNER)
 
-    # A one-character rule is worse than no rule, so it is dropped whole.
-    if rule_length >= SMALL_BANNER_MIN_RULE:
+    if rule is not None:
         text.append(" ")
-        text.append(SMALL_BANNER_RULE * rule_length, style=Theme.ACCENT_BANNER_DIM)
+        text.append_text(rule)
 
     if version_text:
         text.append(" ")
         text.append(version_text, style=Theme.MUTED)
     return text
+
+
+def small_banner_line(version: str | None) -> "Text":
+    """Return the small lockup: mark, rule, and optional right-aligned version.
+
+    The rule fills whatever is left between mark and version, which is what
+    lets the small banner act as a divider rather than only a label.
+
+    Args:
+        version: Version string without the ``v`` prefix, or ``None`` to omit
+            the version and let the rule run to the right margin.
+    """
+    from rich.text import Text
+
+    version_text = f"v{version}" if version is not None else ""
+    rule_length = _small_banner_rule_length(version_text)
+
+    # A one-character rule is worse than no rule, so it is dropped whole.
+    rule = (
+        Text(SMALL_BANNER_RULE * rule_length, style=Theme.ACCENT_BANNER_DIM)
+        if rule_length >= SMALL_BANNER_MIN_RULE
+        else None
+    )
+    return _small_banner_text(version_text, rule)
+
+
+def small_banner_sweep(version: str | None) -> list["Text"]:
+    """Return the frames of a highlight travelling once along the rule.
+
+    Every frame is the still lockup with one run of the rule lifted to a
+    brighter stop of the same hue — the geometry never changes, so the mark
+    does not shift by a column as the sweep passes and the final frame is the
+    still line exactly.  Returns an empty list when there is no rule to sweep,
+    which is the narrow-terminal case where motion would only jitter the mark.
+
+    Args:
+        version: Version string without the ``v`` prefix, or ``None``.
+    """
+    from rich.text import Text
+
+    version_text = f"v{version}" if version is not None else ""
+    rule_length = _small_banner_rule_length(version_text)
+    if rule_length < SMALL_BANNER_MIN_RULE:
+        return []
+
+    window = min(SMALL_BANNER_SWEEP_WINDOW, rule_length)
+    # The highlight starts off the left edge and leaves past the right one, so
+    # the sweep enters and exits rather than appearing and vanishing mid-rule.
+    span = rule_length + window
+    frames: list[Text] = []
+    for index in range(SMALL_BANNER_SWEEP_FRAMES):
+        start = round(index * span / max(SMALL_BANNER_SWEEP_FRAMES - 1, 1)) - window
+        rule = Text()
+        for column in range(rule_length):
+            lit = start <= column < start + window
+            rule.append(
+                SMALL_BANNER_RULE,
+                style=Theme.ACCENT_BANNER_BRIGHT if lit else Theme.ACCENT_BANNER_DIM,
+            )
+        frames.append(_small_banner_text(version_text, rule))
+    return frames
 
 
 def plain_banner_line(version: str) -> str:
@@ -421,11 +511,12 @@ class Theme:
     MUTED = "grey58"
     ACCENT = "magenta"
 
-    # Banner accent — one hue, two stops.  The dim stop is that hue
-    # darkened, never a second colour: the shadow has to read as the same
-    # ink in shade, not as a different mark sitting behind the first.
+    # Banner accent — one hue, three stops.  The dim and bright stops are that
+    # hue darkened and lifted, never a second colour: the shadow has to read as
+    # the same ink in shade, and the sweep as the same ink catching the light.
     ACCENT_BANNER = "#22D3EE"
     ACCENT_BANNER_DIM = "#0F5F6B"
+    ACCENT_BANNER_BRIGHT = "#A5F3FC"
 
     # Panel border styles
     BORDER_PRIMARY = "cyan"
@@ -466,6 +557,14 @@ class Symbols:
     PROGRESS_PARTIAL = "!"
     PROGRESS_FAILED = "✗"
 
+    # Status pill and meter glyphs.  A pill answers "what state is this in" at
+    # a glance and carries no verdict of its own, which is why it is a dot and
+    # not a checkmark: the colour says healthy or not, the dot says live or not.
+    DOT = "●"
+    DOT_OPEN = "○"
+    METER_FULL = "█"
+    METER_EMPTY = "░"
+
     # Plain-text (CI / NO_COLOR) fallbacks
     OK_PLAIN = "[ok]"
     FAIL_PLAIN = "[x]"
@@ -484,6 +583,12 @@ class Symbols:
     PROGRESS_DONE_PLAIN = "[ok]"
     PROGRESS_PARTIAL_PLAIN = "[!]"
     PROGRESS_FAILED_PLAIN = "[x]"
+
+    # Pill and meter plain-text fallbacks
+    DOT_PLAIN = "*"
+    DOT_OPEN_PLAIN = "o"
+    METER_FULL_PLAIN = "#"
+    METER_EMPTY_PLAIN = "-"
 
 
 def sym(name: str) -> str:

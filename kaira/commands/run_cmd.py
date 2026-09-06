@@ -11,6 +11,14 @@ Usage examples
   kaira run --host 0.0.0.0         # bind all interfaces
   kaira run --prod                 # production mode (fastapi run / no reload)
   kaira run --no-reload            # disable hot-reload in dev mode
+  kaira run --strict-port          # fail instead of shifting off a taken port
+
+Port 8000 is the FastAPI default and therefore the one another project is most
+likely to be holding.  A taken port is treated as routine: the launcher moves
+to the next free one, says so in the banner, and records the address in
+``.kaira/runtime.json`` so ``kaira api``/``status``/``profile`` still find the
+server.  ``--strict-port`` opts out for callers where the number is part of a
+contract (a registered OAuth callback, a proxy, a published container port).
 """
 
 from __future__ import annotations
@@ -27,6 +35,15 @@ from rich.table import Table
 from rich import box as rich_box
 
 from kaira.console import console
+from kaira.core.ports import (
+    DEFAULT_HOST,
+    DEFAULT_PORT,
+    PortResolution,
+    PortUnavailableError,
+    clear_server,
+    record_server,
+    resolve_port,
+)
 
 # ---------------------------------------------------------------------------
 # Candidate entry-file search order
@@ -120,11 +137,22 @@ def run_command(
     host: Annotated[
         str,
         typer.Option("--host", "-H", help="Host to bind the server to."),
-    ] = "127.0.0.1",
+    ] = DEFAULT_HOST,
     port: Annotated[
         int,
-        typer.Option("--port", "-p", help="Port to bind the server to."),
-    ] = 8000,
+        typer.Option(
+            "--port",
+            "-p",
+            help="Preferred port. Moves to the next free one if it is taken.",
+        ),
+    ] = DEFAULT_PORT,
+    strict_port: Annotated[
+        bool,
+        typer.Option(
+            "--strict-port",
+            help="Fail if the requested port is taken instead of moving to the next.",
+        ),
+    ] = False,
     reload: Annotated[
         bool,
         typer.Option(
@@ -211,6 +239,34 @@ def run_command(
         entry_display = str(entry_path.relative_to(cwd))
     except ValueError:
         entry_display = str(entry_path)
+
+    # ── Resolve the port before anything is printed ───────────────────────────
+    # Done here rather than after the banner so the banner can state the port
+    # the server will actually bind: a launch panel advertising :8000 while
+    # uvicorn comes up on :8001 is worse than no panel at all.
+    try:
+        resolution = resolve_port(host, port, strict=strict_port)
+    except PortUnavailableError as exc:
+        console.print(
+            Panel(
+                f"[red]{exc}[/red]\n\n"
+                + (
+                    "[dim]--strict-port was passed, so the port was not "
+                    "changed.[/dim]\n"
+                    "[dim]Free it, or pick another:[/dim]  "
+                    "[bold cyan]kaira run --port PORT[/bold cyan]"
+                    if strict_port
+                    else "[dim]Every port in the scan range is taken. "
+                    "Pick a range that is free:[/dim]  "
+                    "[bold cyan]kaira run --port PORT[/bold cyan]"
+                ),
+                title="[red]x  No port available[/red]",
+                border_style="red",
+            )
+        )
+        raise typer.Exit(1)
+
+    port = resolution.port
 
     mode = "production" if prod else "development"
     mode_color = "yellow" if prod else "cyan"
@@ -322,6 +378,8 @@ def run_command(
         if debug
         else "[white]info[/white]  [dim]one line per request — add --debug for detail[/dim]",
     )
+    if resolution.shifted:
+        info_table.add_row("Port", _shift_note(resolution))
     info_table.add_row("URL", f"[bold cyan]http://{host}:{port}[/bold cyan]")
     info_table.add_row("Docs", f"[dim]http://{host}:{port}/docs[/dim]")
     info_table.add_row("ReDoc", f"[dim]http://{host}:{port}/redoc[/dim]")
@@ -373,12 +431,19 @@ def run_command(
     if access_log:
         env["KAIRA_ACCESS_LOG"] = "1"
 
+    # The address is recorded for the duration of the run so the client
+    # commands can reach a server that was shifted off the default port, and
+    # cleared afterwards so they never chase a port nobody is holding.
+    record_server(host, port, cwd)
+
     interrupted = False
     exit_code = 0
     try:
         exit_code = subprocess.run(cmd, cwd=str(cwd), env=env).returncode
     except KeyboardInterrupt:
         interrupted = True
+    finally:
+        clear_server(cwd)
 
     console.print()
     if interrupted or exit_code == 0:
@@ -406,20 +471,39 @@ def run_command(
     raise typer.Exit(exit_code)
 
 
+def _shift_note(resolution: PortResolution) -> str:
+    """Describe a port shift in the launch banner.
+
+    Both numbers are shown: the one asked for, so the developer can see their
+    default was honoured as far as it could be, and the one bound, so the URL
+    below is not a surprise.
+    """
+    return (
+        f"[bold]{resolution.port}[/bold]  "
+        f"[dim yellow]moved from {resolution.requested} — "
+        f"another server is on it[/dim yellow]"
+    )
+
+
 def _crash_hint(exit_code: int, host: str, port: int) -> str:
-    """Return a short, actionable diagnosis for a non-zero server exit."""
+    """Return a short, actionable diagnosis for a non-zero server exit.
+
+    Ordered by likelihood *given that the launch got this far*.  The port was
+    confirmed bindable seconds ago, so it now sits last: it can still lose a
+    race to another process, but it is no longer the first thing to suspect.
+    """
     lines = [
         "[dim]The server process ended unexpectedly. "
         "The traceback above is the authority — most common causes:[/dim]",
         "",
-        f"  [bold]Port in use[/bold]        another process already holds "
-        f"[cyan]{host}:{port}[/cyan]  "
-        f"[dim]→ kaira run --port {port + 1}[/dim]",
         "  [bold]Import error[/bold]       a module in the entry file failed to import  "
         "[dim]→ check the last frame above[/dim]",
         "  [bold]Missing package[/bold]    a dependency is not installed in this venv  "
         "[dim]→ pip install -r requirements.txt[/dim]",
         "  [bold]Database refused[/bold]   the configured DATABASE_URL is unreachable  "
         "[dim]→ kaira db info[/dim]",
+        f"  [bold]Port in use[/bold]        something claimed "
+        f"[cyan]{host}:{port}[/cyan] after the pre-flight check  "
+        "[dim]→ kaira run[/dim]",
     ]
     return "\n".join(lines)

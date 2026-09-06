@@ -21,7 +21,16 @@ from kaira.console import console
 
 app = typer.Typer(help="Route profiling and latency measurement.")
 
-_BASE_URL = "http://127.0.0.1:8000"
+def _base_url() -> str:
+    """Return the base URL of this project's dev server.
+
+    Resolved per call rather than fixed at import: ``kaira run`` moves off a
+    taken port and records where it landed, so a constant baked in at import
+    time would point at :8000 while the server answers on :8001.
+    """
+    from kaira.core.ports import resolve_base_url
+
+    return resolve_base_url()
 _RESULTS_FILE = Path(".kaira") / "profile_results.json"
 _SERVER_DOWN_MSG = (
     "⏸️ Server not running.\nStart it with: [bold cyan]kaira run[/bold cyan]"
@@ -41,7 +50,7 @@ async def _run_profile(method: str, route: str, samples: int = 10) -> list[float
     """
     import httpx
 
-    url = f"{_BASE_URL}{route}"
+    url = f"{_base_url()}{route}"
     times: list[float] = []
     async with httpx.AsyncClient(timeout=10.0) as client:
         for _ in range(samples):

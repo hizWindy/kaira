@@ -4,6 +4,102 @@ All notable changes to Kaira (formerly DevFlow) will be documented in this file.
 
 ---
 
+## Motion Phase — An Animated Welcome, and Ports That Get Out of the Way
+
+Two things a developer meets constantly: the screen `kaira` prints when they type
+it with no arguments, and port 8000 already being taken.
+
+### The welcome surface
+
+Bare `kaira` used to read as a report — a list of settings, then a list of
+checks, then a list of commands, all at the same weight. It answered "tell me
+everything about this project" when the question is almost always "where is this
+project up to".
+
+It now opens as an overview. A headline names the project with a status pill
+beside it, a **setup meter** (`setup ████████░░░░ 2/5`) answers how much is done
+before anything is read, and the checks beneath it are the detail behind that
+fraction. The meter and the *action required* list are derived from one
+checklist, so the count and the commands cannot disagree — a dashboard claiming
+4/5 above three outstanding items is worse than no dashboard.
+
+Two additions to the vocabulary in `core/ui.py`, available to every command:
+`fmt_meter` for completion, and `fmt_pill` for a condition. A pill is a dot, not
+a checkmark, because "online" is not something that *succeeded* — the colour says
+healthy, the shape says live. Both fit the terminal rather than wrapping: the
+meter's bar shrinks to a six-cell floor and the stat row tightens its separator,
+because a meter that runs onto a second line has lost the one thing it was for.
+
+### Motion
+
+New `core/motion.py`, with two primitives — `reveal` for a block that cascades
+into place, `play` for a line that changes in place. The welcome body cascades;
+the `⚡ kaira` mark gets a highlight sweeping once along its rule; `kaira init`'s
+block lockup draws in from the top.
+
+Animation in a CLI is a liability unless three properties hold, so all three are
+enforced in the motion layer rather than left to call sites:
+
+- **Bounded.** One 340 ms budget for the whole *invocation*, drawn from by
+  every effect in turn — not one ceiling per effect, since two effects each
+  honouring 340 ms still leaves the developer watching 680 ms. Within an effect
+  the per-frame delay is the granted share *divided* by the frame count, so a
+  longer surface animates faster rather than taking longer, and a share too
+  small to buy a visible step drops the effect instead of overrunning. The wall
+  clock of `kaira` never grows with the size of its output.
+- **Additive.** A surface composes its lines *before* any of them is printed, and
+  hands the list to `reveal`. Piping, redirecting or reading the output back
+  gives byte-identical text: the animation adds pauses, never characters. A test
+  asserts the animated body equals the still one.
+- **Optional.** Not a TTY, `NO_COLOR`, `CI`, `--quiet`, or `KAIRA_NO_MOTION` and
+  it degrades to plain printing. Ctrl-C mid-effect flushes the remaining lines
+  immediately instead of leaving half a surface on screen.
+
+The mark animates on bare `kaira` and nowhere else. `--version` and `about` are
+read by scripts and by people in a hurry, and neither wants the mark to take a
+beat before the answer.
+
+### Ports
+
+Port 8000 is the FastAPI default, which makes it the *shared* default — running a
+second Kaira project, or one beside any other uvicorn app, meets a taken port as
+routine rather than as a fault. `kaira run` now treats it that way: it finds the
+next free port, binds there, and says so in the launch banner.
+
+```
+Port   8001  moved from 8000 — another server is on it
+URL    http://127.0.0.1:8001
+```
+
+The probe in `core/ports.py` **binds rather than connects**. "Is something
+listening there" and "can I listen there" are different questions, and only the
+second decides whether the server starts — a socket bound without `listen`, or
+bound on another interface, answers the first one wrong. `SO_REUSEADDR` is set on
+POSIX, where it stops a lingering `TIME_WAIT` socket reporting a free port as
+taken, and *not* on Windows, where it does the opposite and would let the bind
+succeed on top of a live server. An unrecognised refusal counts as free: shifting
+to 8001 would not fix an unresolvable host, so the server gets to report the real
+error itself.
+
+The scan is bounded to 20 consecutive ports. Twenty taken in a row is a machine
+problem that a twenty-first will not fix, and an unbounded walk to 65535 would
+hang the launch instead of reporting it.
+
+`--strict-port` opts out, for callers where the number is part of a contract — a
+registered OAuth callback, a reverse proxy, a published container port. It fails
+with a clear panel rather than a traceback.
+
+Because the port is no longer a constant, the launcher records the bound address
+in `.kaira/runtime.json` for the lifetime of the run, and `kaira api`, `status`,
+`profile`, `loadtest` and `monitor` resolve their base URL from it instead of
+assuming 8000. The record is confirmed against the port before it is trusted: a
+crashed server leaves its file behind, and pointing `kaira api` at a port nobody
+holds is worse than pointing it at the default, because the wrong address then
+looks deliberate. The welcome dashboard reads the same record, so it reports a
+server on 8001 as running rather than claiming nothing is up.
+
+---
+
 ## Monitoring Phase — Metrics, Probes, Dashboard & Alerts
 
 Kaira could scaffold a production backend and then tell you nothing about it once

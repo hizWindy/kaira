@@ -21,7 +21,16 @@ from kaira.console import console
 
 app = typer.Typer(help="Load testing for local FastAPI routes.")
 
-_BASE_URL = "http://127.0.0.1:8000"
+def _base_url() -> str:
+    """Return the base URL of this project's dev server.
+
+    Resolved per call rather than fixed at import: ``kaira run`` moves off a
+    taken port and records where it landed, so a constant baked in at import
+    time would point at :8000 while the server answers on :8001.
+    """
+    from kaira.core.ports import resolve_base_url
+
+    return resolve_base_url()
 _LOCALHOST_HOSTS = {"127.0.0.1", "localhost", "::1"}
 
 
@@ -107,7 +116,7 @@ def loadtest_run(
     if route.startswith("http"):
         full_url = route
     else:
-        full_url = f"{_BASE_URL}{route}"
+        full_url = f"{_base_url()}{route}"
 
     parsed = urlparse(full_url)
     host = parsed.hostname or "localhost"

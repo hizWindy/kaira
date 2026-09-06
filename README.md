@@ -603,6 +603,17 @@ The app binds exactly **one** database at startup, governed by two independent d
 - SQL echo is **off by default** — `kaira run --sql` (or `--verbose`) surfaces it for a single run.
 - A Loguru `InterceptHandler` unifies uvicorn + SQLAlchemy logging into one format and sink.
 - The launch banner shows the database engine, name, and online/offline mode.
+- **A taken port is not an error.** Port 8000 is the FastAPI default, so it is also the port another project is most likely holding. `kaira run` binds the next free one and says so:
+
+  ```
+  Port   8001  moved from 8000 — another server is on it
+  URL    http://127.0.0.1:8001
+  ```
+
+  The check binds rather than connects — "is something listening" and "can I listen here" are different questions, and only the second decides whether the server starts. The scan is bounded to 20 consecutive ports. Pass `--strict-port` when the number is part of a contract (an OAuth callback, a proxy, a published container port) and it fails cleanly instead of moving.
+
+  The bound address is recorded in `.kaira/runtime.json` while the server runs, so `kaira api`, `status`, `profile`, `loadtest`, `monitor` and the welcome dashboard follow it off 8000 instead of assuming the default.
+
 See `kaira guide db-provision` and `kaira guide offline` for full walkthroughs.
 
 ---
@@ -836,33 +847,51 @@ rather than clipping, wrapping, or scaling.
 
 ### Welcome Dashboard (bare `kaira`)
 
-Running `kaira` with no arguments inside a project prints the banner and the
-project's state — configuration, health, resource counts, and what to do next:
+Running `kaira` with no arguments inside a project opens as an overview, not a
+report. A headline names the project and its connection state, a **setup meter**
+answers how far along it is before anything is read, and the checks beneath are
+the detail behind that fraction:
 
 ```
-  proj29 · api v1
-  ────────────────────────────────────────────
-    database       postgresql · proj29
-    auth           jwt
-    ci             github
+⚡ kaira ───────────────────────────────────────────────────────────────────────
 
+  proj29                                ● online
+  api v1 · postgresql · proj29
+
+    setup          ████████████████░░░░ 4/5
   ✓ connection     online · connected · localhost:5432
-  ✓ auth setup     configured
+  ✓ auth setup     jwt · configured
   ✓ docker         Dockerfile present
   ! migrations     not initialized
+  ✓ ci             github
+  ✓ server         http://127.0.0.1:8001
 
   resources
   ────────────────────────────────────────────
-    models         5
-    routers        5
-    tests          0
+    models 5   ·   routers 5   ·   tests 0
     last action    generate model User · 2026-08-04
 
   action required
   ────────────────────────────────────────────
   → kaira migrate init
-  → kaira test generate --all
+
+  next
+  ────────────────────────────────────────────
+  → kaira generate model <Name> --fields "field:type"
+  → kaira run
+  → kaira commands
 ```
+
+The meter and the *action required* list come from one checklist, so the count
+and the commands cannot disagree. The `server` line is only present when one is
+running, and reports the address it actually bound — which is not always 8000.
+
+In a live terminal the body cascades into place and a highlight sweeps once
+along the `⚡ kaira` rule. The whole surface is composed before any of it is
+printed, so a pipe, a log, `CI`, `NO_COLOR`, `--quiet` or `KAIRA_NO_MOTION`
+receives byte-identical text with no pauses — motion changes the timing, never
+the output. One 340 ms budget covers the whole invocation and every effect draws
+from it, so a longer surface animates faster rather than taking longer.
 
 Outside a project it prints a short "no project here" body pointing at
 `kaira init`. Help is still one keystroke away via `kaira --help`, and the full
@@ -899,11 +928,19 @@ per-command divider styles:
 ```
 
 The vocabulary lives in `core/ui.py` — `section`, `step`, `note`, `field`,
-`subtext`, `hint`, `rule` — and shares its symbols, colours, gutter and rule
-width with the progress renderer via `core/theme.py`:
+`subtext`, `hint`, `rule`, plus `headline`, `caption`, `pill`, `meter` and
+`stats` for surfaces you *land* on rather than read through — and shares its
+symbols, colours, gutter and rule width with the progress renderer via
+`core/theme.py`:
 
 - `✓ ✗ ! ◐ ◌` are **verdicts**; `·` is an **observation** that makes no claim
-  either way; a bare label/value **field** is a setting, not a step.
+  either way; a bare label/value **field** is a setting, not a step; `● ○` is a
+  **pill**, a condition rather than an outcome — the colour says healthy, the
+  shape says live.
+- Every element comes in two halves: `fmt_step` returns the markup, `step`
+  prints it. Animated surfaces must compose a whole block before any of it
+  reaches the screen, and two spellings of one layout is how two surfaces end
+  up disagreeing about where the value column is.
 - Labels sit in a fixed column, so values line up down a whole section. The
   symbol column is padded to a uniform width, which keeps the alignment intact
   when symbols fall back to `[ok]` / `[x]` on a non-UTF-8 console.

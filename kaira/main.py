@@ -79,12 +79,16 @@ from typer.core import TyperGroup
 
 
 class KairaTyperGroup(TyperGroup):
-    """Root command group that resolves per-invocation banner state.
+    """Root command group that resolves per-invocation banner and motion state.
 
     ``--quiet`` suppresses the banner on every surface, but it can appear
     anywhere on the command line and ``--version`` is eager, so reading it from
     a parameter callback would resolve it too late on some orderings.  Reading
     the raw argument list here settles it once, before any callback runs.
+
+    The motion budget is refilled here for the same reason it is a pool at all:
+    it is spent per invocation, so this is the one place that knows a new one
+    has started.
     """
 
     # ctx/args are typed Any: Typer re-exports click's Context from a private
@@ -92,9 +96,11 @@ class KairaTyperGroup(TyperGroup):
     # override.
     def parse_args(self, ctx: Any, args: Any) -> Any:
         """Resolve banner state for this invocation, then parse as usual."""
+        from kaira.core.motion import reset_budget
         from kaira.core.theme import reset_banner_cache, set_quiet
 
         reset_banner_cache()
+        reset_budget()
         set_quiet(any(arg in ("--quiet", "-q") for arg in args))
         return super().parse_args(ctx, args)
 
@@ -438,8 +444,10 @@ def main(
         from kaira.core.ui import render_small_banner
 
         # The version is already in the dashboard body, so the mark omits it
-        # and lets the rule run to the right margin.
-        render_small_banner(show_version=False)
+        # and lets the rule run to the right margin.  This is the one surface
+        # a developer *arrives* at rather than reads output from, so the mark
+        # animates here and nowhere else.
+        render_small_banner(show_version=False, animate=True)
         welcome_dashboard()
 
 

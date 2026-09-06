@@ -20,6 +20,8 @@ from kaira.core.progress import State, state_style, state_symbol
 from kaira.core.theme import (
     GUTTER,
     LABEL_WIDTH,
+    METER_MIN_WIDTH,
+    METER_WIDTH,
     RULE_WIDTH,
     SURFACE_LARGE,
     SURFACE_SMALL,
@@ -34,6 +36,7 @@ from kaira.core.theme import (
     plain_banner_line,
     resolve_banner_tier,
     small_banner_line,
+    small_banner_sweep,
     sym,
     terminal_width,
 )
@@ -58,8 +61,13 @@ def render_large_banner() -> None:
     colour, and the small lockup or the plain line when the terminal cannot
     carry block art at all.  A narrow terminal drops a tier rather than getting
     a clipped banner.
+
+    The rows are handed to :func:`~kaira.core.motion.reveal`, so in a live
+    terminal the lockup draws itself in from the top and everywhere else prints
+    exactly the same lines at once.
     """
     from kaira import __version__
+    from kaira.core import motion
 
     if is_quiet():
         return
@@ -73,21 +81,25 @@ def render_large_banner() -> None:
         return
 
     console.print()
-    for line in large_banner_lines(shadow=tier == TIER_LARGE_SHADOW):
-        console.print(line)
+    motion.reveal(large_banner_lines(shadow=tier == TIER_LARGE_SHADOW))
     console.print()
     console.print(large_banner_tagline())
     console.print()
 
 
-def render_small_banner(*, show_version: bool = True) -> None:
+def render_small_banner(*, show_version: bool = True, animate: bool = False) -> None:
     """Print the small lockup: bare ``kaira``, ``--version``, ``about``, ``commands``.
 
     Args:
         show_version: False on surfaces that already state the version in their
             body, where repeating it would only shorten the rule.
+        animate: True on arrival surfaces, where a sweep along the rule is
+            ceremony.  Left False for ``--version`` and the like: those are
+            read by scripts and by people in a hurry, and neither wants the
+            mark to take a beat before the answer.
     """
     from kaira import __version__
+    from kaira.core import motion
 
     if is_quiet():
         return
@@ -96,7 +108,12 @@ def render_small_banner(*, show_version: bool = True) -> None:
         console.print(plain_banner_line(__version__), highlight=False)
         return
 
-    console.print(small_banner_line(__version__ if show_version else None))
+    version = __version__ if show_version else None
+    line = small_banner_line(version)
+    if animate:
+        motion.play(small_banner_sweep(version), line)
+        return
+    console.print(line)
 
 
 # ---------------------------------------------------------------------------
@@ -139,11 +156,36 @@ def _pad(label: str) -> str:
     return escaped + " " * (LABEL_WIDTH - len(label))
 
 
-def rule() -> None:
-    """Print a hairline rule at the shared content width."""
+# Each element of the vocabulary comes in two halves: an ``fmt_*`` function
+# that returns the markup and a same-named function that prints it.  Surfaces
+# that animate (see :mod:`kaira.core.motion`) have to compose their whole block
+# before any of it reaches the screen, and duplicating the layout rules to do
+# that is how two surfaces end up disagreeing about where the value column is.
+
+
+def fmt_rule() -> str:
+    """Return a hairline rule at the shared content width."""
     char = "─" if is_interactive() else "-"
     width = min(RULE_WIDTH, max(terminal_width() - len(GUTTER) - 1, 8))
-    console.print(f"{GUTTER}[{Theme.MUTED}]{char * width}[/{Theme.MUTED}]")
+    return f"{GUTTER}[{Theme.MUTED}]{char * width}[/{Theme.MUTED}]"
+
+
+def rule() -> None:
+    """Print a hairline rule at the shared content width."""
+    console.print(fmt_rule())
+
+
+def fmt_section(title: str, note: str = "") -> list[str]:
+    """Return a section opener: a blank line, a lowercase title, a rule.
+
+    Args:
+        title: Section name (e.g. ``"scaffold"``).
+        note: Optional muted annotation shown after the title.
+    """
+    heading = f"{GUTTER}[{Theme.PRIMARY}]{escape(title)}[/{Theme.PRIMARY}]"
+    if note:
+        heading += f" [{Theme.MUTED}]· {escape(note)}[/{Theme.MUTED}]"
+    return ["", heading, fmt_rule()]
 
 
 def section(title: str, note: str = "") -> None:
@@ -153,20 +195,12 @@ def section(title: str, note: str = "") -> None:
         title: Section name (e.g. ``"scaffold"``).
         note: Optional muted annotation shown after the title.
     """
-    heading = f"{GUTTER}[{Theme.PRIMARY}]{escape(title)}[/{Theme.PRIMARY}]"
-    if note:
-        heading += f" [{Theme.MUTED}]· {escape(note)}[/{Theme.MUTED}]"
-    console.print()
-    console.print(heading)
-    rule()
+    for line in fmt_section(title, note):
+        console.print(line)
 
 
-def step(
-    label: str,
-    detail: str = "",
-    state: State = State.DONE,
-) -> None:
-    """Print one step line: ``✓ label   detail``.
+def fmt_step(label: str, detail: str = "", state: State = State.DONE) -> str:
+    """Return one step line: ``✓ label   detail``.
 
     The label is padded to a fixed column so details line up down the section,
     and the state symbol degrades to ASCII with the rest of the theme.
@@ -180,11 +214,20 @@ def step(
     line = f"{GUTTER}[{style}]{_symbol_cell(state)}[/{style}] {_pad(label)}"
     if detail:
         line += f" [{Theme.MUTED}]{escape(detail)}[/{Theme.MUTED}]"
-    console.print(line.rstrip())
+    return line.rstrip()
 
 
-def note(label: str, detail: str = "") -> None:
-    """Print an observation line that makes no claim about success.
+def step(
+    label: str,
+    detail: str = "",
+    state: State = State.DONE,
+) -> None:
+    """Print one step line: ``✓ label   detail``."""
+    console.print(fmt_step(label, detail, state))
+
+
+def fmt_note(label: str, detail: str = "") -> str:
+    """Return an observation line that makes no claim about success.
 
     Narration such as "server detected" or "driver not installed" is neither a
     completed step nor a failure — giving it a checkmark would overstate it and
@@ -195,32 +238,202 @@ def note(label: str, detail: str = "") -> None:
     line = f"{GUTTER}[{Theme.MUTED}]{bullet}[/{Theme.MUTED}] {_pad(label)}"
     if detail:
         line += f" [{Theme.MUTED}]{escape(detail)}[/{Theme.MUTED}]"
-    console.print(line.rstrip())
+    return line.rstrip()
+
+
+def note(label: str, detail: str = "") -> None:
+    """Print an observation line that makes no claim about success."""
+    console.print(fmt_note(label, detail))
+
+
+def fmt_subtext(text: str) -> str:
+    """Return a muted continuation line under the previous step's value column."""
+    # gutter + symbol column + label column + separator
+    indent = GUTTER + " " * (_marker_width() + LABEL_WIDTH + 1)
+    return f"{indent}[{Theme.MUTED}]{escape(text)}[/{Theme.MUTED}]"
 
 
 def subtext(text: str) -> None:
     """Print a muted continuation line under the previous step's value column."""
-    # gutter + symbol column + label column + separator
-    indent = GUTTER + " " * (_marker_width() + LABEL_WIDTH + 1)
-    console.print(f"{indent}[{Theme.MUTED}]{escape(text)}[/{Theme.MUTED}]")
+    console.print(fmt_subtext(text))
 
 
-def field(label: str, value: str) -> None:
-    """Print an aligned ``label   value`` pair with no state symbol.
+def fmt_field(label: str, value: str) -> str:
+    """Return an aligned ``label   value`` pair with no state symbol.
 
     Used for settings the user chose or facts about the environment, which are
     not steps and should not wear a checkmark.
     """
     indent = GUTTER + " " * _marker_width()
-    console.print(
-        f"{indent}[{Theme.MUTED}]{_pad(label)}[/{Theme.MUTED}] {escape(value)}"
-    )
+    return f"{indent}[{Theme.MUTED}]{_pad(label)}[/{Theme.MUTED}] {escape(value)}"
+
+
+def field(label: str, value: str) -> None:
+    """Print an aligned ``label   value`` pair with no state symbol."""
+    console.print(fmt_field(label, value))
+
+
+def fmt_hint(command: str) -> str:
+    """Return a muted, copy-pasteable next step: ``→ kaira run``."""
+    arrow = escape(sym("ARROW"))
+    return f"{GUTTER}[{Theme.MUTED}]{arrow} {escape(command)}[/{Theme.MUTED}]"
 
 
 def hint(command: str) -> None:
     """Print a muted, copy-pasteable next step: ``→ kaira run``."""
-    arrow = escape(sym("ARROW"))
-    console.print(f"{GUTTER}[{Theme.MUTED}]{arrow} {escape(command)}[/{Theme.MUTED}]")
+    console.print(fmt_hint(command))
+
+
+# ---------------------------------------------------------------------------
+# Overview vocabulary
+#
+# Three elements for surfaces the user *lands* on rather than reads through: a
+# heading that names the thing and states its condition, a meter that answers
+# "how far along is this" without counting lines, and a stat row that puts
+# small numbers side by side instead of one per line.  All three lay out
+# against the same content column as the step vocabulary above.
+# ---------------------------------------------------------------------------
+
+
+def fmt_pill(label: str, state: State = State.DONE, *, filled: bool = True) -> str:
+    """Return a coloured status dot with its label: ``● online``.
+
+    A pill reports a condition, where a step reports an outcome.  "online" is
+    not something that succeeded, so it gets a dot rather than a checkmark and
+    takes its colour — not its shape — from the state.
+
+    Args:
+        label: Short condition, lowercase (e.g. ``"online"``).
+        state: Drives the colour only.
+        filled: False for a hollow dot, for conditions that are absent rather
+            than bad (nothing configured yet).
+    """
+    dot = escape(sym("DOT" if filled else "DOT_OPEN"))
+    style = state_style(state)
+    return f"[{style}]{dot} {escape(label)}[/{style}]"
+
+
+def fmt_headline(title: str, badge: str = "") -> str:
+    """Return a heading with *title* left and *badge* pushed to the right margin.
+
+    Args:
+        title: The subject, printed prominently (e.g. the project name).
+        badge: Pre-styled markup, usually from :func:`fmt_pill`, right-aligned
+            against the shared content width.  Dropped when the terminal is too
+            narrow to separate the two, rather than wrapped onto its own line.
+    """
+    from rich.cells import cell_len
+    from rich.text import Text
+
+    head = f"{GUTTER}[bold]{escape(title)}[/bold]"
+    if not badge:
+        return head
+
+    width = min(RULE_WIDTH, max(terminal_width() - len(GUTTER) - 1, 8))
+    badge_width = cell_len(Text.from_markup(badge).plain)
+    padding = width - cell_len(title) - badge_width
+    if padding < 2:
+        return head
+    return f"{head}{' ' * padding}{badge}"
+
+
+def fmt_caption(text: str) -> str:
+    """Return a muted line at the gutter, for the subtitle under a headline.
+
+    Unlike :func:`fmt_subtext` this sits at the left edge rather than under the
+    value column: it qualifies the whole heading, not one step's outcome.
+    """
+    return f"{GUTTER}[{Theme.MUTED}]{escape(text)}[/{Theme.MUTED}]"
+
+
+def caption(text: str) -> None:
+    """Print a muted line at the gutter, under a headline."""
+    console.print(fmt_caption(text))
+
+
+def _content_width() -> int:
+    """Return the width one line of body content has to work with."""
+    return min(RULE_WIDTH, max(terminal_width() - len(GUTTER) - 1, 8))
+
+
+def fmt_meter(done: int, total: int, label: str = "") -> str:
+    """Return a filled bar with its fraction: ``ready  ████░░░░  3/5``.
+
+    The bar is the part that gives: it shrinks to whatever the terminal leaves
+    after the label and the fraction, because a meter that wraps onto a second
+    line has lost the one thing it was for — being read in a glance.
+
+    Args:
+        done: Completed count.
+        total: Total count; a zero total renders an empty bar rather than
+            dividing by it.
+        label: Short leading label, padded to the shared label column.
+    """
+    full = sym("METER_FULL")
+    empty = sym("METER_EMPTY")
+    fraction = f"{done}/{total}"
+
+    indent = GUTTER + " " * _marker_width()
+    head_width = len(indent) + (max(len(label), LABEL_WIDTH) + 1 if label else 0)
+    room = _content_width() + len(GUTTER) - head_width - len(fraction) - 1
+    width = max(METER_MIN_WIDTH, min(METER_WIDTH, room))
+
+    filled = int(width * done / total) if total > 0 else 0
+    filled = max(0, min(filled, width))
+    style = Theme.SUCCESS if total and done >= total else Theme.PRIMARY
+
+    bar = (
+        f"[{style}]{full * filled}[/{style}]"
+        f"[{Theme.MUTED}]{empty * (width - filled)}[/{Theme.MUTED}]"
+    )
+    head = f"{indent}[{Theme.MUTED}]{_pad(label)}[/{Theme.MUTED}] " if label else indent
+    return f"{head}{bar} [{Theme.MUTED}]{fraction}[/{Theme.MUTED}]"
+
+
+#: Separators tried in order, widest first, until the stat row fits the line.
+_STAT_SEPARATORS = ("   ·   ", "  ·  ", "  ")
+
+
+def fmt_stats(pairs: Sequence[tuple[str, str]]) -> str:
+    """Return small counts on one line: ``models  3   routers  3   tests  1``.
+
+    The separator tightens rather than the row wrapping: numbers side by side
+    are only easier to compare than stacked ones while they stay on one line.
+
+    Args:
+        pairs: ``(label, value)`` pairs, kept short — this row is for numbers
+            that are quicker to compare beside each other than stacked.
+    """
+    indent = GUTTER + " " * _marker_width()
+    cells = [f"{label} {value}" for label, value in pairs]
+    limit = _content_width() + len(GUTTER)
+
+    separator = _STAT_SEPARATORS[-1]
+    for candidate in _STAT_SEPARATORS:
+        if len(indent) + len(candidate.join(cells)) <= limit:
+            separator = candidate
+            break
+
+    rendered = [
+        f"[{Theme.MUTED}]{escape(label)}[/{Theme.MUTED}] {escape(value)}"
+        for label, value in pairs
+    ]
+    return indent + f"[{Theme.MUTED}]{separator}[/{Theme.MUTED}]".join(rendered)
+
+
+def headline(title: str, badge: str = "") -> None:
+    """Print a heading with *title* left and *badge* at the right margin."""
+    console.print(fmt_headline(title, badge))
+
+
+def meter(done: int, total: int, label: str = "") -> None:
+    """Print a filled bar with its fraction."""
+    console.print(fmt_meter(done, total, label))
+
+
+def stats(pairs: Sequence[tuple[str, str]]) -> None:
+    """Print small counts side by side on one line."""
+    console.print(fmt_stats(pairs))
 
 
 # ---------------------------------------------------------------------------

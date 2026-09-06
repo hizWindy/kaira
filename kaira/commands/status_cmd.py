@@ -46,10 +46,15 @@ def _check_dev_server(timeout: float = 1.0) -> str:
     try:
         import httpx
 
+        from kaira.core.ports import resolve_base_url
+
+        # Where the server actually is, which is not always :8000 — `kaira run`
+        # shifts off a taken port and records the address it took.
+        base_url = resolve_base_url()
         with httpx.Client(timeout=timeout) as client:
-            resp = client.get("http://127.0.0.1:8000/health")
+            resp = client.get(f"{base_url}/health")
             if resp.status_code < 500:
-                return "[green]✅ Running[/green] [dim](http://127.0.0.1:8000)[/dim]"
+                return f"[green]✅ Running[/green] [dim]({base_url})[/dim]"
             return "[yellow]⚠️  Unhealthy[/yellow]"
     except Exception:
         return "[dim]⏸️ Not running[/dim]"

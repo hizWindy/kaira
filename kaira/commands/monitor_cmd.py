@@ -68,6 +68,19 @@ TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
 app = typer.Typer(help="Runtime application monitoring — metrics, probes, dashboard.")
 
 DEFAULT_BASE_URL = "http://127.0.0.1:8000"
+"""Address assumed when no server is running to be found."""
+
+
+def _default_base_url() -> str:
+    """Return the address of the running application.
+
+    ``kaira run`` moves off a taken port and records where it landed, so the
+    address is resolved when the command runs rather than fixed at import: a
+    constant would point at :8000 while the app answers on :8001.
+    """
+    from kaira.core.ports import resolve_base_url
+
+    return resolve_base_url()
 
 # main.py splice anchors. All three are written by the Phase 3/4 templates, so a
 # project that has them is one Kaira generated; a project that does not gets a
@@ -851,8 +864,14 @@ def fetch_live_payload(
 @app.command("status")
 def monitor_status(
     url: Annotated[
-        str, typer.Option("--url", help="Base URL of the running application.")
-    ] = DEFAULT_BASE_URL,
+        Optional[str],
+        typer.Option(
+            "--url",
+            help="Base URL of the running application "
+            "(default: the server kaira run started, else "
+            f"{DEFAULT_BASE_URL}).",
+        ),
+    ] = None,
 ) -> None:
     """Show what monitoring is configured, and what is actually running.
 
@@ -866,6 +885,7 @@ def monitor_status(
     kaira monitor status --url http://127.0.0.1:9000
     """
     require_project()
+    url = url or _default_base_url()
     state = monitor_state.resolve_state(Path.cwd())
 
     section("configured", state.project_name)
@@ -1063,8 +1083,14 @@ def evaluate_thresholds(
 @app.command("watch")
 def monitor_watch(
     url: Annotated[
-        str, typer.Option("--url", help="Base URL of the running application.")
-    ] = DEFAULT_BASE_URL,
+        Optional[str],
+        typer.Option(
+            "--url",
+            help="Base URL of the running application "
+            "(default: the server kaira run started, else "
+            f"{DEFAULT_BASE_URL}).",
+        ),
+    ] = None,
     interval: Annotated[
         int, typer.Option("--interval", help="Seconds between polls.")
     ] = 10,
@@ -1092,6 +1118,7 @@ def monitor_watch(
     kaira monitor watch --once
     """
     require_project()
+    url = url or _default_base_url()
 
     webhook = _read_env_value(ENV_MONITOR_WEBHOOK)
     section("watch", url)
