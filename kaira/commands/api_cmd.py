@@ -122,6 +122,28 @@ def api_validate() -> None:
     )
 
 
+def collect_api_routes(spec: dict) -> list[dict[str, str]]:
+    """Extract route records from an OpenAPI spec dictionary.
+
+    Args:
+        spec: OpenAPI specification dictionary.
+
+    Returns:
+        List of dicts with 'method', 'path', and 'summary'.
+    """
+    routes: list[dict[str, str]] = []
+    for path, methods in sorted(spec.get("paths", {}).items()):
+        for method, op in methods.items():
+            routes.append(
+                {
+                    "method": method.upper(),
+                    "path": path,
+                    "summary": op.get("summary", "—"),
+                }
+            )
+    return routes
+
+
 @app.command("list")
 def api_list() -> None:
     """List all routes registered in the local dev server."""
@@ -135,13 +157,13 @@ def api_list() -> None:
     table.add_column("Path", style="cyan")
     table.add_column("Summary")
 
-    for path, methods in sorted(spec.get("paths", {}).items()):
-        for method, op in methods.items():
-            table.add_row(
-                method.upper(),
-                path,
-                op.get("summary", "[dim]—[/dim]"),
-            )
+    for route in collect_api_routes(spec):
+        summary_disp = route["summary"] if route["summary"] != "—" else "[dim]—[/dim]"
+        table.add_row(
+            route["method"],
+            route["path"],
+            summary_disp,
+        )
     console.print(table)
 
 

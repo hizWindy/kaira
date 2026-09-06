@@ -1,8 +1,6 @@
 """Tests for Phase 7.5 — Banner, Progress UI & Command Index.
 
 Covers:
-- FEATURE A: banner lockup alignment and three-tier degradation
-- FEATURE A: banner on the entry-point surfaces, absent on working commands
 - FEATURE B: phase/item model, live layout, truncation, collapse & failure
 - FEATURE B: batched uv-first installer, parsed item states, error mapping
 - FEATURE C: kaira commands index, --group, --search, and the drift test
@@ -39,7 +37,7 @@ from kaira.core.progress import (
     create_install_renderer,
 )
 from kaira.core import ui
-from kaira.core.theme import GUTTER, RULE_WIDTH, get_banner
+from kaira.core.theme import GUTTER, RULE_WIDTH
 from kaira.main import app
 
 runner = CliRunner()
@@ -52,98 +50,13 @@ def strip_markup(text: str) -> str:
     return _MARKUP_RE.sub("", text)
 
 
-@pytest.fixture()
-def tty(monkeypatch):
-    """Present an interactive, colour, UTF-8, 80-column terminal."""
-    monkeypatch.setattr("sys.stdout.isatty", lambda: True)
-    monkeypatch.setattr("kaira.core.theme.supports_utf8", lambda: True)
-    monkeypatch.setattr("kaira.core.theme.terminal_width", lambda: 80)
-    monkeypatch.delenv("NO_COLOR", raising=False)
-
-
 # ---------------------------------------------------------------------------
-# FEATURE A: Banner & three-tier degradation
+# FEATURE A: Banner
+#
+# The Phase 7.5 wordmark and its three-tier ladder were replaced by the banner
+# phase — two lockups, four tiers, five surfaces.  Those tests live in
+# tests/test_phase_banner.py; nothing about the banner is asserted here.
 # ---------------------------------------------------------------------------
-
-
-class TestBanner:
-    def test_full_banner_tier1(self, tty):
-        """Interactive TTY + UTF-8 + colour produces the wordmark with flanks."""
-        banner = get_banner("1.0.0")
-        assert "⚙️" in banner
-        assert "⚡" in banner
-        assert "v1.0.0" in banner
-        assert "continuous scaffolding" in banner
-
-    def test_wordmark_lines_share_a_left_edge(self, tty):
-        """The two wordmark lines and the tagline align on the same column.
-
-        Line 2 is prefixed by the gear, which occupies exactly the columns the
-        other lines indent by.  A mismatch here is what makes the banner look
-        broken in real terminals.
-        """
-        line1, line2, tagline = strip_markup(get_banner("1.0.0")).splitlines()
-
-        indent = len(line1) - len(line1.lstrip())
-        assert indent == len(tagline) - len(tagline.lstrip())
-        # The gear + space stands in for the indent on line 2.
-        assert line2.startswith("⚙️ ")
-        assert len(line2.split(" ", 1)[0]) + 1 == indent
-
-    def test_wordmark_lines_are_equal_width(self, tty):
-        """Both halves of the block wordmark are the same width."""
-        line1, line2, _ = strip_markup(get_banner("1.0.0")).splitlines()
-        top = line1.strip()
-        # Strip the gear prefix and bolt suffix from line 2.
-        bottom = line2.split(" ", 1)[1].rsplit(" ", 1)[0]
-        assert len(top) == len(bottom)
-
-    def test_nocolor_banner_tier2(self, tty, monkeypatch):
-        """NO_COLOR keeps the wordmark and flanks but emits no markup."""
-        monkeypatch.setenv("NO_COLOR", "1")
-        banner = get_banner("1.0.0")
-        assert "⚙️" in banner
-        assert "⚡" in banner
-        assert "[" not in banner
-
-    def test_nocolor_banner_stays_aligned(self, tty, monkeypatch):
-        """Tier 2 keeps the shared left edge as well."""
-        monkeypatch.setenv("NO_COLOR", "1")
-        line1, line2, tagline = get_banner("1.0.0").splitlines()
-        assert len(line1) - len(line1.lstrip()) == len(tagline) - len(tagline.lstrip())
-        assert line2.startswith("⚙️ ")
-
-    def test_plain_banner_tier3_non_tty(self, tty, monkeypatch):
-        """Non-TTY stdout collapses to the single plain line."""
-        monkeypatch.setattr("sys.stdout.isatty", lambda: False)
-        assert get_banner("1.0.0") == (
-            "KAIRA v1.0.0 · continuous model-level FastAPI scaffolding"
-        )
-
-    def test_plain_banner_tier3_non_utf8(self, tty, monkeypatch):
-        """A non-UTF-8 console collapses to the single plain line."""
-        monkeypatch.setattr("kaira.core.theme.supports_utf8", lambda: False)
-        assert get_banner("1.0.0").startswith("KAIRA v1.0.0")
-
-    def test_plain_banner_tier3_narrow(self, tty, monkeypatch):
-        """A terminal under 32 columns collapses to the single plain line."""
-        monkeypatch.setattr("kaira.core.theme.terminal_width", lambda: 28)
-        assert get_banner("1.0.0").startswith("KAIRA v1.0.0")
-
-    @pytest.mark.parametrize(
-        "argv", [["about"], ["--version"], ["commands"], ["--help"], []]
-    )
-    def test_banner_on_entrypoints(self, argv):
-        """Entry-point surfaces render the banner."""
-        result = runner.invoke(app, argv)
-        assert "KAIRA" in result.output or "continuous scaffolding" in result.output
-
-    @pytest.mark.parametrize("argv", [["check"], ["info"], ["list", "--help"]])
-    def test_banner_absent_on_working_commands(self, argv):
-        """Working commands never render the banner."""
-        result = runner.invoke(app, argv)
-        assert "KAIRA v" not in result.output
-        assert "continuous scaffolding" not in result.output
 
 
 # ---------------------------------------------------------------------------
@@ -798,7 +711,7 @@ class TestWelcomeDashboard:
         assert "kaira config show" in result.output
 
     def test_help_still_renders_help(self, tmp_path, monkeypatch):
-        """`kaira --help` keeps the grouped help page, banner on top."""
+        """`kaira --help` keeps the grouped help page."""
         self._project(tmp_path, monkeypatch)
         out = runner.invoke(app, ["--help"]).output
         assert "Usage:" in out

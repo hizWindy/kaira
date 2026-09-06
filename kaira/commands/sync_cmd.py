@@ -308,6 +308,10 @@ def sync_model(
             "--force", help="Overwrite regenerated layers without confirming."
         ),
     ] = False,
+    quiet: Annotated[
+        bool,
+        typer.Option("--quiet", "-q", help="Non-interactive mode."),
+    ] = False,
 ) -> None:
     """Cascade model field changes through schema and router; flag the service.
 
@@ -342,6 +346,9 @@ def sync_model(
 
     if not dry_run:
         save_config(config)
+        from kaira.core.docs_render import maybe_autodocs
+
+        maybe_autodocs(quiet=quiet)
 
 
 def _sync_one(

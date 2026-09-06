@@ -525,6 +525,16 @@ def _is_unused(feature: str, enabled: bool, referenced: bool) -> bool:
     return not enabled and not referenced
 
 
+def collect_env_audit_rows(
+    config: KairaConfig, output_root: Path
+) -> list[tuple[str, str, bool, bool]]:
+    """Return ``(key, feature, enabled, referenced)`` for every env key in use."""
+    return _audit_rows(config, output_root)
+
+
+KEY_FEATURES = _KEY_FEATURES
+
+
 @app.command("audit")
 def env_audit() -> None:
     """Audit every env key: which feature owns it, whether code references it, and status.

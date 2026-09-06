@@ -279,6 +279,10 @@ def generate_model(
         bool,
         typer.Option("--force", help="Overwrite existing files without prompting"),
     ] = False,
+    quiet: Annotated[
+        bool,
+        typer.Option("--quiet", "-q", help="Non-interactive mode."),
+    ] = False,
 ) -> None:
     """Generate a complete pipeline for MODEL_NAME.
 
@@ -375,6 +379,11 @@ def generate_model(
         f"\n[bold green]✓[/bold green]  Done! Pipeline generated for [bold]{model_name}[/bold]."
     )
 
+    # Prompt to regenerate documentation if present and out of sync
+    from kaira.core.docs_render import maybe_autodocs
+
+    maybe_autodocs(quiet=quiet)
+
     # Derive next steps from project state
     db_type = config.db_type
     output_root = base / config.output_dir
@@ -390,7 +399,7 @@ def generate_model(
             f"[cyan]kaira test generate {model_name}[/cyan] — generate tests"
         )
     next_steps.append(f"[cyan]kaira diff {model_name}[/cyan] — preview future changes")
-    print_next_steps(next_steps)
+    print_next_steps(next_steps, quiet=quiet)
 
 
 # ---------------------------------------------------------------------------

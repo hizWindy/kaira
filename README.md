@@ -603,7 +603,6 @@ The app binds exactly **one** database at startup, governed by two independent d
 - SQL echo is **off by default** — `kaira run --sql` (or `--verbose`) surfaces it for a single run.
 - A Loguru `InterceptHandler` unifies uvicorn + SQLAlchemy logging into one format and sink.
 - The launch banner shows the database engine, name, and online/offline mode.
-
 See `kaira guide db-provision` and `kaira guide offline` for full walkthroughs.
 
 ---
@@ -806,14 +805,34 @@ kaira commands --search export    # Search across names & descriptions
 
 ### Brand Banner
 
-Shown on entry points only (bare `kaira`, `--help`, `--version`, `about`, `init`,
-`commands`) — never above a working command's output. Three-tier degradation:
+Kaira has exactly two banners, and they do different jobs.
 
-| Terminal | Output |
-|---|---|
-| Interactive TTY, UTF-8, colour | Block wordmark with `⚙️` / `⚡` flanks |
-| UTF-8 with `NO_COLOR` | Same wordmark, no ANSI |
-| Non-TTY, non-UTF-8, piped/CI, or under 32 columns | `KAIRA v1.0.0 · continuous model-level FastAPI scaffolding` |
+| Banner | Job | Where | Frequency |
+|---|---|---|---|
+| **Large** | First impression — ceremony for the moment a project starts | `kaira init` only | Once per project, ever |
+| **Small** | Wayfinding — quiet identity that doubles as a divider | bare `kaira`, `--version`, `about`, `commands` | Many times per day |
+
+The large banner is block art: a five-row lockup composited with a dim shadow
+offset one row down and one column right, over the tagline
+`Continuous model-level FastAPI scaffolding`. The small banner is a single line
+— `⚡ kaira ────… v0.1.0` — whose rule stretches to fill the gap between the
+mark and the version, capped at 80 columns.
+
+Every other command gets **no banner**. Neither appears under `--quiet`, and
+neither is ever printed twice in one invocation.
+
+Four-tier degradation, resolved once per invocation:
+
+| Tier | Condition | Output |
+|---|---|---|
+| 1 | `kaira init`, width ≥ 44, colour, UTF-8 | Large banner **with** shadow |
+| 2 | `kaira init`, width ≥ 40, UTF-8, no colour (or `NO_COLOR`) | Large banner, **flat** main layer |
+| 3 | Width < 40, non-TTY, or a small-banner surface | Small banner |
+| 4 | UTF-8 unavailable | `kaira v0.1.0` — plain ASCII |
+
+Piped output never gets block art: `kaira init > log.txt` writes a readable
+log, not 200 block characters. Below a width threshold the banner drops a tier
+rather than clipping, wrapping, or scaling.
 
 ### Welcome Dashboard (bare `kaira`)
 
@@ -937,13 +956,55 @@ and stack traces cannot leak into the terminal.
 
 ---
 
+## Documentation Generation (`kaira docs`)
+
+Kaira projects include a deterministic documentation engine that projects internal project state (`.kaira.json`, models, route discovery, and env configuration) directly into markdown reference documents in `./docs`.
+
+```bash
+# Generate complete documentation suite
+kaira docs generate
+
+# Check documentation freshness against project state (read-only)
+kaira docs status
+
+# Surgically regenerate documentation for a single model (preserves other models)
+kaira docs generate User
+
+# Generate specific document only
+kaira docs generate --only models       # docs/models.md
+kaira docs generate --only endpoints    # docs/endpoints.md
+kaira docs generate --only erd          # docs/erd.md
+kaira docs generate --only config       # docs/configuration.md
+
+# Preview planned changes without writing to disk
+kaira docs generate --dry-run
+
+# Specify custom output directory
+kaira docs generate --output ./documentation
+
+# Non-interactive CI mode (overwrites silently without prompts)
+kaira docs generate --quiet
+```
+
+### Generated Documentation Files
+
+| File | Content |
+|---|---|
+| `docs/README.md` | Navigation index linking all reference docs, project metadata, and pointers to OpenAPI (`kaira api export`) & Postman (`kaira api postman`). |
+| `docs/models.md` | Complete model reference with field tables, data types, constraints (e.g. `max_length`, `ge`, `email`), nullability, and relationship links. Supports surgical single-model updates. |
+| `docs/endpoints.md` | Discovered API routes grouped by resource tag, HTTP method, authentication requirements (🔒 Required / Public), cache TTL, and rate limits. |
+| `docs/erd.md` | Live Mermaid `erDiagram` visualizing entity relationships with exact cardinalities (`||--o{`, `}o--||`, `}o--o{`, `||--||`) for relational databases, or logical document relationships for MongoDB/Atlas/Firestore. |
+| `docs/configuration.md` | Environment variable reference detailing key names, ownership, requirements, and placeholder formats. **Zero access to live `.env` files** — secrets are never read or stored. |
+
+---
+
 ## Project Structure (Generated)
 
 ```
 my-api/
 ├── main.py
 ├── database.py
-├── auth.py                         # (--with-auth only)
+├── auth/
 ├── models/
 │   ├── __init__.py
 │   ├── user.py
@@ -962,7 +1023,11 @@ my-api/
 │   └── post_router.py
 ├── tests/
 ├── docs/
-│   └── api.md
+│   ├── README.md
+│   ├── models.md
+│   ├── endpoints.md
+│   ├── erd.md
+│   └── configuration.md
 ├── alembic/
 ├── .env
 ├── .env.example

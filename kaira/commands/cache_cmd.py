@@ -146,6 +146,10 @@ def cache_add(
     all_get: Annotated[
         bool, typer.Option("--all-get", help="Cache all GET routes")
     ] = False,
+    quiet: Annotated[
+        bool,
+        typer.Option("--quiet", "-q", help="Non-interactive mode."),
+    ] = False,
 ) -> None:
     """Add caching to a route or all GET routes. Only GET routes are cacheable."""
     if all_get:
@@ -167,6 +171,9 @@ def cache_add(
                 border_style="green",
             )
         )
+        from kaira.core.docs_render import maybe_autodocs
+
+        maybe_autodocs(quiet=quiet)
         return
 
     method_upper = method.upper()
@@ -190,6 +197,10 @@ def cache_add(
             border_style="green",
         )
     )
+
+    from kaira.core.docs_render import maybe_autodocs
+
+    maybe_autodocs(quiet=quiet)
 
 
 @app.command("clear")

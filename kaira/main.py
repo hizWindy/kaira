@@ -79,22 +79,24 @@ from typer.core import TyperGroup
 
 
 class KairaTyperGroup(TyperGroup):
-    """Root command group that prepends the Kaira banner to help output.
+    """Root command group that resolves per-invocation banner state.
 
-    Help is an entry-point surface, so the banner belongs here.  It is *not*
-    hooked into the command callback, which would fire for every invocation
-    and leak the banner onto working commands and into piped output.
+    ``--quiet`` suppresses the banner on every surface, but it can appear
+    anywhere on the command line and ``--version`` is eager, so reading it from
+    a parameter callback would resolve it too late on some orderings.  Reading
+    the raw argument list here settles it once, before any callback runs.
     """
 
-    # ctx/formatter are typed Any: Typer re-exports click's Context and
-    # HelpFormatter from a private module, so naming click's public types here
-    # reads as an incompatible override.
-    def format_help(self, ctx: Any, formatter: Any) -> None:
-        """Render the banner, then Click's standard grouped help."""
-        from kaira.core.ui import render_banner
+    # ctx/args are typed Any: Typer re-exports click's Context from a private
+    # module, so naming click's public type here reads as an incompatible
+    # override.
+    def parse_args(self, ctx: Any, args: Any) -> Any:
+        """Resolve banner state for this invocation, then parse as usual."""
+        from kaira.core.theme import reset_banner_cache, set_quiet
 
-        render_banner()
-        super().format_help(ctx, formatter)
+        reset_banner_cache()
+        set_quiet(any(arg in ("--quiet", "-q") for arg in args))
+        return super().parse_args(ctx, args)
 
 
 # ── Root Typer app ────────────────────────────────────────────────────────────
@@ -120,7 +122,9 @@ app.add_typer(generate_app, name="generate", help="Scaffold FastAPI backend laye
 app.add_typer(add_app, name="add", help="Add relationships between models.")
 app.add_typer(migrate_app, name="migrate", help="Alembic database migration commands.")
 app.add_typer(list_app, name="list", help="List generated resources.")
-app.add_typer(docs_app, name="docs", help="AI-powered API documentation generation.")
+app.add_typer(
+    docs_app, name="docs", help="Documentation generation and status management."
+)
 app.add_typer(config_app, name="config", help="Manage Kaira project configuration.")
 app.add_typer(auth_app, name="auth", help="Authentication scaffolding commands.")
 app.add_typer(test_app, name="test", help="Testing scaffold and run commands.")
@@ -284,9 +288,9 @@ def cmd_init(
     kaira init myproject --db postgresql --auth jwt --docker
     kaira init proj9 --db postgresql --profile solo
     """
-    from kaira.core.ui import render_banner
+    from kaira.core.ui import render_large_banner
 
-    render_banner()
+    render_large_banner()
     init_command(
         name=name, db=db, auth=auth, docker=docker, ci=ci, profile=profile, yes=yes
     )
@@ -339,9 +343,9 @@ def cmd_health() -> None:
 def _version_callback(value: bool) -> None:
     if value:
         from kaira.core.theme import Theme, attribution
-        from kaira.core.ui import render_banner
+        from kaira.core.ui import render_small_banner
 
-        render_banner()
+        render_small_banner()
         console.print(f"Kaira v{__version__}")
         console.print(f"[{Theme.MUTED}]{attribution()}[/{Theme.MUTED}]")
         raise typer.Exit()
@@ -353,9 +357,9 @@ def cmd_about() -> None:
     from rich.panel import Panel
 
     from kaira.core.theme import Theme, attribution, sym
-    from kaira.core.ui import render_banner
+    from kaira.core.ui import render_small_banner
 
-    render_banner()
+    render_small_banner()
 
     bolt = sym("BOLT")
     from kaira.core.theme import PROJECT_URL
@@ -431,9 +435,11 @@ def main(
     # body outside one).  Working commands never reach this branch.
     if ctx.invoked_subcommand is None:
         from kaira.commands.dashboard import welcome_dashboard
-        from kaira.core.ui import render_banner
+        from kaira.core.ui import render_small_banner
 
-        render_banner()
+        # The version is already in the dashboard body, so the mark omits it
+        # and lets the rule run to the right margin.
+        render_small_banner(show_version=False)
         welcome_dashboard()
 
 

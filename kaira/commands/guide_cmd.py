@@ -69,7 +69,9 @@ def guide_main(
             "  [bold magenta]── Phase 7.5 ────────────────────────────────[/bold magenta]\n"
             "  [bold cyan]kaira guide commands[/bold cyan]          Command index & discovery\n"
             "  [bold magenta]── Monitoring ───────────────────────────────[/bold magenta]\n"
-            "  [bold cyan]kaira guide monitor[/bold cyan]           Metrics, probes, dashboard & alerts"
+            "  [bold cyan]kaira guide monitor[/bold cyan]           Metrics, probes, dashboard & alerts\n"
+            "  [bold magenta]── Documentation ────────────────────────────[/bold magenta]\n"
+            "  [bold cyan]kaira guide docs[/bold cyan]              Documentation generation & freshness"
         )
         print_guide_panel("Index", content, "Run any guide for examples and usage.")
 
@@ -898,6 +900,16 @@ def guide_commands() -> None:
         "  • [bold]kaira commands[/bold]   Static reference sheet — scan or grep everything\n"
         "  • [bold]kaira menu[/bold]       Interactive fuzzy picker — find and execute commands\n"
         "  • [bold]kaira guide[/bold]      Detailed teaching guides with worked examples\n\n"
+        "[bold green]Where the banner appears:[/bold green]\n"
+        "  Two banners, five surfaces — everything else runs bare.\n\n"
+        "  [cyan]kaira init[/cyan]                        Large block banner (once per project)\n"
+        "  [cyan]kaira[/cyan]                             Small mark above the dashboard\n"
+        "  [cyan]kaira --version[/cyan]                   Small mark\n"
+        "  [cyan]kaira about[/cyan]                       Small mark\n"
+        "  [cyan]kaira commands[/cyan]                    Small mark\n\n"
+        "  Narrow terminals, [bold]NO_COLOR[/bold], and piped output each drop a tier\n"
+        "  rather than clipping the art. [bold]--quiet[/bold] suppresses the banner\n"
+        "  everywhere, at every tier.\n\n"
         "[bold green]Tip:[/bold green]\n"
         "  Introspects registered Typer commands automatically, so it never\n"
         "  drifts when new subcommands are added."
@@ -985,4 +997,38 @@ def guide_monitor() -> None:
         content,
         "Start with `kaira monitor init` — it prompts before touching main.py, "
         "and /health is never modified.",
+    )
+
+
+@app.command("docs")
+def guide_docs() -> None:
+    """Guide for documentation generation and status management."""
+    content = (
+        "Generate and manage project documentation from internal state:\n\n"
+        "[bold green]1. Generate all documentation:[/bold green]\n"
+        "  kaira docs generate                         render all project docs and root README.md\n"
+        "  kaira docs generate --output ./documentation customize output directory\n"
+        "  kaira docs generate --dry-run               preview file plan without writing\n"
+        "  kaira docs generate --quiet                 non-interactive CI mode (overwrite silently)\n\n"
+        "[bold green]2. Generate specific documents:[/bold green]\n"
+        "  kaira docs generate User                    update single model section in docs/models.md\n"
+        "  kaira docs generate --only readme           render project root and docs/ READMEs\n"
+        "  kaira docs generate --only models           render only model reference\n"
+        "  kaira docs generate --only endpoints        render only endpoint catalog\n"
+        "  kaira docs generate --only erd              render only Mermaid ERD\n"
+        "  kaira docs generate --only config           render only configuration reference\n\n"
+        "[bold green]3. Inspect documentation freshness:[/bold green]\n"
+        "  kaira docs status                           report up-to-date / stale / missing files\n\n"
+        "[bold green]4. Generated files overview:[/bold green]\n"
+        "  [cyan]README.md[/cyan]              project root overview, architecture, models & quickstart\n"
+        "  [cyan]docs/README.md[/cyan]         documentation index, purpose, and specs\n"
+        "  [cyan]docs/models.md[/cyan]         fields, types, pydantic/ORM constraints, relations\n"
+        "  [cyan]docs/endpoints.md[/cyan]      routes grouped by resource, auth guards, cache, rate limits\n"
+        "  [cyan]docs/erd.md[/cyan]            Mermaid ER diagram with relationship cardinalities\n"
+        "  [cyan]docs/configuration.md[/cyan]  environment keys, ownership, requirements, placeholders"
+    )
+    print_guide_panel(
+        "docs",
+        content,
+        "Every document is a projection of internal state — no manual prose maintenance needed.",
     )

@@ -10,14 +10,12 @@ from rich.panel import Panel
 
 from kaira.config import get_config
 from kaira.console import console
-from kaira.core.parser import validate_model_name, camel_to_snake, parse_relation
-from kaira.core.generator import resolve_output_path
 from kaira.core.detector import file_exists
+from kaira.core.drivers import get_engine_driver
+from kaira.core.generator import resolve_output_path
+from kaira.core.parser import camel_to_snake, parse_relation, validate_model_name
 
 app = typer.Typer(help="Add relationships between models.")
-
-
-from kaira.core.drivers import get_engine_driver
 
 
 def _append_relation_block(model_file: Path, relation_block: str) -> None:
@@ -120,6 +118,10 @@ def add_relation(
             "--embedded", help="Embed child sub-document schema (NoSQL / MongoDB)"
         ),
     ] = False,
+    quiet: Annotated[
+        bool,
+        typer.Option("--quiet", "-q", help="Non-interactive mode."),
+    ] = False,
 ) -> None:
     """Add a relationship to MODEL_A's model file.
 
@@ -191,6 +193,23 @@ def add_relation(
     console.print(
         f"[bold green]✓[/bold green]  Relationship added to [cyan]{model_file}[/cyan]"
     )
+
+    # Persist relation into .kaira.json
+    for entry in config.generated_models:
+        if entry.get("name") == model_a:
+            rels = entry.setdefault("relations", [])
+            if not any(
+                r.get("target") == target and r.get("type") == relation_type
+                for r in rels
+            ):
+                rels.append({"type": relation_type, "target": target})
+    from kaira.config import save_config
+
+    save_config(config)
+
+    from kaira.core.docs_render import maybe_autodocs
+
+    maybe_autodocs(quiet=quiet)
 
     if relation_type == "many-to-many":
         # Remind user to create association table

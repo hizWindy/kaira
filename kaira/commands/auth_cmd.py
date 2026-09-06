@@ -253,6 +253,10 @@ def auth_add_guard(
     router_name: Annotated[
         str, typer.Argument(help="Name of the router model (PascalCase, e.g. User)")
     ],
+    quiet: Annotated[
+        bool,
+        typer.Option("--quiet", "-q", help="Non-interactive mode."),
+    ] = False,
 ) -> None:
     """Add Depends(get_current_user) to all endpoints in a router."""
     config = get_config()
@@ -304,14 +308,18 @@ def auth_add_guard(
             # Find closing paren and add dependency before it
             pass  # We'll use a simpler approach: inject into Depends chain
 
-    # Add current_user to mutation/lookup endpoint functions except list endpoints (def list_...)
+    content = "\n".join(lines)
     modified = re.sub(
         r"(def (?!list_)\w+\([^)]*)(service: [^)]+= Depends\(get_service\))",
         r"\1\2,\n    current_user: dict = Depends(get_current_user)",
-        modified,
+        content,
     )
 
     router_path.write_text(modified, encoding="utf-8")
     console.print(
         f"  [green bold]✓[/green bold]  Auth guard added to [cyan]{router_path}[/cyan]"
     )
+
+    from kaira.core.docs_render import maybe_autodocs
+
+    maybe_autodocs(quiet=quiet)

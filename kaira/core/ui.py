@@ -21,9 +21,19 @@ from kaira.core.theme import (
     GUTTER,
     LABEL_WIDTH,
     RULE_WIDTH,
+    SURFACE_LARGE,
+    SURFACE_SMALL,
+    TIER_LARGE_FLAT,
+    TIER_LARGE_SHADOW,
+    TIER_PLAIN,
     Theme,
-    get_banner,
     is_interactive,
+    is_quiet,
+    large_banner_lines,
+    large_banner_tagline,
+    plain_banner_line,
+    resolve_banner_tier,
+    small_banner_line,
     sym,
     terminal_width,
 )
@@ -33,24 +43,60 @@ F = TypeVar("F", bound=Callable[..., Any])
 
 
 # ---------------------------------------------------------------------------
-# Banner helper (Phase 7.5)
+# Banner surfaces
+#
+# Two functions, one call site each.  A banner printed twice in one invocation
+# is a bug, so no command may reach past these into the theme layer.
 # ---------------------------------------------------------------------------
 
 
-def render_banner() -> None:
-    """Print the Kaira banner appropriate for the current terminal.
+def render_large_banner() -> None:
+    """Print the large block lockup. ``kaira init`` only.
 
-    Uses :func:`~kaira.core.theme.get_banner` for three-tier degradation.
-    Called explicitly by entry-point surfaces — never from a global Typer
-    callback.  The banner is a brand moment, not a working-command header.
+    Degrades through :func:`~kaira.core.theme.resolve_banner_tier`: the
+    shadowed composite in a wide colour terminal, the flat main layer without
+    colour, and the small lockup or the plain line when the terminal cannot
+    carry block art at all.  A narrow terminal drops a tier rather than getting
+    a clipped banner.
     """
     from kaira import __version__
 
-    banner = get_banner(__version__)
-    if is_interactive():
-        console.print(banner)
-    else:
-        console.print(banner, highlight=False)
+    if is_quiet():
+        return
+
+    tier = resolve_banner_tier(SURFACE_LARGE)
+    if tier == TIER_PLAIN:
+        console.print(plain_banner_line(__version__), highlight=False)
+        return
+    if tier not in (TIER_LARGE_SHADOW, TIER_LARGE_FLAT):
+        console.print(small_banner_line(__version__))
+        return
+
+    console.print()
+    for line in large_banner_lines(shadow=tier == TIER_LARGE_SHADOW):
+        console.print(line)
+    console.print()
+    console.print(large_banner_tagline())
+    console.print()
+
+
+def render_small_banner(*, show_version: bool = True) -> None:
+    """Print the small lockup: bare ``kaira``, ``--version``, ``about``, ``commands``.
+
+    Args:
+        show_version: False on surfaces that already state the version in their
+            body, where repeating it would only shorten the rule.
+    """
+    from kaira import __version__
+
+    if is_quiet():
+        return
+
+    if resolve_banner_tier(SURFACE_SMALL) == TIER_PLAIN:
+        console.print(plain_banner_line(__version__), highlight=False)
+        return
+
+    console.print(small_banner_line(__version__ if show_version else None))
 
 
 # ---------------------------------------------------------------------------

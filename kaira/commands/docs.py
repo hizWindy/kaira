@@ -1,22 +1,28 @@
-"""Docs command — AI-powered documentation generation."""
+"""Docs command — documentation generation and status management."""
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import Annotated, Optional
 
 import typer
-from rich.panel import Panel
-from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from kaira.config import get_config
 from kaira.console import console
-from kaira.core.route_discovery import RouteGroup, discover_routes
+from kaira.core.docs_render import (
+    apply_docs_plan,
+    build_docs_plan,
+    get_docs_status,
+)
+from kaira.core.parser import camel_to_snake
+from kaira.core.route_discovery import discover_routes
+from kaira.core.theme import Theme, sym
+from kaira.core.ui import data_table, spinner_context, with_summary
+from kaira.commands.ux_helpers import print_next_steps
 
-app = typer.Typer(help="AI-powered API documentation generation.")
+app = typer.Typer(help="Documentation generation and status management.")
 
-# How each group is labelled in the generated Markdown.
+# How each group is labelled in legacy AI doc generators if invoked
 _KIND_LABEL = {
     "model": "generated CRUD",
     "system": "Kaira scaffolding",
@@ -24,74 +30,23 @@ _KIND_LABEL = {
 }
 
 
-def _get_api_client():
-    """Return an httpx client configured for the AI provider."""
-    try:
-        import httpx
-
-        return httpx
-    except ImportError:
-        console.print(
-            "[bold red]✗[/bold red]  httpx is required for AI docs. Run: pip install httpx"
-        )
-        raise typer.Exit(1)
-
-
-def _call_openai(prompt: str, api_key: str, model: str) -> str:
-    """Call OpenAI chat completions API and return the response text."""
-    import httpx
-
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-    }
-    payload = {
-        "model": model,
-        "messages": [
-            {
-                "role": "system",
-                "content": (
-                    "You are a technical writer generating concise, accurate API documentation. "
-                    "Output clean Markdown with no extra commentary."
-                ),
-            },
-            {"role": "user", "content": prompt},
-        ],
-        "max_tokens": 1500,
-    }
-    with httpx.Client(timeout=60) as client:
-        resp = client.post(
-            "https://api.openai.com/v1/chat/completions", json=payload, headers=headers
-        )
-        resp.raise_for_status()
-        return resp.json()["choices"][0]["message"]["content"]
-
-
-def _call_anthropic(prompt: str, api_key: str, model: str) -> str:
-    """Call Anthropic messages API and return the response text."""
-    import httpx
-
-    headers = {
-        "x-api-key": api_key,
-        "anthropic-version": "2023-06-01",
-        "Content-Type": "application/json",
-    }
-    payload = {
-        "model": model,
-        "max_tokens": 1500,
-        "messages": [{"role": "user", "content": prompt}],
-    }
-    with httpx.Client(timeout=60) as client:
-        resp = client.post(
-            "https://api.anthropic.com/v1/messages", json=payload, headers=headers
-        )
-        resp.raise_for_status()
-        return resp.json()["content"][0]["text"]
-
-
-def _endpoint_table(group: RouteGroup) -> list[str]:
-    """Render the group's real endpoints as a Markdown table."""
-    lines = [
+def _fallback_doc(group, fields: list[dict]) -> str:
+    """Build legacy API markdown for a single route group."""
+    lines = [f"## {group.name} — {_KIND_LABEL.get(group.kind, group.kind)}", ""]
+    if fields:
+        lines += [
+            "### Fields",
+            "",
+            "| Name | Type | Required |",
+            "|------|------|----------|",
+        ]
+        for f in fields:
+            req = "No" if str(f.get("type", "")).startswith("Optional") else "Yes"
+            lines.append(f"| `{f.get('name')}` | `{f.get('type')}` | {req} |")
+        lines.append("")
+    lines += [
+        "### Endpoints",
+        "",
         "| Method | Path | Auth | Description |",
         "|--------|------|------|-------------|",
     ]
@@ -100,123 +55,46 @@ def _endpoint_table(group: RouteGroup) -> list[str]:
         detail = detail.replace("|", "\\|").strip()
         auth = "🔒" if endpoint.auth_required else "—"
         lines.append(f"| {endpoint.method} | `{endpoint.path}` | {auth} | {detail} |")
-    return lines
-
-
-def _field_table(fields: list[dict]) -> list[str]:
-    """Render a model's fields as a Markdown table."""
-    lines = ["| Name | Type | Required |", "|------|------|----------|"]
-    for f in fields:
-        required = "No" if str(f.get("type", "")).startswith("Optional") else "Yes"
-        lines.append(f"| `{f.get('name')}` | `{f.get('type')}` | {required} |")
-    return lines
-
-
-def _group_heading(group: RouteGroup) -> str:
-    """``## Analytics — custom router (routers/analytics_router.py)``."""
-    label = _KIND_LABEL.get(group.kind, group.kind)
-    source = f" · `{group.source_file}`" if group.source_file else ""
-    return f"## {group.name} — {label}{source}"
-
-
-def _fallback_doc(group: RouteGroup, fields: list[dict]) -> str:
-    """Build docs from the discovered routes, with no AI involved.
-
-    Endpoints come from the project itself rather than an assumed CRUD shape,
-    so a hand-written router documents exactly the routes it declares.
-    """
-    lines = [_group_heading(group), ""]
-    if fields:
-        lines += ["### Fields", ""] + _field_table(fields) + [""]
-    lines += ["### Endpoints", ""] + _endpoint_table(group)
     return "\n".join(lines)
 
 
-def _generate_doc_for_group(group: RouteGroup, fields: list[dict], config) -> str:
-    """Document one route group using the configured AI provider.
-
-    Falls back to the deterministic renderer when no API key is configured or
-    the call fails — the discovered routes are correct either way, so docs are
-    never blocked on the AI being reachable.
-    """
-    provider = config.ai_provider.lower()
-    api_key_env = config.ai_api_key_env
-    api_key = os.getenv(api_key_env, "")
-
-    if not api_key:
-        return _fallback_doc(group, fields)
-
-    routes_desc = "\n".join(
-        f"- {e.method} {e.path}"
-        + (f" — {e.summary}" if e.summary else "")
-        + (" (requires authentication)" if e.auth_required else "")
-        + (f" [request: {e.request_model}]" if e.request_model else "")
-        + (f" [response: {e.response_model}]" if e.response_model else "")
-        for e in group.endpoints
-    )
-    fields_desc = (
-        "\n".join(f"- `{f['name']}` ({f['type']})" for f in fields)
-        if fields
-        else "(no tracked model — this is a hand-written router)"
-    )
-
-    prompt = f"""Generate clean Markdown API documentation for the "{group.name}" section of a FastAPI service.
-
-These are the ACTUAL endpoints, read from the running application. Document
-exactly these — do not invent, rename, or omit any, and do not assume a
-standard CRUD set:
-{routes_desc}
-
-Model fields, if this section is backed by one:
-{fields_desc}
-
-Include:
-1. A one-paragraph description of what this section is for, inferred from the routes
-2. A field table (Name, Type, Required, Description) only if fields are listed above
-3. A table of every endpoint: Method, Path, Auth required, Description
-4. Example JSON request and response bodies for the most important endpoints
-
-Start at heading level 2 (`##`). Output only Markdown, no commentary."""
-
-    try:
-        if provider == "openai":
-            return _call_openai(prompt, api_key, config.ai_model)
-        if provider == "anthropic":
-            model = (
-                config.ai_model
-                if "claude" in config.ai_model
-                else "claude-3-5-sonnet-20241022"
-            )
-            return _call_anthropic(prompt, api_key, model)
-        console.print(
-            f"[yellow]⚠[/yellow]  Unknown AI provider '{provider}'. Using fallback."
-        )
-        return _fallback_doc(group, fields)
-    except Exception as exc:
-        console.print(
-            f"[yellow]⚠[/yellow]  AI API call failed: {exc}. Using fallback doc."
-        )
-        return _fallback_doc(group, fields)
-
-
-def _contents_index(groups: list[RouteGroup]) -> list[str]:
-    """A table of contents, so a custom router is visible at a glance."""
-    lines = ["## Contents", ""]
-    for group in groups:
-        anchor = group.name.lower().replace(" ", "-")
-        label = _KIND_LABEL.get(group.kind, group.kind)
-        count = len(group.endpoints)
-        plural = "endpoint" if count == 1 else "endpoints"
-        lines.append(f"- [{group.name}](#{anchor}) — {count} {plural} ({label})")
-    return lines
-
-
 @app.command("generate")
+@with_summary
 def docs_generate(
     target: Annotated[
         Optional[str],
-        typer.Argument(help="Section to document (model or router tag). Omit for all."),
+        typer.Argument(help="Section/model to document (e.g. User). Omit for all."),
     ] = None,
+    only: Annotated[
+        Optional[str],
+        typer.Option(
+            "--only",
+            help="Generate only specified document: models | endpoints | erd | config | readme",
+        ),
+    ] = None,
+    output: Annotated[
+        Optional[Path],
+        typer.Option(
+            "--output",
+            "-o",
+            help="Target output directory (default: ./docs).",
+        ),
+    ] = None,
+    dry_run: Annotated[
+        bool,
+        typer.Option(
+            "--dry-run",
+            help="Show the plan and write nothing.",
+        ),
+    ] = False,
+    quiet: Annotated[
+        bool,
+        typer.Option(
+            "--quiet",
+            "-q",
+            help="Non-interactive mode (overwrites silently, no prompts).",
+        ),
+    ] = False,
     source_only: Annotated[
         bool,
         typer.Option(
@@ -228,118 +106,262 @@ def docs_generate(
         bool,
         typer.Option("--custom", help="Document only hand-written routers."),
     ] = False,
+    force: Annotated[
+        bool,
+        typer.Option(
+            "--force", "-f", help="Overwrite changed files without confirming."
+        ),
+    ] = False,
 ) -> None:
-    """Generate API documentation from the routes the project actually exposes.
+    """Generate documentation from project state.
 
-    Every mounted router is documented — generated CRUD, auth, and any custom
-    router you wrote yourself. Routes are read from the live OpenAPI schema
-    when the app can be imported, and parsed from source otherwise.
-
-    Writes to docs/api.md, or docs/<Name>.md for a single section.
+    Renders model specifications, endpoint catalogs, ERD diagrams, configuration
+    guides, and project README into markdown files.
 
     Examples
     --------
     kaira docs generate
-    kaira docs generate Analytics
-    kaira docs generate --custom
-    kaira docs generate --source
+    kaira docs generate User
+    kaira docs generate --only readme
+    kaira docs generate --only models
+    kaira docs generate --only endpoints
+    kaira docs generate --only erd
+    kaira docs generate --only config
+    kaira docs generate --output ./documentation
+    kaira docs generate --dry-run
     """
     config = get_config()
-    base = Path.cwd()
-    model_names = {m.get("name") for m in config.generated_models if m.get("name")}
-    fields_by_model = {
-        m.get("name"): m.get("fields", []) for m in config.generated_models
-    }
+    root = Path.cwd()
+    out_dir = output or (root / "docs")
 
-    with console.status("[cyan]Discovering routes..."):
+    # If --source or --custom or custom target router is specified (legacy compatibility)
+    if source_only or custom_only:
+        model_names: set[str] = {
+            str(m.get("name")) for m in config.generated_models if m.get("name")
+        }
+        fields_by_model = {
+            str(m.get("name")): m.get("fields", [])
+            for m in config.generated_models
+            if m.get("name")
+        }
         groups, strategy = discover_routes(
-            base,
+            root,
             model_names,
             prefer_live=not source_only,
             api_prefix=f"/api/{getattr(config, 'api_version', 'v1')}",
         )
-
-    if not groups:
-        console.print(
-            "[dim]No routes found. Run 'kaira generate model' or add a router "
-            "under routers/ first.[/dim]"
-        )
-        raise typer.Exit(0)
-
-    if custom_only:
-        groups = [g for g in groups if g.is_custom]
-        if not groups:
-            console.print(
-                "[dim]No custom routers found — every route is generated.[/dim]"
-            )
-            raise typer.Exit(0)
-
-    if target:
-        matched = [g for g in groups if g.name.lower() == target.lower()]
-        if not matched:
-            available = ", ".join(g.name for g in groups)
-            console.print(
-                f"[bold red]✗[/bold red]  No route group named '{target}'. "
-                f"Available: {available}"
-            )
-            raise typer.Exit(1)
-        groups = matched
-        output_file = base / "docs" / f"{matched[0].name}.md"
-    else:
-        output_file = base / "docs" / "api.md"
-
-    output_file.parent.mkdir(parents=True, exist_ok=True)
-
-    total = sum(len(g.endpoints) for g in groups)
-    custom_count = sum(1 for g in groups if g.is_custom)
-    if strategy == "openapi":
-        how = "live OpenAPI schema"
-    elif source_only:
-        how = "source scan (--source)"
-    else:
-        # Falling back silently would hide that the docs may be less precise.
-        how = "source scan — the app could not be imported"
-    console.print(
-        Panel(
-            f"[bold cyan]Provider:[/bold cyan]  {config.ai_provider}\n"
-            f"[bold cyan]Model:[/bold cyan]     {config.ai_model}\n"
-            f"[bold cyan]Detected:[/bold cyan]  {how}\n"
-            f"[bold cyan]Sections:[/bold cyan]  {len(groups)} "
-            f"({custom_count} custom) · {total} endpoints\n"
-            f"[bold cyan]Output:[/bold cyan]    {output_file}",
-            title="[bold]Kaira[/bold] — API Documentation",
-            border_style="cyan",
-        )
-    )
-
-    header = [
-        "# API Documentation",
-        "",
-        f"*Generated by Kaira — {total} endpoints across {len(groups)} sections, "
-        f"detected via {how}.*",
-        "",
-    ]
-    all_docs: list[str] = ["\n".join(header + _contents_index(groups))]
-
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        console=console,
-    ) as progress:
-        task = progress.add_task("[cyan]Generating docs...", total=len(groups))
-        for group in groups:
-            progress.update(task, description=f"[cyan]Documenting {group.name}...")
-            all_docs.append(
-                _generate_doc_for_group(
-                    group, fields_by_model.get(group.name, []), config
+        if custom_only:
+            groups = [g for g in groups if g.is_custom]
+            if not groups:
+                console.print(
+                    "[dim]No custom routers found — every route is generated.[/dim]"
                 )
-            )
-            progress.advance(task)
+                raise typer.Exit(0)
+        if target:
+            matched = [g for g in groups if g.name.lower() == target.lower()]
+            if not matched:
+                available = ", ".join(g.name for g in groups)
+                console.print(
+                    f"[bold red]✗[/bold red]  No route group named '{target}'. "
+                    f"Available: {available}"
+                )
+                raise typer.Exit(1)
+            groups = matched
+            output_file = out_dir / f"{matched[0].name}.md"
+        else:
+            output_file = out_dir / "api.md"
 
-    output_file.write_text("\n\n---\n\n".join(all_docs), encoding="utf-8")
-    console.print(
-        f"\n[bold green]✓[/bold green]  Documentation written to [cyan]{output_file}[/cyan]"
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+        all_docs = [
+            f"# API Documentation\n\n*Generated by Kaira — {sum(len(g.endpoints) for g in groups)} endpoints.*"
+        ]
+        for group in groups:
+            all_docs.append(_fallback_doc(group, fields_by_model.get(group.name, [])))
+        output_file.write_text("\n\n---\n\n".join(all_docs), encoding="utf-8")
+        console.print(
+            f"  [green]✅[/green] Documentation written to [cyan]{output_file}[/cyan]"
+        )
+        return
+
+    # Check if a custom non-model route group was requested directly
+    if target:
+        model_names = {
+            m.get("name", "").lower() for m in config.generated_models if m.get("name")
+        }
+        models_dir = root / config.models_dir
+        disk_models = (
+            {p.stem.lower() for p in models_dir.glob("*.py")}
+            if models_dir.is_dir()
+            else set()
+        )
+        is_known_model = (
+            target.lower() in model_names
+            or target.lower() in disk_models
+            or camel_to_snake(target).lower() in disk_models
+        )
+
+        if not is_known_model:
+            # Check if it matches a discovered route group
+            groups, _ = discover_routes(root, prefer_live=False)
+            matched = [g for g in groups if g.name.lower() == target.lower()]
+            if matched:
+                output_file = out_dir / f"{matched[0].name}.md"
+                output_file.parent.mkdir(parents=True, exist_ok=True)
+                doc_text = _fallback_doc(matched[0], [])
+                output_file.write_text(doc_text, encoding="utf-8")
+                console.print(
+                    f"  [green]✅[/green] Documentation written to [cyan]{output_file}[/cyan]"
+                )
+                return
+            if not is_known_model and groups:
+                available = ", ".join(
+                    sorted(
+                        set(
+                            list(g.name for g in groups)
+                            + [m.get("name", "") for m in config.generated_models]
+                        )
+                    )
+                )
+                console.print(
+                    f"[bold red]✗[/bold red]  No route group or model named '{target}'. "
+                    f"Available: {available}"
+                )
+                raise typer.Exit(1)
+
+    with spinner_context("Analyzing project state and building documentation plan..."):
+        plans = build_docs_plan(
+            root=root,
+            config=config,
+            target_model=target,
+            only=only,
+            output_dir=out_dir,
+        )
+
+    if not plans:
+        console.print("[yellow]No documentation targets to generate.[/yellow]")
+        return
+
+    # Up to date check
+    if not any(p.needs_write for p in plans) and not dry_run:
+        ok = sym("OK")
+        console.print(
+            f"  [{Theme.SUCCESS}]{ok} Documentation is up to date.[/{Theme.SUCCESS}]"
+        )
+        return
+
+    if dry_run:
+        console.print(
+            f"\n  [{Theme.PRIMARY}]Documentation Plan (--dry-run)[/{Theme.PRIMARY}]"
+        )
+        rows: list[list[str]] = []
+        for p in plans:
+            action = (
+                "Create"
+                if p.status == "new"
+                else ("Update" if p.status == "changed" else "Unchanged")
+            )
+            status_style = (
+                Theme.SUCCESS
+                if p.status == "new"
+                else (Theme.WARNING if p.status == "changed" else Theme.MUTED)
+            )
+            rows.append(
+                [p.path.name, str(p.path), f"[{status_style}]{action}[/{status_style}]"]
+            )
+        data_table(
+            ["Document", "Target Path", "Action"], rows, title="⚡ Kaira — Docs Plan"
+        )
+        return
+
+    # Apply plan with interactive overwrite prompts
+    written, skipped = apply_docs_plan(
+        plans,
+        force=force,
+        quiet=quiet,
     )
-    if custom_count:
-        names = ", ".join(g.name for g in groups if g.is_custom)
-        console.print(f"[dim]Included custom router(s): {names}[/dim]")
+
+    if written > 0:
+        ok = sym("OK")
+        console.print(
+            f"\n  [{Theme.SUCCESS}]{ok} Generated {written} documentation file{'s' if written != 1 else ''}[/{Theme.SUCCESS}] "
+            f"in [{Theme.PRIMARY}]{out_dir}[/{Theme.PRIMARY}]"
+        )
+        if skipped > 0:
+            console.print(
+                f"  [{Theme.MUTED}]Skipped {skipped} file{'s' if skipped != 1 else ''}.[/{Theme.MUTED}]"
+            )
+
+        print_next_steps(
+            [
+                "Review generated docs: kaira docs status",
+                "Export OpenAPI spec: kaira api export --format json",
+                "Generate Postman collection: kaira api postman",
+            ],
+            quiet=quiet,
+        )
+
+
+@app.command("status")
+def docs_status(
+    output: Annotated[
+        Optional[Path],
+        typer.Option(
+            "--output",
+            "-o",
+            help="Target output directory to inspect (default: ./docs).",
+        ),
+    ] = None,
+) -> None:
+    """Report documentation freshness against project state (read-only).
+
+    Checks each documentation file against current model definitions, routes,
+    and configuration to report whether files are up to date or stale.
+
+    Examples
+    --------
+    kaira docs status
+    """
+    root = Path.cwd()
+    out_dir = output or (root / "docs")
+
+    records = get_docs_status(root=root, output_dir=out_dir)
+
+    table_rows: list[list[str]] = []
+    stale_count = 0
+    missing_count = 0
+
+    for rec in records:
+        doc = rec["document"]
+        desc = rec.get("description", "")
+        status = rec["status"]
+        gen_at = rec["generated_at"]
+
+        if "Up to date" in status:
+            status_cell = f"[{Theme.SUCCESS}]✓ {status}[/{Theme.SUCCESS}]"
+        elif "Stale" in status:
+            status_cell = f"[{Theme.WARNING}]⚠ {status}[/{Theme.WARNING}]"
+            stale_count += 1
+        else:
+            status_cell = f"[{Theme.ERROR}]✗ {status}[/{Theme.ERROR}]"
+            missing_count += 1
+
+        gen_cell = f"[{Theme.MUTED}]{gen_at}[/{Theme.MUTED}]"
+        table_rows.append([f"[bold]{doc}[/bold]", desc, status_cell, gen_cell])
+
+    data_table(
+        headers=["Document Path", "Description / Purpose", "Freshness", "Generated At"],
+        rows=table_rows,
+        title="⚡ Kaira — Documentation Freshness Status",
+    )
+
+    if stale_count > 0 or missing_count > 0:
+        warn = sym("WARN")
+        console.print(
+            f"\n  [{Theme.WARNING}]{warn} {stale_count + missing_count} document(s) need regeneration. "
+            f"Run: [bold]kaira docs generate[/bold][/{Theme.WARNING}]"
+        )
+    else:
+        ok = sym("OK")
+        console.print(
+            f"\n  [{Theme.SUCCESS}]{ok} All documentation files are up to date.[/{Theme.SUCCESS}]"
+        )

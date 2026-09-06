@@ -13,7 +13,7 @@ import typer
 
 from kaira.console import console
 from kaira.core.theme import Theme
-from kaira.core.ui import render_banner
+from kaira.core.ui import render_small_banner
 
 app = typer.Typer(
     help="Index of all available Kaira commands.",
@@ -149,7 +149,7 @@ def commands_main(
     ] = None,
 ) -> None:
     """Display a scannable index of all registered Kaira commands."""
-    render_banner()
+    render_small_banner()
     console.print()
 
     # Import root app dynamically to avoid circular import at module load
