@@ -218,6 +218,13 @@ def commands_main(
             console.print(f"    {cmd_name:<28} {desc_str}")
         console.print()
 
+    # Shortcuts block (Phase shortcuts)
+    if not group and not search:
+        from kaira.core.ui import render_shortcuts_table
+
+        render_shortcuts_table()
+        console.print()
+
     # Footer
     total_count = len(unique_commands)
     shown_count = len(filtered)

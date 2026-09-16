@@ -38,6 +38,7 @@ from kaira.core.generator import (
 )
 from kaira.core.detector import write_with_check
 from kaira.core.wiring import register_router_in_main
+from kaira.core.aliases import complete_model_name
 
 
 def _ensure_message_schema(config, base: Path) -> None:
@@ -265,7 +266,11 @@ def generate_embedded(
 @app.command("model")
 def generate_model(
     model_name: Annotated[
-        str, typer.Argument(help="PascalCase model name, e.g. BlogPost")
+        str,
+        typer.Argument(
+            help="PascalCase model name, e.g. BlogPost",
+            autocompletion=complete_model_name,
+        ),
     ],
     fields: Annotated[
         Optional[str],

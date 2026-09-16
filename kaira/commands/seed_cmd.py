@@ -26,6 +26,7 @@ from kaira.core.drivers import get_engine_driver
 from kaira.core.parser import camel_to_snake, snake_to_pascal, table_name
 from kaira.core.project_runner import run_project_file, run_project_script
 from kaira.core.stats import build_stats_table, counts_by_name, try_collect_db_stats
+from kaira.core.aliases import complete_model_name
 
 TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
 
@@ -347,7 +348,11 @@ def seed_generate(
 @app.command("run")
 def seed_run(
     model_name: Annotated[
-        Optional[str], typer.Argument(help="Name of the model to seed.")
+        Optional[str],
+        typer.Argument(
+            help="Name of the model to seed.",
+            autocompletion=complete_model_name,
+        ),
     ] = None,
     seed_all: Annotated[
         bool, typer.Option("--all", help="Run all seed scripts.")

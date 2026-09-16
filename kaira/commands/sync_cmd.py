@@ -55,6 +55,7 @@ from kaira.core.theme import Theme, sym
 from kaira.core.ui import panel, with_summary
 from kaira.commands.smart_errors import smart_error
 from kaira.commands.ux_helpers import require_project, typed_confirmation
+from kaira.core.aliases import complete_model_name
 
 app = typer.Typer(help="Synchronise model field changes across all layers.")
 
@@ -286,7 +287,10 @@ def _merge_fields(base: list[FieldDef], extra: list[FieldDef]) -> list[FieldDef]
 def sync_model(
     model_name: Annotated[
         Optional[str],
-        typer.Argument(help="PascalCase model name to sync (omit with --all)."),
+        typer.Argument(
+            help="PascalCase model name to sync (omit with --all).",
+            autocompletion=complete_model_name,
+        ),
     ] = None,
     fields: Annotated[
         Optional[str],

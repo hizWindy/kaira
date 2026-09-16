@@ -95,13 +95,38 @@ class KairaTyperGroup(TyperGroup):
     # module, so naming click's public type here reads as an incompatible
     # override.
     def parse_args(self, ctx: Any, args: Any) -> Any:
-        """Resolve banner state for this invocation, then parse as usual."""
+        """Resolve banner state and command aliases for this invocation, then parse."""
+        import sys
+        from kaira.commands.ux_helpers import append_history
+        from kaira.core.aliases import ALIASES, tokens_to_args_dict
         from kaira.core.motion import reset_budget
         from kaira.core.theme import reset_banner_cache, set_quiet
+        from kaira.core.ui import render_resolution_echo
 
         reset_banner_cache()
         reset_budget()
         set_quiet(any(arg in ("--quiet", "-q") for arg in args))
+
+        # ── Resolve command aliases (argv[1] only) ────────────────────────
+        if args and args[0] in ALIASES:
+            alias_key = args[0]
+            expansion = list(ALIASES[alias_key])
+            remaining = list(args[1:])
+            resolved_cmd = expansion + remaining
+
+            # Render resolution echo before execution
+            render_resolution_echo(resolved_cmd)
+
+            # History normalization: log the resolved long form to history
+            args_dict = tokens_to_args_dict(expansion, remaining)
+            append_history(" ".join(expansion), args_dict)
+
+            # Sync sys.argv if sys.argv[1] matches alias_key
+            if len(sys.argv) > 1 and sys.argv[1] == alias_key:
+                sys.argv[1:2] = expansion
+
+            args = resolved_cmd
+
         return super().parse_args(ctx, args)
 
 

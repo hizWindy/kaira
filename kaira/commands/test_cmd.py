@@ -13,6 +13,7 @@ from rich.table import Table
 
 from kaira.config import get_config
 from kaira.console import console
+from kaira.core.aliases import complete_model_name
 from kaira.core.detector import write_with_check
 from kaira.core.parser import camel_to_snake
 
@@ -33,7 +34,11 @@ def _get_env() -> Environment:
 @app.command("generate")
 def test_generate(
     model_name: Annotated[
-        Optional[str], typer.Argument(help="Name of the model to test.")
+        Optional[str],
+        typer.Argument(
+            help="Name of the model to test.",
+            autocompletion=complete_model_name,
+        ),
     ] = None,
     generate_all: Annotated[
         bool, typer.Option("--all", help="Generate tests for all models.")

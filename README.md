@@ -70,6 +70,41 @@ uvicorn main:app --reload
 
 ---
 
+## Command Shortcuts & Shell Completion
+
+Kaira provides shell tab-completion and a small, curated set of shortcuts for high-frequency daily commands. Shortcuts are strictly additive; long-form commands remain canonical everywhere.
+
+### Shell Tab-Completion
+
+Install tab-completion for your current shell (`bash`, `zsh`, `fish`, `PowerShell`):
+
+```bash
+kaira --install-completion
+```
+
+Tab-completion features dynamic model name completion for `generate model`, `sync model`, `test generate`, and `seed run` from `.kaira.json`, as well as completion for `guide` topics.
+
+### Shortcuts Table
+
+| Shortcut | Expands to | Description |
+|---|---|---|
+| `g` | `generate model` | Primary scaffolding command |
+| `gb` | `generate bulk` | Bulk scaffolding from JSON |
+| `sm` | `sync model` | Cascade field changes across layers |
+| `mm` | `migrate make` | Create database migration revision |
+| `mr` | `migrate run` | Apply database migrations |
+| `st` | `status` | Live project status snapshot |
+| `up` | `docker up` | Start docker containers |
+| `dn` | `docker down` | Stop docker containers |
+| `ds` | `docker status` | Container status |
+| `q` | `quality` | Full code quality gate |
+| `t` | `test run` | Run test suite |
+| `?` | `menu` | Interactive command palette (`kaira '?'` in zsh) |
+
+> **Safety Guarantee**: Destructive commands (`db reset`, `migrate rollback`, `seed clear`, `docker down --volumes`, etc.) **never** have shortcuts and must always be typed in full. Every shortcut echoes its resolved long form before running (suppressed with `--quiet`).
+
+---
+
 ## All Commands
 
 ### `kaira init`

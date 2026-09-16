@@ -70,6 +70,8 @@ def guide_main(
             "  [bold cyan]kaira guide commands[/bold cyan]          Command index & discovery\n"
             "  [bold magenta]── Monitoring ───────────────────────────────[/bold magenta]\n"
             "  [bold cyan]kaira guide monitor[/bold cyan]           Metrics, probes, dashboard & alerts\n"
+            "  [bold magenta]── Shortcuts & Completion ────────────────────[/bold magenta]\n"
+            "  [bold cyan]kaira guide shortcuts[/bold cyan]         Command shortcuts & tab-completion\n"
             "  [bold magenta]── Documentation ────────────────────────────[/bold magenta]\n"
             "  [bold cyan]kaira guide docs[/bold cyan]              Documentation generation & freshness"
         )
@@ -1031,4 +1033,39 @@ def guide_docs() -> None:
         "docs",
         content,
         "Every document is a projection of internal state — no manual prose maintenance needed.",
+    )
+
+
+@app.command("shortcuts")
+def guide_shortcuts() -> None:
+    """Guide for command shortcuts and shell tab-completion."""
+    content = (
+        "High-frequency command shortcuts and shell tab-completion:\n\n"
+        "[bold green]1. Common command shortcuts:[/bold green]\n"
+        '  kaira g User --fields "name:str"    → kaira generate model User --fields "name:str"\n'
+        "  kaira gb models.json                → kaira generate bulk models.json\n"
+        "  kaira sm User                       → kaira sync model User\n"
+        '  kaira mm "add user email"           → kaira migrate make "add user email"\n'
+        "  kaira mr                            → kaira migrate run\n"
+        "  kaira st                            → kaira status\n"
+        "  kaira up                            → kaira docker up\n"
+        "  kaira dn                            → kaira docker down\n"
+        "  kaira ds                            → kaira docker status\n"
+        "  kaira q                             → kaira quality\n"
+        "  kaira t                             → kaira test run\n"
+        "  kaira '?'                           → kaira menu\n\n"
+        "[bold green]2. Shell tab-completion:[/bold green]\n"
+        "  kaira --install-completion          Install completion for your current shell\n"
+        "  kaira --show-completion             Inspect the shell completion script\n\n"
+        "[bold green]3. Deliberate design rules:[/bold green]\n"
+        "  • No destructive command has an alias (e.g. db reset, migrate rollback,\n"
+        "    docker down --volumes). Full commands must be typed for safety.\n"
+        "  • The '?' alias may need quoting in some shells like zsh: kaira '?'\n"
+        "  • Every alias echoes its resolved long form before running (suppressed with --quiet).\n"
+        "  • Shortcuts are optional; long forms remain canonical everywhere."
+    )
+    print_guide_panel(
+        "shortcuts",
+        content,
+        "Install completion once with `kaira --install-completion` for the best experience.",
     )

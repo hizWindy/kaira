@@ -4,6 +4,51 @@ All notable changes to Kaira (formerly DevFlow) will be documented in this file.
 
 ---
 
+## Shortcuts & Tab-Completion Phase — Speed for High-Frequency Workflows
+
+Developers run a small handful of commands dozens of times a day: generating models, making migrations, checking status, running tests. Typing `kaira generate model User` or remembering exact argument names adds friction when speed matters.
+
+### Curated Command Shortcuts
+
+A closed table of 12 additive shortcuts for high-frequency commands:
+
+- `g` → `generate model`
+- `gb` → `generate bulk`
+- `sm` → `sync model`
+- `mm` → `migrate make`
+- `mr` → `migrate run`
+- `st` → `status`
+- `up` → `docker up`
+- `dn` → `docker down`
+- `ds` → `docker status`
+- `q` → `quality`
+- `t` → `test run`
+- `?` → `menu`
+
+Shortcuts are strictly additive: long forms remain canonical everywhere.
+
+**Key design invariants:**
+- **Safety guarantee.** Destructive commands (`db reset`, `migrate rollback`, `seed clear`, `docker down --volumes`, etc.) are explicitly blocked and can never have shortcuts.
+- **Resolution echo.** Resolving an alias prints a subtle, muted arrow showing the full command being run (`→ kaira generate model User`). The echo is suppressed under `--quiet`, `-q`, or in non-interactive/non-TTY environments, and sensitive arguments (passwords, tokens, keys) are automatically redacted.
+- **Normalized history.** Command invocations logged to `.kaira/history.jsonl` and displayed in `kaira recap` always record the normalized long form rather than the alias.
+- **Confirmation intact.** Dangerous or multi-step operations that require typed confirmation (e.g. destructive field syncs) still trigger prompts regardless of shortcut invocation.
+
+### Shell Tab-Completion
+
+Full tab-completion across bash, zsh, fish, and PowerShell via `kaira --install-completion`.
+
+- **Dynamic model name completion**: `generate model`, `sync model`, `seed run`, and `test generate` dynamically suggest models defined in `.kaira.json`.
+- **Fail-silent & fast**: Completions execute in under 50ms without opening database connections, reading remote resources, or printing error traces on invalid files.
+- **Guide completion**: Suggests all registered `kaira guide` topics.
+
+### Discoverability
+
+- `kaira commands` renders a clean, formatted shortcuts table via `data_table()`.
+- `kaira guide shortcuts` provides full usage examples, shell quoting notes (such as `kaira '?'` in zsh), and safety details.
+- Comprehensive test suite covering safety invariants, shadowing prevention, passthrough fidelity, echo suppression/redaction, history normalization, and completion resilience.
+
+---
+
 ## Motion Phase — An Animated Welcome, and Ports That Get Out of the Way
 
 Two things a developer meets constantly: the screen `kaira` prints when they type

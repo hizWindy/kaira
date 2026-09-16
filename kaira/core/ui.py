@@ -687,3 +687,94 @@ class _PlainStatus:
 
     def update(self, message: str) -> None:  # noqa: D102
         console.print(f"... {message}")
+
+
+# ---------------------------------------------------------------------------
+# Command alias resolution echo and shortcuts table helpers
+# ---------------------------------------------------------------------------
+
+
+def _format_echo_tokens(tokens: list[str]) -> list[str]:
+    """Format CLI tokens for echo display, masking sensitive values using Phase 4 helper."""
+    from kaira.commands.ux_helpers import redact_sensitive
+
+    formatted: list[str] = []
+    skip_next = False
+    for i, token in enumerate(tokens):
+        if skip_next:
+            skip_next = False
+            continue
+
+        if token.startswith("--") and "=" in token:
+            key, val = token[2:].split("=", 1)
+            masked_val = redact_sensitive(key, val)
+            if " " in masked_val and not (
+                masked_val.startswith('"') or masked_val.startswith("'")
+            ):
+                masked_val = f'"{masked_val}"'
+            formatted.append(f"--{key}={masked_val}")
+        elif token.startswith("-"):
+            key = token.lstrip("-")
+            if i + 1 < len(tokens) and not tokens[i + 1].startswith("-"):
+                val = tokens[i + 1]
+                masked_val = redact_sensitive(key, val)
+                formatted.append(token)
+                if " " in masked_val and not (
+                    masked_val.startswith('"') or masked_val.startswith("'")
+                ):
+                    masked_val = f'"{masked_val}"'
+                formatted.append(masked_val)
+                skip_next = True
+            else:
+                formatted.append(token)
+        else:
+            if " " in token and not (token.startswith('"') or token.startswith("'")):
+                formatted.append(f'"{token}"')
+            else:
+                formatted.append(token)
+    return formatted
+
+
+def render_resolution_echo(tokens: list[str]) -> None:
+    """Print one muted line showing the resolved long form before execution.
+
+    Suppressed under --quiet and on non-TTY output.
+    """
+    from kaira.core.theme import is_interactive, is_quiet
+
+    # Check quiet flag (from Theme or raw arguments)
+    if is_quiet() or any(t in ("--quiet", "-q") for t in tokens):
+        return
+
+    # Check non-TTY / non-interactive output
+    if not is_interactive():
+        return
+
+    formatted_tokens = _format_echo_tokens(tokens)
+    arrow = sym("ARROW")
+    cmd_str = " ".join(formatted_tokens)
+    console.print(f"[{Theme.MUTED}]{arrow} kaira {cmd_str}[/{Theme.MUTED}]")
+
+
+def render_shortcuts_table() -> None:
+    """Render the ⚡ Shortcuts block at the bottom of kaira commands via data_table()."""
+    rows = [
+        ["g", "generate model", "mm", "migrate make"],
+        ["gb", "generate bulk", "mr", "migrate run"],
+        ["sm", "sync model", "st", "status"],
+        ["up", "docker up", "q", "quality"],
+        ["dn", "docker down", "t", "test run"],
+        ["ds", "docker status", "?", "menu"],
+    ]
+    bolt = sym("BOLT")
+    data_table(
+        ["Alias", "Expands to", "Alias", "Expands to"],
+        rows,
+        title=f"{bolt} Shortcuts",
+    )
+    console.print(
+        f"  [{Theme.MUTED}]Shortcuts are optional. Full commands always work.[/{Theme.MUTED}]"
+    )
+    console.print(
+        f"  [{Theme.MUTED}]Tab-completion: kaira --install-completion[/{Theme.MUTED}]"
+    )
