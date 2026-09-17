@@ -298,3 +298,35 @@ class TestDiffCommand:
     def test_diff_invalid_model_name(self):
         result = run("diff", "not_pascal")
         assert result.exit_code != 0
+
+
+# ---------------------------------------------------------------------------
+# kaira init -> AGENTS.md
+# ---------------------------------------------------------------------------
+
+
+class TestInitProjectAgents:
+    def test_init_generates_agents_md(self, tmp_path):
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            result = run(
+                "init",
+                "test-agent-app",
+                "--db",
+                "sqlite",
+                "--auth",
+                "jwt",
+                "--no-docker",
+                "--ci",
+                "none",
+                "--yes",
+            )
+            assert result.exit_code == 0, result.output
+            app_dir = Path.cwd() / "test-agent-app"
+            agents_file = app_dir / "AGENTS.md"
+            assert agents_file.is_file(), "AGENTS.md was not generated in scaffolded project"
+            content = agents_file.read_text(encoding="utf-8")
+            assert "test-agent-app" in content
+            assert "sqlite" in content.lower()
+            assert "jwt" in content.lower()
+            assert "5-layer" in content.lower() or "5-Layer" in content
+

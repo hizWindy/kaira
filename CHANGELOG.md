@@ -4,6 +4,19 @@ All notable changes to Kaira (formerly DevFlow) will be documented in this file.
 
 ---
 
+## Agent Guidelines & Scaffolded Agent Integration Phase
+
+Support autonomous AI coding assistants (Antigravity, Claude Code, Cursor, Copilot) when developing Kaira or working inside applications scaffolded by Kaira.
+
+### Dual-Agent Architecture
+
+- **Engine Guidelines (`AGENTS.md`)**: Root-level instructions covering Kaira's 5-layer pipeline invariants, additive shortcut safety, non-TTY terminal degradation, and test suite conventions.
+- **Scaffolded Project Guidelines (`agents_project.md.j2`)**: Embedded into every `kaira init` project run, giving downstream AI assistants clear rules on layer responsibilities, prohibited cross-layer calls, and Kaira CLI workflows.
+- **Automated Init Scaffolding**: `kaira init` automatically renders `AGENTS.md` alongside `README.md`, `.gitignore`, and `pyproject.toml`.
+- **Integration Test Suite**: `tests/test_commands.py` verifies `AGENTS.md` presence and tailored contents upon initialization.
+
+---
+
 ## Shortcuts & Tab-Completion Phase — Speed for High-Frequency Workflows
 
 Developers run a small handful of commands dozens of times a day: generating models, making migrations, checking status, running tests. Typing `kaira generate model User` or remembering exact argument names adds friction when speed matters.

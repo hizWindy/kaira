@@ -890,6 +890,12 @@ def init_project(
         non_interactive=True,
     )
     write_with_check(
+        cwd / "AGENTS.md",
+        env.get_template("agents_project.md.j2").render(**ctx),
+        force=True,
+        non_interactive=True,
+    )
+    write_with_check(
         cwd / "pyproject.toml",
         env.get_template("pyproject_generated.toml.j2").render(**ctx),
         force=True,
