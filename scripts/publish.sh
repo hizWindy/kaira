@@ -20,13 +20,13 @@ echo "Publishing to TestPyPI..."
 twine upload --repository testpypi dist/*
 
 echo "Installing from TestPyPI..."
-pip install --index-url https://test.pypi.org/simple/ khaira[framework]
+pip install --index-url https://test.pypi.org/simple/ khaira
 
 echo "Publishing to PyPI..."
 twine upload dist/*
 
 echo "Verifying..."
-pip install khaira[framework]
-kaira --version
+pip install khaira
+khaira --version
 
 echo "✅ Published successfully!"

@@ -26,7 +26,7 @@ def version_main_callback(ctx: typer.Context) -> None:
 
         console.print(
             Panel(
-                f"[bold cyan]Kaira[/bold cyan] v[bold]{__version__}[/bold]",
+                f"[bold cyan]Khaira[/bold cyan] (Kaira) v[bold]{__version__}[/bold]",
                 border_style="cyan",
             )
         )

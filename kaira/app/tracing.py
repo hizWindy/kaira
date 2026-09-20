@@ -20,12 +20,12 @@ class TracerManager:
         """Initialize OpenTelemetry instrumentation if packages are present."""
         try:
             from opentelemetry import trace
+            from opentelemetry.sdk.resources import Resource
             from opentelemetry.sdk.trace import TracerProvider
             from opentelemetry.sdk.trace.export import (
                 BatchSpanProcessor,
                 ConsoleSpanExporter,
             )
-            from opentelemetry.sdk.resources import Resource
 
             resource = Resource.create({"service.name": self.service_name})
             provider = TracerProvider(resource=resource)
@@ -47,3 +47,9 @@ class TracerManager:
     @property
     def is_enabled(self) -> bool:
         return self._enabled
+
+
+# First-class alias
+Tracer = TracerManager
+
+__all__ = ["TracerManager", "Tracer"]

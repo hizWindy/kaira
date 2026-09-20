@@ -152,12 +152,13 @@ class KairaConfig:
 
 
 def find_config_path() -> Path:
-    """Search for .kaira.json starting from cwd, walking up."""
+    """Search for .khaira.json or .kaira.json starting from cwd, walking up."""
     current = Path.cwd()
     for directory in [current, *current.parents]:
-        candidate = directory / CONFIG_FILE
-        if candidate.exists():
-            return candidate
+        for candidate_name in (".khaira.json", CONFIG_FILE):
+            candidate = directory / candidate_name
+            if candidate.exists():
+                return candidate
     return Path.cwd() / CONFIG_FILE
 
 

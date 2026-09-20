@@ -109,8 +109,8 @@ from datetime import datetime, timedelta, timezone
 import secrets
 from typing import Optional
 from jose import jwt, JWTError
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from khaira.models import select
+from khaira.database import AsyncSession
 
 from config.settings import settings
 from auth.utils import verify_password

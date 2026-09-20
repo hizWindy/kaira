@@ -8,7 +8,7 @@ Handles all operations between router and repository.
 from __future__ import annotations
 
 from typing import Optional, List
-from fastapi import HTTPException, status
+from khaira.http import HTTPException, status
 from core.logger import logger
 
 {% if db_type == "mongodb" %}
@@ -18,7 +18,7 @@ from {{ repositories_dir }}.{{ snake_name }}_repository import {{ model_name }}R
 from {{ schemas_dir }}.{{ snake_name }}_schema import {{ model_name }}Create, {{ model_name }}Update, {{ model_name }}Response
 {% else %}
 # Relational DB async SQLAlchemy imports
-from sqlalchemy.ext.asyncio import AsyncSession
+from khaira.database import AsyncSession
 from {{ models_dir }}.{{ snake_name }} import {{ model_name }}
 from {{ repositories_dir }}.{{ snake_name }}_repository import {{ model_name }}Repository
 from {{ schemas_dir }}.{{ snake_name }}_schema import {{ model_name }}Create, {{ model_name }}Update, {{ model_name }}Response

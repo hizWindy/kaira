@@ -142,9 +142,9 @@ class KairaTyperGroup(TyperGroup):
 
 app = typer.Typer(
     cls=KairaTyperGroup,
-    name="kaira",
+    name="khaira",
     help=(
-        "[bold cyan]Kaira[/bold cyan] — Automated FastAPI scaffolding CLI.\n\n"
+        "[bold cyan]Khaira[/bold cyan] — Automated FastAPI scaffolding CLI.\n\n"
         "Generate complete 5-layer backend pipelines from model definitions.\n\n"
         "[dim]Version: " + __version__ + "[/dim]"
     ),

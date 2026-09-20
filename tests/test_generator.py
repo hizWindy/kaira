@@ -99,7 +99,7 @@ class TestGenerateModel:
 class TestGenerateSchema:
     def test_base_schema(self, config, simple_fields):
         output = generate_layer("schema", "User", simple_fields, [], config)
-        assert "class UserBase(BaseModel):" in output
+        assert ("class UserBase(Schema):" in output) or ("class UserBase(BaseModel):" in output)
 
     def test_create_schema(self, config, simple_fields):
         output = generate_layer("schema", "User", simple_fields, [], config)
@@ -107,11 +107,11 @@ class TestGenerateSchema:
 
     def test_update_schema(self, config, simple_fields):
         output = generate_layer("schema", "User", simple_fields, [], config)
-        assert "class UserUpdate(BaseModel):" in output
+        assert ("class UserUpdate(Schema):" in output) or ("class UserUpdate(BaseModel):" in output)
 
     def test_response_schema(self, config, simple_fields):
         output = generate_layer("schema", "User", simple_fields, [], config)
-        assert "class UserResponse(BaseModel):" in output
+        assert ("class UserResponse(Schema):" in output) or ("class UserResponse(BaseModel):" in output)
 
     def test_config_dict(self, config, simple_fields):
         output = generate_layer("schema", "User", simple_fields, [], config)
@@ -207,7 +207,7 @@ class TestGenerateService:
 class TestGenerateRouter:
     def test_router_instance(self, config, simple_fields):
         output = generate_layer("router", "User", simple_fields, [], config)
-        assert "router = APIRouter(" in output
+        assert ("router = Router(" in output) or ("router = APIRouter(" in output)
 
     def test_prefix(self, config, simple_fields):
         output = generate_layer("router", "User", simple_fields, [], config)

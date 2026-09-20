@@ -1,8 +1,8 @@
 {% if db_type == "mongodb" %}
 """JWT Authentication Dependencies (MongoDB)."""
 
-from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
+from khaira.http import Depends, HTTPException, status
+from khaira.auth import OAuth2PasswordBearer
 
 from auth.service import AuthService
 
@@ -28,9 +28,9 @@ async def get_current_user(
 {% else %}
 """JWT Authentication Dependencies."""
 
-from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
-from sqlalchemy.ext.asyncio import AsyncSession
+from khaira.http import Depends, HTTPException, status
+from khaira.auth import OAuth2PasswordBearer
+from khaira.database import AsyncSession
 
 from core.database import get_db
 from auth.service import AuthService

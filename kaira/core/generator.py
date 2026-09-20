@@ -35,6 +35,13 @@ def _get_jinja_env() -> Environment:
     )
 
 
+def render_template(template_name: str, context: dict) -> str:
+    """Render a Jinja2 template by file name with the given context."""
+    env = _get_jinja_env()
+    template = env.get_template(template_name)
+    return template.render(context)
+
+
 # ---------------------------------------------------------------------------
 # Template context builder
 # ---------------------------------------------------------------------------

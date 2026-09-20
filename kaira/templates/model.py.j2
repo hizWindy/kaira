@@ -8,7 +8,7 @@ import uuid
 from typing import Optional
 {% endif %}
 
-from sqlalchemy import (
+from khaira.models import (
     Column,
     Integer,
     String,
@@ -20,8 +20,10 @@ from sqlalchemy import (
     JSON,
 {% endif %}
     Table,
+    relationship,
+    Mapped,
+    mapped_column,
 )
-from sqlalchemy.orm import relationship, Mapped, mapped_column
 from sqlalchemy.sql import func
 
 from core.database import Base

@@ -1,4 +1,4 @@
-"""Security and encryption abstraction module."""
+"""Security and encryption abstraction module for Khaira framework."""
 
 from __future__ import annotations
 
@@ -29,4 +29,10 @@ class Fernet:
         return base64.b64decode(token)
 
 
-__all__ = ["Fernet"]
+# First-class alias
+Encryption = Fernet
+
+__all__ = [
+    "Fernet",
+    "Encryption",
+]

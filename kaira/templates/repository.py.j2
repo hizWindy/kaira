@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import Optional
 
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+from khaira.models import select
+from khaira.database import Session
 
 from {{ models_dir }}.{{ snake_name }} import {{ model_name }}
 from {{ schemas_dir }}.{{ snake_name }}_schema import {{ model_name }}Create, {{ model_name }}Update

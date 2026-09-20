@@ -5,13 +5,13 @@ from datetime import datetime
 # semantics, regardless of whether the model declares any optional fields.
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from khaira.schemas import Schema, ConfigDict, Field
 {% for embedded in embedded_imports %}
 from {{ models_dir }}.{{ to_snake(embedded) }} import {{ embedded }}
 {% endfor %}
 
 
-class {{ model_name }}Base(BaseModel):
+class {{ model_name }}Base(Schema):
     """Shared fields for {{ model_name }} schemas."""
 {% set user_fields = fields | rejectattr('name', 'in', server_managed_fields) | list %}
 {% if user_fields %}
@@ -79,7 +79,7 @@ class {{ model_name }}Create({{ model_name }}Base):
 {% endif %}
 
 
-class {{ model_name }}Update(BaseModel):
+class {{ model_name }}Update(Schema):
     """Schema for updating an existing {{ model_name }}.
 
     All fields are optional to support partial updates (PATCH semantics).
@@ -111,7 +111,7 @@ class {{ model_name }}Update(BaseModel):
 {% endif %}
 
 
-class {{ model_name }}Response(BaseModel):
+class {{ model_name }}Response(Schema):
     """Schema returned from API endpoints (excludes internal ID and sensitive data)."""
 
     uuid: str

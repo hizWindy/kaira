@@ -7,7 +7,7 @@ Auto-registered under the versioned API prefix.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query, Request, status
+from khaira.http import Router, Depends, Query, Request, status
 from core.logger import logger
 from rate_limit import limiter
 
@@ -20,7 +20,7 @@ from {{ schemas_dir }}.{{ snake_name }}_schema import (
 from {{ schemas_dir }}.message_schema import MessageResponse
 from {{ services_dir }}.{{ snake_name }}_service import {{ model_name }}Service
 {% else %}
-from sqlalchemy.ext.asyncio import AsyncSession
+from khaira.database import AsyncSession
 from core.database import get_db
 from {{ schemas_dir }}.{{ snake_name }}_schema import (
     {{ model_name }}Create,
@@ -44,7 +44,7 @@ cannot do, because it never saw the model definition. Nothing in this router
 reads it, and a project without monitoring scaffolded ignores it entirely.
 """
 
-router = APIRouter(
+router = Router(
     prefix="/{{ snake_name }}s",
     tags=["{{ model_name }}"],
 )

@@ -1,13 +1,13 @@
 {% if db_type == "mongodb" %}
 """Authentication router (MongoDB)."""
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from khaira.http import Router, Depends, HTTPException, Request, status
 
 from rate_limit import limiter
 from auth.schemas import LoginRequest, TokenResponse, RefreshRequest
 from auth.service import AuthService
 
-router = APIRouter(
+router = Router(
     prefix="/auth",
     tags=["Authentication"],
 )
@@ -57,15 +57,15 @@ async def logout(
 {% else %}
 """Authentication router."""
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
-from sqlalchemy.ext.asyncio import AsyncSession
+from khaira.http import Router, Depends, HTTPException, Request, status
+from khaira.database import AsyncSession
 
 from core.database import get_db
 from rate_limit import limiter
 from auth.schemas import LoginRequest, TokenResponse, RefreshRequest
 from auth.service import AuthService
 
-router = APIRouter(
+router = Router(
     prefix="/auth",
     tags=["Authentication"],
 )

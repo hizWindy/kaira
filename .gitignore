@@ -28,6 +28,7 @@ dist/
 *.db-wal
 .env
 .kaira/
+.khaira/
 
 # Scratch & Planning
 scratch/
