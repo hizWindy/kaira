@@ -1,0 +1,89 @@
+"""Service layer orchestrating Document Ingestion & RAG Question-Answering."""
+
+from __future__ import annotations
+
+import os
+from typing import Any, AsyncGenerator, Optional
+from loguru import logger
+
+from repositories.{{ model_slug }}_repository import {{ model_name }}Repository
+from services.ai.gateway import LLMGateway
+from config.settings import settings
+
+
+class {{ model_name }}Service:
+    """Orchestrates chunking, vector embeddings, and RAG retrieval."""
+
+    def __init__(self, repository: {{ model_name }}Repository):
+        self.repo = repository
+        self.gateway = LLMGateway()
+
+    async def get_embedding(self, text: str) -> list[float]:
+        """Generate vector embedding for a chunk of text."""
+        try:
+            from openai import AsyncOpenAI
+            client = AsyncOpenAI(api_key=getattr(settings, "OPENAI_API_KEY", os.getenv("OPENAI_API_KEY")))
+            res = await client.embeddings.create(
+                model="text-embedding-3-small",
+                input=text,
+            )
+            return res.data[0].embedding
+        except Exception as e:
+            logger.warning(f"Could not generate real embedding ({e}). Returning fallback vector.")
+            return [0.0] * {{ embedding_dim }}
+
+    async def ingest_document(
+        self, document_id: str, text: str, chunk_size: int = 500, overlap: int = 50
+    ) -> int:
+        """Chunk raw document text, compute embeddings, and store in repository."""
+        logger.info(f"Ingesting document '{document_id}' ({len(text)} characters)")
+        
+        words = text.split()
+        chunks: list[dict[str, Any]] = []
+        
+        step = max(1, chunk_size - overlap)
+        chunk_idx = 0
+        for i in range(0, len(words), step):
+            chunk_words = words[i : i + chunk_size]
+            chunk_content = " ".join(chunk_words)
+            if not chunk_content.strip():
+                continue
+
+            emb = await self.get_embedding(chunk_content)
+            chunks.append({
+                "document_id": document_id,
+                "chunk_index": chunk_idx,
+                "content": chunk_content,
+                "embedding": emb,
+                "metadata": {"char_length": len(chunk_content)},
+            })
+            chunk_idx += 1
+
+{% if db_type == "mongodb" %}
+        await self.repo.create_chunks(chunks)
+{% else %}
+        await self.repo.insert_chunks(chunks)
+{% endif %}
+        logger.info(f"Document '{document_id}' indexed into {len(chunks)} chunks.")
+        return len(chunks)
+
+    async def answer_query_stream(
+        self, query: str, top_k: int = 4
+    ) -> AsyncGenerator[str, None]:
+        """Retrieve relevant context and stream an answer via Server-Sent Events."""
+        query_vector = await self.get_embedding(query)
+{% if db_type == "mongodb" %}
+        relevant_chunks = await self.repo.vector_search(query_vector, top_k=top_k)
+{% else %}
+        relevant_chunks = await self.repo.similarity_search(query_vector, top_k=top_k)
+{% endif %}
+        context_blocks = "\n---\n".join([c.content for c in relevant_chunks])
+        system_prompt = (
+            "You are a helpful domain assistant. Answer the user's question using ONLY the provided "
+            "reference context. If the context does not contain the answer, politely state that you "
+            "do not have enough information.\n\n"
+            f"Context:\n{context_blocks}"
+        )
+
+        async for chunk in self.gateway.stream(prompt=query, system_prompt=system_prompt):
+            yield chunk

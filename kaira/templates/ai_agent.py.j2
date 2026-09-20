@@ -1,0 +1,47 @@
+"""{{ agent_name }} — Autonomous Agent / Sub-Agent Definition."""
+
+from __future__ import annotations
+
+from typing import Any, Sequence
+from loguru import logger
+from services.ai.gateway import LLMGateway
+
+{% if bound_skills %}
+# Imported Agent Skills
+{% for skill in bound_skills %}
+from services.ai.skills.{{ skill }} import {{ skill }}
+{% endfor %}
+{% endif %}
+
+
+class {{ agent_class_name }}:
+    """Specialized {{ agent_role }} Agent."""
+
+    def __init__(self, model_name: str = "{{ model_name }}"):
+        self.name = "{{ agent_name }}"
+        self.role = "{{ agent_role }}"
+        self.system_prompt = (
+            "{{ system_prompt }}\n"
+            "Always be concise, precise, and use your available tools when you need to fetch live data."
+        )
+        self.gateway = LLMGateway(model_name=model_name)
+        self.skills = [
+{% if bound_skills %}
+{% for skill in bound_skills %}
+            {{ skill }},
+{% endfor %}
+{% endif %}
+        ]
+
+    async def invoke(self, message: str, context: str = "") -> str:
+        """Run the agent on a user message with optional context."""
+        logger.info(f"Agent '{self.name}' executing role: {self.role}")
+        full_system = f"{self.system_prompt}\nContext: {context}" if context else self.system_prompt
+        return await self.gateway.complete(prompt=message, system_prompt=full_system)
+
+    async def stream(self, message: str, context: str = ""):
+        """Stream the agent's response token-by-token."""
+        logger.info(f"Agent '{self.name}' streaming response")
+        full_system = f"{self.system_prompt}\nContext: {context}" if context else self.system_prompt
+        async for chunk in self.gateway.stream(prompt=message, system_prompt=full_system):
+            yield chunk

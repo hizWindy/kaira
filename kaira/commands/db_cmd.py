@@ -628,7 +628,7 @@ def db_status() -> None:
         _get_db_type_from_url(raw_url, config_db_type) if raw_url else config_db_type
     )
 
-    table = Table(title="⚡ Kaira — DB Status", border_style="cyan")
+    table = Table(title="⚡ Khaira — DB Status", border_style="cyan")
     table.add_column("Property", style="dim")
     table.add_column("Value")
     table.add_row("DB Type", f"[bold]{db_type}[/bold]")

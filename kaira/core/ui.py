@@ -450,7 +450,7 @@ def panel(
 ) -> None:
     """Print a rounded-border Rich panel with a standardised title format.
 
-    Title is rendered as ``⚡ Kaira — <title>`` (or plain equivalent).
+    Title is rendered as ``⚡ Khaira — <title>`` (or plain equivalent).
     Subtitle appears on the right side of the panel border.
 
     Args:
@@ -461,7 +461,7 @@ def panel(
         expand: Whether the panel should expand to full width.
     """
     bolt = sym("BOLT")
-    full_title = f"[{border_style}]{bolt} Kaira — {title}[/{border_style}]"
+    full_title = f"[{border_style}]{bolt} Khaira — {title}[/{border_style}]"
     rich_subtitle = f"[{Theme.MUTED}]{subtitle}[/{Theme.MUTED}]" if subtitle else ""
     console.print(
         Panel(

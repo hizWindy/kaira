@@ -137,7 +137,7 @@ def test_generate(
     console.print(
         Panel(
             f"[green]Tests generated successfully for: {', '.join(models_to_test)}[/green]",
-            title="Kaira — Test Scaffold",
+            title="Khaira — Test Scaffold",
             border_style="green",
         )
     )
@@ -178,7 +178,7 @@ def test_run() -> None:
                 break
 
     if cov_lines:
-        table = Table(title="Kaira — Test Coverage Report", border_style="cyan")
+        table = Table(title="Khaira — Test Coverage Report", border_style="cyan")
         # Header
         headers = [h.strip() for h in cov_lines[0].split() if h.strip()]
         for header in headers:

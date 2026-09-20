@@ -84,7 +84,7 @@ def auth_generate(
     console.print(
         Panel(
             f"[green]Auth ({auth_type}) scaffolding complete![/green]",
-            title="Kaira — Auth",
+            title="Khaira — Auth",
             border_style="green",
         )
     )
@@ -235,7 +235,7 @@ def auth_register(
     console.print(
         Panel(
             f"[green]Auth routes mounted at[/green] [bold]{mounted_at}[/bold]",
-            title="Kaira — Auth",
+            title="Khaira — Auth",
             border_style="green",
         )
     )

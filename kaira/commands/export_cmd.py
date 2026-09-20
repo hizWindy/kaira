@@ -180,7 +180,7 @@ def _ensure_gitignored(output_root: Path, pattern: str) -> None:
             return
         prefix = "" if (not existing or existing.endswith("\n")) else "\n"
         gitignore.write_text(
-            f"{existing}{prefix}\n# Kaira — exported data files, never commit\n{pattern}\n",
+            f"{existing}{prefix}\n# Khaira — exported data files, never commit\n{pattern}\n",
             encoding="utf-8",
         )
         console.print(
@@ -511,7 +511,7 @@ def _export_per_model(
 
 def _print_summary(written: list[tuple[str, Path, int]]) -> None:
     """Render what was exported, where, and how many rows."""
-    table = Table(title="⚡ Kaira — Export Complete", border_style="cyan")
+    table = Table(title="⚡ Khaira — Export Complete", border_style="cyan")
     table.add_column("Model", style="bold cyan")
     table.add_column("Rows", justify="right", style="green")
     table.add_column("File", style="dim")
@@ -801,7 +801,7 @@ def export_add(
             f"  Header:      [cyan]X-Kaira-Export-Format[/cyan]\n\n"
             f"[dim]Install the writer libraries in your project env:[/dim]\n"
             f"  [cyan]pip install {' '.join(GENERATED_EXPORT_PACKAGES)}[/cyan]",
-            title="Kaira — Export Endpoint",
+            title="Khaira — Export Endpoint",
             border_style="green",
             expand=False,
         )
@@ -906,14 +906,14 @@ def export_list() -> None:
             Panel(
                 "[dim]No export endpoints generated yet.[/dim]\n\n"
                 "  Add one with [bold cyan]kaira export add User --format xlsx[/bold cyan]",
-                title="⚡ Kaira — Export Endpoints",
+                title="⚡ Khaira — Export Endpoints",
                 border_style="cyan",
                 expand=False,
             )
         )
         return
 
-    table = Table(title="⚡ Kaira — Export Endpoints", border_style="cyan")
+    table = Table(title="⚡ Khaira — Export Endpoints", border_style="cyan")
     table.add_column("Model", style="bold cyan")
     table.add_column("Formats", style="green")
     table.add_column("Auth-gated", justify="center")
@@ -986,7 +986,7 @@ def export_remove(
             f"[green]{model} export endpoint removed.[/green]\n\n"
             "[dim]core/export.py and core/security.py are left in place — other\n"
             "models may still be using them.[/dim]",
-            title="Kaira — Export",
+            title="Khaira — Export",
             border_style="green",
             expand=False,
         )

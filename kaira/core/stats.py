@@ -182,7 +182,7 @@ def build_stats_table(
 
     table = Table(
         title=title
-        or f"⚡ Kaira — Database Info ({db_type.upper()}: [cyan]{db_name}[/cyan])",
+        or f"⚡ Khaira — Database Info ({db_type.upper()}: [cyan]{db_name}[/cyan])",
         border_style="cyan",
     )
     table.add_column(entity, style="bold cyan")

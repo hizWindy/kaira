@@ -1,6 +1,21 @@
 # AGENTS.md — Kaira Engine Guidelines
 
 > **Target Audience:** AI Coding Assistants (Antigravity, Claude Code, Cursor, Copilot) & Contributors working directly on the Kaira CLI engine codebase.
+>
+> **Parent workspace:** See [scripts/AGENTS.md](../AGENTS.md) for unified rules covering both **db** and **kaira** projects.
+
+---
+
+## 1. Project Overview & Mission
+
+**Kaira** (formerly DevFlow) is an automated FastAPI scaffolding CLI that generates clean, production-grade 5-layer backend pipelines from simple model definitions, schemas, and CLI commands.
+
+* **Primary language:** Python 3.10+
+* **CLI Framework:** [Typer](https://typer.tiangolo.com/) + [Click](https://click.palletsprojects.com/)
+* **Terminal UI:** [Rich](https://rich.readthedocs.io/) + [InquirerPy](https://inquirerpy.readthedocs.io/)
+* **Templating Engine:** [Jinja2](https://jinja.palletsprojects.com/)
+* **Target Output Stack:** FastAPI, SQLAlchemy 2.0 (Async) / Beanie (MongoDB), Pydantic v2, Alembic, Docker, Pytest.
+* **Sibling project:** [db](https://github.com/hizWindy/db) — single-entry-point database management CLI
 
 ---
 

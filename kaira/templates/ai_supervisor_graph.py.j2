@@ -1,0 +1,75 @@
+"""Multi-Agent Supervisor Workflow Orchestrator.
+
+Routes incoming tasks between specialized sub-agents based on intent.
+"""
+
+from __future__ import annotations
+
+import json
+from typing import Any, AsyncGenerator, TypedDict
+from loguru import logger
+
+from services.ai.gateway import LLMGateway
+{% for subagent in subagents %}
+from services.ai.agents.{{ subagent.slug }} import {{ subagent.class_name }}
+{% endfor %}
+
+
+class AgentState(TypedDict):
+    """Shared state across the multi-agent graph."""
+    user_input: str
+    selected_agent: str
+    response: str
+
+
+class {{ supervisor_class_name }}:
+    """Supervisor orchestrator that delegates tasks to specialized sub-agents."""
+
+    def __init__(self):
+        self.gateway = LLMGateway()
+        self.subagents = {
+{% for subagent in subagents %}
+            "{{ subagent.name }}": {{ subagent.class_name }}(),
+{% endfor %}
+        }
+
+    async def route(self, user_input: str) -> str:
+        """Analyze user input and determine which sub-agent is best suited to handle it."""
+        subagent_descriptions = "\n".join([
+            f"- '{name}': {agent.role}" for name, agent in self.subagents.items()
+        ])
+        prompt = (
+            f"You are a routing supervisor. Based on the user request, decide which sub-agent should handle it.\n\n"
+            f"Available Sub-Agents:\n{subagent_descriptions}\n\n"
+            f"User Request: {user_input}\n\n"
+            f"Respond with ONLY the exact name of the selected sub-agent."
+        )
+        selected = await self.gateway.complete(prompt=prompt)
+        selected = selected.strip().replace("'", "").replace('"', "")
+        if selected in self.subagents:
+            return selected
+        # Default fallback to first subagent
+        return list(self.subagents.keys())[0] if self.subagents else "default"
+
+    async def run(self, user_input: str) -> str:
+        """Route and execute the request through the chosen sub-agent."""
+        target_name = await self.route(user_input)
+        logger.info(f"Supervisor routed request to: {target_name}")
+        target_agent = self.subagents.get(target_name)
+        if not target_agent:
+            return f"No sub-agent found to handle: {user_input}"
+        return await target_agent.invoke(user_input)
+
+    async def run_stream(self, user_input: str) -> AsyncGenerator[str, None]:
+        """Stream the execution through the chosen sub-agent."""
+        target_name = await self.route(user_input)
+        logger.info(f"Supervisor streaming via: {target_name}")
+        target_agent = self.subagents.get(target_name)
+        if not target_agent:
+            yield f"data: {json.dumps({'error': 'No matching sub-agent'})}\n\n"
+            return
+        
+        # Announce the routing decision first
+        yield f"data: {json.dumps({'status': f'Routed to {target_name} ({target_agent.role})'})}\n\n"
+        async for chunk in target_agent.stream(user_input):
+            yield chunk

@@ -21,6 +21,7 @@ from kaira.console import console
 
 app = typer.Typer(help="Load testing for local FastAPI routes.")
 
+
 def _base_url() -> str:
     """Return the base URL of this project's dev server.
 
@@ -31,6 +32,8 @@ def _base_url() -> str:
     from kaira.core.ports import resolve_base_url
 
     return resolve_base_url()
+
+
 _LOCALHOST_HOSTS = {"127.0.0.1", "localhost", "::1"}
 
 

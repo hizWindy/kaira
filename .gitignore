@@ -28,3 +28,12 @@ dist/
 *.db-wal
 .env
 .kaira/
+
+# Scratch & Planning
+scratch/
+plans/
+dist_test/
+
+# Editor & Tooling worktrees
+.kilo/
+.claude/

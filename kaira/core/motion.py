@@ -174,9 +174,7 @@ def reveal(
             emit(line)
         return
 
-    delay = _step_delay(
-        sum(1 for line in lines if not _is_blank(line)), _claim(budget)
-    )
+    delay = _step_delay(sum(1 for line in lines if not _is_blank(line)), _claim(budget))
     for index, line in enumerate(lines):
         try:
             emit(line)

@@ -1,0 +1,13 @@
+# API Reference — {{ project_name }}
+
+All endpoints in **{{ project_name }}** are served by FastAPI and Khaira Framework.
+
+## Interactive Documentation
+- **Swagger UI**: `/docs`
+- **ReDoc**: `/redoc`
+- **OpenAPI Schema JSON**: `/openapi.json`
+
+## Monitoring & Health Probes
+- **Liveness Probe**: `GET /healthz` → `{"status": "live"}`
+- **Readiness Probe**: `GET /readyz` → `{"status": "ready"}`
+- **Prometheus Metrics**: `GET /metrics` (when Prometheus provider is active)

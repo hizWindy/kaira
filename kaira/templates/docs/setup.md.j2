@@ -1,0 +1,26 @@
+# Setup & Deployment Guide — {{ project_name }}
+
+## Local Environment
+
+### 1. Create Virtual Environment
+```bash
+python -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+```
+
+### 2. Install Dependencies
+```bash
+pip install -r requirements.txt
+```
+
+### 3. Configure Environment
+Copy `.env.example` to `.env` and configure credentials:
+```bash
+cp .env.example .env
+```
+
+### 4. Run Migrations & Start Server
+```bash
+khaira migrate run
+khaira run --framework
+```

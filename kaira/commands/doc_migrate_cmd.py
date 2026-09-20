@@ -79,7 +79,7 @@ async def downgrade(db) -> None:
 def doc_migrate_run() -> None:
     """Execute pending document migration scripts against the target MongoDB database."""
     config = get_config()
-    driver = get_engine_driver(getattr(config, "db_type", "sqlite"))
+    _driver = get_engine_driver(getattr(config, "db_type", "sqlite"))
 
     mig_dir = _get_migrations_dir()
     scripts = sorted(list(mig_dir.glob("V*__*.py")))

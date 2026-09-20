@@ -82,6 +82,7 @@ def _default_base_url() -> str:
 
     return resolve_base_url()
 
+
 # main.py splice anchors. All three are written by the Phase 3/4 templates, so a
 # project that has them is one Kaira generated; a project that does not gets a
 # printed instruction instead of a guessed edit.

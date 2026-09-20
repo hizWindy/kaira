@@ -1,0 +1,47 @@
+---
+name: {{ skill_name | default('khaira-quality-gate') }}
+description: Use this skill before marking any coding task as complete to ensure code formatting, linting, type checks, and tests pass cleanly.
+---
+
+# Code Quality Gate in {{ project_name }}
+
+Before reporting that any feature, refactor, or bug fix is finished, you **MUST** run Khaira's quality suite to prevent regressions.
+
+---
+
+## 1. The Quality Gate Command
+
+```bash
+khaira quality
+```
+
+* **Shortcut:** `khaira q`
+
+### What Khaira Quality Checks:
+1. **Linter & Formatter**: Validates style with `ruff`.
+2. **Type Checker**: Validates type safety with `mypy`.
+3. **Security Audit**: Scans for vulnerabilities in dependencies.
+4. **Configuration State**: Confirms `.kaira.json` integrity.
+
+---
+
+## 2. Running Test Suites
+
+Always verify that existing and new endpoints pass pytest:
+
+```bash
+# Run all tests
+pytest
+
+# Run tests with verbose output
+pytest -v
+```
+
+---
+
+## Standard Pre-Completion Checklist
+
+- [ ] All new files adhere to the 5-layer separation.
+- [ ] `khaira quality` reports zero errors.
+- [ ] `pytest` passes with 100% success.
+- [ ] No temporary debug code or unmasked credentials remain.

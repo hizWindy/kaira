@@ -250,7 +250,7 @@ def cache_status_cmd() -> None:
         mask_credentials(redis_url) if redis_url else "[dim]REDIS_URL not set[/dim]"
     )
 
-    table = Table(title="⚡ Kaira — Cache Status", border_style="cyan")
+    table = Table(title="⚡ Khaira — Cache Status", border_style="cyan")
     table.add_column("Property", style="dim")
     table.add_column("Value")
     table.add_row("REDIS_URL", masked_url)

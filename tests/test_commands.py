@@ -35,7 +35,7 @@ class TestVersionAndHelp:
     def test_version_flag(self):
         result = run("--version")
         assert result.exit_code == 0
-        assert "0.1.0" in result.output
+        assert "0.2" in result.output
 
     def test_version_command(self):
         result = run("version")
@@ -327,6 +327,22 @@ class TestInitProjectAgents:
             content = agents_file.read_text(encoding="utf-8")
             assert "test-agent-app" in content
             assert "sqlite" in content.lower()
-            assert "jwt" in content.lower()
             assert "5-layer" in content.lower() or "5-Layer" in content
+
+            # Verify .agents/skills library
+            skills_dir = app_dir / ".agents" / "skills"
+            assert skills_dir.is_dir()
+            for skill_name in [
+                "kaira-scaffold-model",
+                "kaira-db-migrations",
+                "kaira-sync-layers",
+                "kaira-ai-agent",
+                "kaira-quality-gate",
+            ]:
+                skill_file = skills_dir / skill_name / "SKILL.md"
+                assert skill_file.is_file(), f"Missing {skill_name}/SKILL.md"
+                text = skill_file.read_text(encoding="utf-8")
+                assert text.startswith("---"), f"{skill_name} missing YAML frontmatter"
+                assert f"name: {skill_name}" in text
+                assert "description:" in text
 

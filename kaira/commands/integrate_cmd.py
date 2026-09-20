@@ -245,7 +245,7 @@ def integrate_add(
 @app.command("list")
 def integrate_list() -> None:
     """List all available integration providers by category."""
-    table = Table(title="⚡ Kaira — Available Integrations", border_style="cyan")
+    table = Table(title="⚡ Khaira — Available Integrations", border_style="cyan")
     table.add_column("Category", style="bold")
     table.add_column("Providers")
 

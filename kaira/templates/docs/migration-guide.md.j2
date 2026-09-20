@@ -1,0 +1,26 @@
+# Framework Tier Migration Guide
+
+Khaira projects can be upgraded across architectural tiers at any time.
+
+## Available Tiers
+
+1. **Simple**: Compact single-file definitions, pure FastAPI.
+2. **Standard** (Default): 5-layer pipeline, `KhairaApp` / `KairaApp`, auto-registration, security & monitoring providers.
+3. **Enterprise**: Domain-driven grouping (`domains/`), OpenTelemetry distributed tracing, Dependency Injection container.
+
+## Upgrading Tiers
+
+To upgrade safely with snapshot rollback:
+```bash
+# Preview changes
+khaira upgrade --tier enterprise --dry-run
+
+# Apply upgrade
+khaira upgrade --tier enterprise
+```
+
+## Microservice Decomposition
+To decompose models into an independent service:
+```bash
+khaira microservice split --service user-service --models User Profile
+```

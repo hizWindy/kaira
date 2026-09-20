@@ -20,7 +20,7 @@ app = typer.Typer(help="API Versioning and deprecation commands.")
 
 @app.callback(invoke_without_command=True)
 def version_main_callback(ctx: typer.Context) -> None:
-    """Show the Kaira version when called without subcommands."""
+    """Show Khaira version when called without subcommands."""
     if ctx.invoked_subcommand is None:
         from kaira import __version__
 
@@ -53,7 +53,7 @@ def version_create(
     console.print(
         Panel(
             f"[green]API version {version} structure initialized successfully![/green]",
-            title="Kaira — API Versioning",
+            title="Khaira — API Versioning",
             border_style="green",
         )
     )
@@ -151,7 +151,7 @@ def version_list() -> None:
         d.name for d in api_root.iterdir() if d.is_dir() and d.name.startswith("v")
     ]
 
-    table = Table(title="Kaira — API Versions", border_style="cyan")
+    table = Table(title="Khaira — API Versions", border_style="cyan")
     table.add_column("Version", justify="left")
     table.add_column("Routers", justify="left")
 

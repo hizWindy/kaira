@@ -1,0 +1,40 @@
+# Architecture Overview — {{ project_name }}
+
+This application is built on **Khaira Framework**'s opinionated 5-layer separation of concerns.
+
+## The 5-Layer Pipeline
+
+```text
+HTTP Request
+     │
+     ▼
+┌──────────────┐
+│   Routers    │   FastAPI path operations, dependency injection, status codes
+└──────┬───────┘
+       │ delegates exclusively to
+       ▼
+┌──────────────┐
+│   Services   │   Business domain logic, transactions, raises HTTP exceptions
+└──────┬───────┘
+       │ delegates data queries to
+       ▼
+┌──────────────┐
+│ Repositories │   Database access queries, filtering, commits
+└──────┬───────┘
+       │ operates on
+       ▼
+┌──────────────┐
+│    Models    │   SQLAlchemy ORM / Beanie ODM mapped classes
+└──────────────┘
+       ▲
+       │ validated by
+┌──────────────┐
+│   Schemas    │   Pydantic v2 DTOs (Base, Create, Update, Response)
+└──────────────┘
+```
+
+## Runtime Layer Enforcement
+KairaApp validates that:
+1. Routers never import repositories directly.
+2. Cross-layer violations raise runtime `LayerViolationError` exceptions.
+3. Services remain decoupled from transport protocols.

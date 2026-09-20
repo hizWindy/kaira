@@ -99,7 +99,7 @@ def recap_command(
                 "[dim]No history recorded yet.\n\n"
                 "History is written to [bold].kaira/history.jsonl[/bold] "
                 "as you run kaira commands.[/dim]",
-                title="Kaira — Recap",
+                title="Khaira — Recap",
                 border_style="cyan",
             )
         )
@@ -115,7 +115,7 @@ def recap_command(
     # Cap and reverse (most recent first)
     records = records[-limit:][::-1]
 
-    table = Table(title="⚡ Kaira — Command History", border_style="cyan")
+    table = Table(title="⚡ Khaira — Command History", border_style="cyan")
     table.add_column("Timestamp", style="dim", no_wrap=True)
     table.add_column("Command", style="bold cyan")
     table.add_column("Args", style="dim")

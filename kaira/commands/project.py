@@ -9,7 +9,7 @@ import sys
 import subprocess
 import time
 from pathlib import Path
-from typing import Optional, Sequence
+from typing import List, Optional, Sequence
 
 import typer
 from jinja2 import Environment, FileSystemLoader
@@ -623,9 +623,15 @@ def install_packages(
 
 
 def init_project(
-    name: str, db: str, auth: str, docker: bool, ci: str, cwd: Path
+    name: str,
+    db: str,
+    auth: str,
+    docker: bool,
+    ci: str,
+    cwd: Path,
+    tier: str = "standard",
 ) -> None:
-    """Scaffold a FastAPI project with Phase 3 configuration inside named directory."""
+    """Scaffold a FastAPI project with tier configuration inside named directory."""
     env = _get_env()
     slug = _pascal_to_slug(name)
 
@@ -658,10 +664,14 @@ def init_project(
         "db_type": db,
         "auth_type": auth,
         "api_version": "v1",
+        "tier": tier,
     }
 
-    # 1. main.py from v3 template
-    main_tmpl = env.get_template("main_app_v3.py.j2")
+    # 1. main.py selection based on tier
+    if tier == "simple":
+        main_tmpl = env.get_template("main_simple.py.j2")
+    else:
+        main_tmpl = env.get_template("main_app_v3.py.j2")
     write_with_check(
         cwd / "main.py", main_tmpl.render(**ctx), force=True, non_interactive=True
     )
@@ -895,6 +905,37 @@ def init_project(
         force=True,
         non_interactive=True,
     )
+
+    # 11b. Agent Skills Library (.agents/skills/*/SKILL.md)
+    skills_dir = cwd / ".agents" / "skills"
+    skill_definitions = [
+        ("khaira-scaffold-model", "skills/skill_scaffold_model.md.j2"),
+        ("khaira-sync-layers", "skills/skill_sync_layers.md.j2"),
+        ("khaira-ai-agent", "skills/skill_ai_agent.md.j2"),
+        ("khaira-quality-gate", "skills/skill_quality_gate.md.j2"),
+        ("kaira-scaffold-model", "skills/skill_scaffold_model.md.j2"),
+        ("kaira-sync-layers", "skills/skill_sync_layers.md.j2"),
+        ("kaira-ai-agent", "skills/skill_ai_agent.md.j2"),
+        ("kaira-quality-gate", "skills/skill_quality_gate.md.j2"),
+    ]
+    if db != "mongodb":
+        skill_definitions.append(
+            ("khaira-db-migrations", "skills/skill_db_migrations.md.j2")
+        )
+        skill_definitions.append(
+            ("kaira-db-migrations", "skills/skill_db_migrations.md.j2")
+        )
+
+    for skill_name, tmpl_name in skill_definitions:
+        target_dir = skills_dir / skill_name
+        target_dir.mkdir(parents=True, exist_ok=True)
+        write_with_check(
+            target_dir / "SKILL.md",
+            env.get_template(tmpl_name).render(**ctx, skill_name=skill_name),
+            force=True,
+            non_interactive=True,
+        )
+
     write_with_check(
         cwd / "pyproject.toml",
         env.get_template("pyproject_generated.toml.j2").render(**ctx),
@@ -920,6 +961,7 @@ def init_project(
     config = KairaConfig(
         db_type=db,
         auth_type=auth,
+        tier=tier,
         output_dir=".",
         docker_enabled=docker,
         docker_compose=docker,
@@ -932,6 +974,15 @@ def init_project(
     with open(config_path, "w", encoding="utf-8") as f:
         json.dump(config.to_dict(), f, indent=2)
 
+    # 13. Documentation generation for framework tiers
+    if tier != "simple":
+        try:
+            from kaira.migrations.file_writer import FileWriter
+
+            FileWriter(cwd).write_standard_docs(name)
+        except Exception:
+            pass
+
 
 def init_command(
     name: Optional[str] = None,
@@ -941,6 +992,7 @@ def init_command(
     ci: Optional[str] = None,
     profile: Optional[str] = None,
     yes: bool = False,
+    tier: str = "standard",
 ) -> None:
     """Entrypoint for kaira init command with wizard setup."""
     valid_dbs = {"postgresql", "mysql", "mongodb", "sqlite"}
@@ -958,7 +1010,7 @@ def init_command(
     # Check if we are inside a folder with existing kaira configuration
     # If project name is completely omitted, we trigger the wizard or prompt
     if not name:
-        console.print("⚡ Kaira — New Project\n────────────────────────────────────")
+        console.print("⚡ Khaira — New Project\n────────────────────────────────────")
         name = typer.prompt("Project name")
         # Validate project name
         if not re.match(r"^[a-z0-9-]+$", name):
@@ -1048,6 +1100,7 @@ def init_command(
     # Echo the resolved configuration so a flag-driven run shows the same
     # summary an interactive one does.
     ui.section("scaffold")
+    ui.field("tier", tier)
     ui.field("database", db)
     ui.field("auth", auth)
     ui.field("docker", "yes" if docker else "no")
@@ -1057,7 +1110,7 @@ def init_command(
     # Scaffold the project files
     scaffold_started = time.monotonic()
     project_dir.mkdir(parents=True, exist_ok=True)
-    init_project(name, db, auth, docker, ci, project_dir)
+    init_project(name, db, auth, docker, ci, project_dir, tier=tier)
     ui.step("project files", _elapsed_since(scaffold_started))
 
     # Package installation phase
@@ -1148,3 +1201,121 @@ def init_command(
     )
     ui.hint(f"cd {name}")
     ui.hint("kaira run")
+
+
+# ── Framework Upgrade Command ────────────────────────────────────────────────
+
+
+def upgrade_command(
+    tier: str = "standard",
+    dry_run: bool = False,
+    features: Optional[List[str]] = None,
+) -> None:
+    """Execute project tier upgrade with snapshot and rollback safety."""
+    from kaira.core.theme import Theme, sym
+    from kaira.migrations.engine import MigrationEngine
+
+    engine = MigrationEngine()
+    current = engine.get_current_tier()
+    ui.section("upgrade", f"{current} -> {tier}")
+
+    try:
+        actions = engine.upgrade(target_tier=tier, dry_run=dry_run, features=features)
+        if dry_run:
+            console.print(
+                f"\n[{Theme.WARNING}]DRY RUN: The following modifications would be applied:[/{Theme.WARNING}]"
+            )
+            for a in actions:
+                console.print(f"  {sym('BULLET')} {a}")
+        else:
+            for a in actions:
+                ui.step("upgrade", a)
+            console.print(
+                f"\n[{Theme.SUCCESS}]{sym('OK')} Successfully upgraded project to '{tier}' tier.[/{Theme.SUCCESS}]"
+            )
+    except Exception as exc:
+        console.print(
+            f"\n[{Theme.ERROR}]{sym('CROSS')} Upgrade failed: {exc}[/{Theme.ERROR}]"
+        )
+        raise typer.Exit(1)
+
+
+# ── Microservice Decompose Command ───────────────────────────────────────────
+
+
+def microservice_split_command(
+    service_name: str,
+    models: Optional[List[str]] = None,
+) -> None:
+    """Extract specified models and their layers into an autonomous microservice package."""
+    import shutil
+    from kaira.core.theme import Theme, sym
+
+    models = models or []
+    ui.section("microservice", f"Extracting {service_name}")
+
+    service_dir = Path.cwd() / service_name
+    if service_dir.exists():
+        console.print(
+            f"[{Theme.ERROR}]Target directory '{service_name}' already exists.[/{Theme.ERROR}]"
+        )
+        raise typer.Exit(1)
+
+    service_dir.mkdir(parents=True, exist_ok=True)
+    init_project(
+        name=service_name,
+        db="sqlite",
+        auth="jwt",
+        docker=True,
+        ci="github",
+        cwd=service_dir,
+        tier="standard",
+    )
+
+    cwd = Path.cwd()
+    copied = []
+    for m in models:
+        slug = _pascal_to_slug(m)
+        for layer, sfx in [
+            ("models", ""),
+            ("schemas", "_schema"),
+            ("services", "_service"),
+            ("repositories", "_repository"),
+            ("routers", "_router"),
+        ]:
+            src_f = cwd / layer / f"{slug}{sfx}.py"
+            dst_f = service_dir / layer / f"{slug}{sfx}.py"
+            if src_f.exists():
+                shutil.copy2(src_f, dst_f)
+                copied.append(f"{layer}/{slug}{sfx}.py")
+
+    ui.step("scaffold", f"Created autonomous service structure in {service_name}")
+    ui.step("extract", f"Extracted {len(copied)} layer file(s)")
+    console.print(
+        f"\n[{Theme.SUCCESS}]{sym('OK')} Microservice '{service_name}' created successfully.[/{Theme.SUCCESS}]"
+    )
+
+
+# ── Add Dependency Command ────────────────────────────────────────────────────
+
+
+def add_dependency_command(dep: str) -> None:
+    """Add a dependency package to requirements.txt and pyproject.toml."""
+    from kaira.core.theme import Theme, sym
+
+    req_path = Path.cwd() / "requirements.txt"
+    if req_path.exists():
+        content = req_path.read_text(encoding="utf-8")
+        if dep not in content:
+            req_path.write_text(content.rstrip() + f"\n{dep}\n", encoding="utf-8")
+            console.print(
+                f"[{Theme.SUCCESS}]{sym('OK')} Added '{dep}' to requirements.txt[/{Theme.SUCCESS}]"
+            )
+        else:
+            console.print(
+                f"[{Theme.MUTED}]'{dep}' already listed in requirements.txt[/{Theme.MUTED}]"
+            )
+    else:
+        console.print(
+            f"[{Theme.WARNING}]No requirements.txt found in current directory.[/{Theme.WARNING}]"
+        )

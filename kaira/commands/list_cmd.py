@@ -82,7 +82,7 @@ def list_routes() -> None:
     from kaira.core.theme import Theme
 
     table = Table(
-        title="Kaira — Registered API Routes",
+        title="Khaira — Registered API Routes",
         box=box.SIMPLE_HEAD,
         border_style=Theme.PRIMARY,
     )

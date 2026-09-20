@@ -185,6 +185,13 @@ def run_command(
             "--access-log", help="Also print uvicorn's own access log line per request."
         ),
     ] = False,
+    framework: Annotated[
+        bool,
+        typer.Option(
+            "--framework",
+            help="Start application directly under Khaira Framework runtime.",
+        ),
+    ] = False,
 ) -> None:
     """Start the FastAPI server using 'fastapi dev' or 'fastapi run'.
 
@@ -195,6 +202,7 @@ def run_command(
     --------
     kaira run
     kaira run --prod
+    kaira run --framework
     kaira run --port 9000 --host 0.0.0.0
     kaira run --entry app/main.py
     kaira run --no-reload
@@ -204,7 +212,27 @@ def run_command(
 
     cwd = Path.cwd()
 
+    # ── Framework Runtime Execution Path ─────────────────────────────────────
+    if framework:
+        from kaira.app import KairaApp
+        from kaira.config import get_config
+
+        cfg = get_config()
+        app_instance = KairaApp(
+            project_name=cfg.db_name or cwd.name,
+            tier=getattr(cfg, "tier", "standard"),
+            providers=getattr(cfg, "providers", ["cache", "auth"]),
+        )
+        from kaira.core.theme import Theme
+
+        console.print(
+            f"[{Theme.PRIMARY}]Starting Khaira Framework runtime on {host}:{port}...[/{Theme.PRIMARY}]"
+        )
+        app_instance.run(dev=not prod, host=host, port=port)
+        return
+
     # ── Resolve entry file ────────────────────────────────────────────────────
+    entry_path: Optional[Path] = None
     if entry:
         entry_path = Path(entry)
         if not entry_path.is_absolute():

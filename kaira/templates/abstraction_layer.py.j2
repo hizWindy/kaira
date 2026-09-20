@@ -1,0 +1,268 @@
+"""Khaira Framework — Library Abstraction Layer.
+
+All generated code uses `from kaira import ...` instead of raw library imports.
+This template defines the abstraction for every supported library.
+
+Every library in the ecosystem is wrapped behind a kaira.* import.
+The developer never imports sqlalchemy, jwt, slowapi, or any other
+external library directly.
+"""
+
+from __future__ import annotations
+
+# ── Model Abstraction ────────────────────────────────────────────────────
+# Developer writes:    from kaira import Model
+# Framework generates: based on .kaira.json "orm" setting
+#
+# Supported ORMs:
+#   - sqlalchemy  → SQLAlchemy DeclarativeBase
+#   - sqlmodel    → sqlmodel.SQLModel
+#   - beanie      → Beanie Document
+#   - peewee      → Peewee Model
+#   - tortoise    → TortoiseORM
+
+# ── Auth Abstraction ─────────────────────────────────────────────────────
+# Developer writes:    from kaira.auth import JWT, hash_password
+# Framework generates: based on .kaira.json "auth_type" setting
+#
+# Supported Auth:
+#   - jwt         → PyJWT / python-jose
+#   - oauth2      → Authlib
+#   - api-key     → secrets / hashlib
+#   - sso         → Authlib SSO
+#
+# Password hashing:
+#   - argon2      → argon2-cffi (primary)
+#   - bcrypt      → bcrypt (fallback)
+
+# ── Cache Abstraction ────────────────────────────────────────────────────
+# Developer writes:    from kaira.cache import Cache
+# Framework generates: based on .kaira.json "cache" setting
+#
+# Supported Caches:
+#   - redis       → redis-py
+#   - memcached   → pylibmc
+#   - aiocache    → aiocache
+
+# ── Rate Limiting Abstraction ────────────────────────────────────────────
+# Developer writes:    from kaira.rate_limit import Limiter
+# Framework generates: based on .kaira.json "rate_limiter" setting
+#
+# Supported Rate Limiters:
+#   - slowapi     → slowapi
+#   - aiolimiter  → aiolimiter
+#   - redis-rate  → redis-rate-limiter
+
+# ── Task Queue Abstraction ───────────────────────────────────────────────
+# Developer writes:    from kaira.task import Task
+# Framework generates: based on .kaira.json "task_queue" setting
+#
+# Supported Task Queues:
+#   - celery      → celery[redis]
+#   - rq          → rq
+#   - dramatiq    → dramatiq
+
+# ── Database Abstraction ─────────────────────────────────────────────────
+# Developer writes:    from kaira.database import Database
+# Framework generates: based on .kaira.json "database" setting
+#
+# Supported Databases:
+#   - postgresql  → asyncpg / SQLAlchemy
+#   - mongodb     → motor / Beanie
+#   - mysql       → aiomysql
+#   - sqlite      → aiosqlite
+#   - cloud       → google-cloud-firestore
+
+# ── AI/LLM Abstraction ───────────────────────────────────────────────────
+# Developer writes:    from kaira.ai import Agent, RAG
+# Framework generates: based on .kaira.json "ai_provider" setting
+#
+# Supported LLM Providers:
+#   - openai      → openai SDK
+#   - anthropic   → anthropic SDK
+#   - ollama      → httpx (local)
+#   - deepseek    → openai-compatible
+#   - cohere      → cohere SDK
+#   - gemini      → google-generativeai
+#   - mistral     → mistralai SDK
+#   - together    → together SDK
+#   - groq        → groq SDK
+#
+# Supported Agent Frameworks:
+#   - langchain   → langchain + langgraph
+#   - crewai      → crewai
+#   - autogen     → autogen
+#   - haystack    → haystack
+#
+# Supported Vector DBs:
+#   - pgvector    → pgvector
+#   - chromadb    → chromadb
+#   - weaviate    → weaviate-client
+#   - pinecone    → pinecone-client
+#
+# Supported Embeddings:
+#   - sentence-transformers → sentence-transformers
+#   - transformers          → transformers
+#   - onnx                  → onnxruntime
+
+# ── GraphQL Abstraction ──────────────────────────────────────────────────
+# Developer writes:    from kaira.graphql import GraphQL
+# Framework generates: based on .kaira.json "graphql" setting
+#
+# Supported GraphQL:
+#   - strawberry  → strawberry-graphql
+#   - graphene    → graphene
+
+# ── gRPC Abstraction ─────────────────────────────────────────────────────
+# Developer writes:    from kaira.grpc import Service
+# Framework generates: based on .kaira.json "grpc" setting
+#
+# Supported gRPC:
+#   - grpcio      → grpcio
+#   - grpcio-tools → grpcio-tools
+#   - protobuf    → protobuf
+
+# ── Storage Abstraction ──────────────────────────────────────────────────
+# Developer writes:    from kaira.storage import S3
+# Framework generates: based on .kaira.json "storage" setting
+#
+# Supported Storage:
+#   - s3          → boto3
+#   - gcs         → google-cloud-storage
+#   - minio       → minio
+
+# ── Notification Abstraction ─────────────────────────────────────────────
+# Developer writes:    from kaira.notify import Email, SMS
+# Framework generates: based on .kaira.json "notify" setting
+#
+# Supported Notifications:
+#   - email       → sendgrid / fastapi-mail
+#   - sms         → twilio
+
+# ── Analytics Abstraction ────────────────────────────────────────────────
+# Developer writes:    from kaira.analytics import Analytics
+# Framework generates: based on .kaira.json "analytics" setting
+#
+# Supported Analytics:
+#   - mixpanel    → mixpanel
+#   - amplitude   → amplitude
+
+# ── Search Engine Abstraction ────────────────────────────────────────────
+# Developer writes:    from kaira.search import Search
+# Framework generates: based on .kaira.json "search" setting
+#
+# Supported Search:
+#   - meilisearch → meilisearch
+#   - typesense   → typesense
+#   - elastic     → elastic-transport
+
+# ── i18n Abstraction ─────────────────────────────────────────────────────
+# Developer writes:    from kaira.i18n import I18n
+# Framework generates: based on .kaira.json "i18n" setting
+#
+# Supported i18n:
+#   - fastapi-i18n → fastapi-i18n
+#   - babel       → babel
+
+# ── File Upload Abstraction ──────────────────────────────────────────────
+# Developer writes:    from kaira.upload import Upload
+# Framework generates: based on .kaira.json "file_upload" setting
+#
+# Supported Upload:
+#   - python-multipart → python-multipart
+#   - aiofiles        → aiofiles
+
+# ── Data Pipeline Abstraction ────────────────────────────────────────────
+# Developer writes:    from kaira.pipeline import Pipeline
+# Framework generates: based on .kaira.json "pipeline" setting
+#
+# Supported Pipelines:
+#   - prefect  → prefect
+#   - dagster  → dagster
+
+# ── Streaming Abstraction ────────────────────────────────────────────────
+# Developer writes:    from kaira.stream import SSE, WebSocket
+# Framework generates: based on .kaira.json "streaming" setting
+#
+# Supported Streaming:
+#   - sse-starlette → sse-starlette
+#   - websockets    → websockets
+
+# ── Serverless Abstraction ───────────────────────────────────────────────
+# Developer writes:    from kaira.serverless import Lambda
+# Framework generates: based on .kaira.json "serverless" setting
+#
+# Supported Serverless:
+#   - aws-lambda-powertools → aws-lambda-powertools
+
+# ── DevOps Abstraction ───────────────────────────────────────────────────
+# Developer writes:    from kaira.devops import K8s, Terraform
+# Framework generates: based on .kaira.json "devops" setting
+#
+# Supported DevOps:
+#   - kubernetes → kubernetes
+#   - terraform  → terraform
+
+# ── Testing Abstraction ──────────────────────────────────────────────────
+# Developer writes:    from kaira.test import Factory, E2E
+# Framework generates: based on .kaira.json "testing" setting
+#
+# Supported Testing:
+#   - factory-boy → factory-boy
+#   - pytest-mock → pytest-mock
+#   - faker       → faker
+#   - playwright  → playwright
+#   - mutmut      → mutmut
+
+# ── Branding Abstraction ─────────────────────────────────────────────────
+# Developer writes:    from kaira.brand import Brand
+# Framework generates: based on .kaira.json "branding" setting
+#
+# Supported Branding:
+#   - pillow      → pillow
+#   - matplotlib  → matplotlib
+
+# ── Documentation Abstraction ────────────────────────────────────────────
+# Developer writes:    from kaira.docs import MkDocs
+# Framework generates: based on .kaira.json "docs" setting
+#
+# Supported Docs:
+#   - mkdocs      → mkdocs
+#   - sphinx      → sphinx
+
+# ── Performance Abstraction ──────────────────────────────────────────────
+# Developer writes:    from kaira.performance import Profile
+# Framework generates: based on .kaira.json "performance" setting
+#
+# Supported Performance:
+#   - py-spy      → py-spy
+
+# ── Security Abstraction ─────────────────────────────────────────────────
+# Developer writes:    from kaira.security import Encryption, Vault
+# Framework generates: based on .kaira.json "security" setting
+#
+# Supported Security:
+#   - cryptography → cryptography (Fernet)
+#   - argon2-cffi  → argon2-cffi
+#   - bcrypt       → bcrypt
+#   - vault        → hashicorp-vault
+
+# ── Logging ──────────────────────────────────────────────────────────────
+# Developer writes:    from kaira.logging import logger
+# Framework generates: loguru-based structured logging
+
+# ── Tracing ──────────────────────────────────────────────────────────────
+# Developer writes:    from kaira.tracing import Tracer
+# Framework generates: OpenTelemetry-based distributed tracing
+
+# ── DI Container ─────────────────────────────────────────────────────────
+# Developer writes:    from kaira.container import Container
+# Framework generates: FastAPI Depends-based DI container
+
+# ── Middleware ───────────────────────────────────────────────────────────
+# Developer writes:    from kaira.middleware import CORS, RateLimit
+# Framework generates: FastAPI/Starlette middleware
+
+# ── Provider System ──────────────────────────────────────────────────────
+# Developer writes:    from kaira.providers import CacheProvider, AuthProvider
+# Framework generates: Built-in providers for cache, auth, monitor, task

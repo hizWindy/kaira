@@ -21,6 +21,7 @@ from kaira.console import console
 
 app = typer.Typer(help="Route profiling and latency measurement.")
 
+
 def _base_url() -> str:
     """Return the base URL of this project's dev server.
 
@@ -31,6 +32,8 @@ def _base_url() -> str:
     from kaira.core.ports import resolve_base_url
 
     return resolve_base_url()
+
+
 _RESULTS_FILE = Path(".kaira") / "profile_results.json"
 _SERVER_DOWN_MSG = (
     "⏸️ Server not running.\nStart it with: [bold cyan]kaira run[/bold cyan]"

@@ -73,7 +73,7 @@ def websocket_generate(
         Panel(
             f"[green]WebSocket ({ws_type}) scaffolding complete for {channel_name}![/green]\n"
             "Features JWT auth on handshake, connection rate limits, and output escaping.",
-            title="Kaira — WebSockets",
+            title="Khaira — WebSockets",
             border_style="green",
         )
     )

@@ -88,7 +88,7 @@ def ci_generate(
         Panel(
             f"[green]CI/CD ({platform}) pipeline generated successfully![/green]\n"
             "Includes automated tests, ruff, mypy, bandit, and pip-audit coverage checks.",
-            title="Kaira — CI/CD Pipeline",
+            title="Khaira — CI/CD Pipeline",
             border_style="green",
         )
     )

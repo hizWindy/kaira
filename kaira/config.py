@@ -124,6 +124,13 @@ class KairaConfig:
     docker_enabled: bool = False  # Dockerfile has been scaffolded
     docker_compose: bool = False  # compose files are part of the surface
     docker_python: str = ""  # Python version pinned in the Dockerfile
+    # Framework Runtime fields (Phase 8)
+    tier: str = "standard"  # simple | standard | enterprise
+    kaira_version: str = "0.2.0"
+    enforce_layers: bool = True  # Enforce 5-layer pipeline separation
+    auto_register: bool = True  # Auto-register routers and models
+    providers: list[str] = field(default_factory=lambda: ["cache", "auth"])
+    orm: str = "sqlalchemy"  # sqlalchemy | sqlmodel | beanie | peewee | tortoise
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

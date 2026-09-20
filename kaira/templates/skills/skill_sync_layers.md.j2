@@ -1,0 +1,43 @@
+---
+name: {{ skill_name | default('khaira-sync-layers') }}
+description: Use this skill whenever you add, remove, or modify fields or relations on an existing model and need to cascade changes across all 5 layers.
+---
+
+# Synchronizing Layers in {{ project_name }}
+
+When you manually add or modify a field in an ORM model inside `models/<model>.py`, the other 4 layers (Schemas, Repositories, Services, Routers) can quickly become out of sync.
+
+Use Khaira's **Sync Engine** to automatically detect differences and cascade the updates.
+
+---
+
+## Canonical Command
+
+```bash
+khaira sync model <ModelName>
+```
+
+* **Shortcut:** `khaira sm <ModelName>`
+
+### Example
+```bash
+# After adding 'discount_price: float' to models/product.py:
+khaira sync model Product
+```
+
+---
+
+## What the Sync Engine Does
+
+1. **Introspects** the modified model in `models/<model>.py`.
+2. **Updates Schemas** (`schemas/<model>_schema.py`): Adds the new field to `Create`, `Update`, and `Response` DTOs.
+3. **Updates Repositories** (`repositories/<model>_repository.py`): Ensures query builders and filters accept the field.
+4. **Updates Services** (`services/<model>_service.py`): Propagates payload handling.
+5. **Updates State**: Synchronizes `.kaira.json` metadata.
+
+---
+
+## Safety Guidelines
+
+- Run `khaira diff <ModelName>` before syncing if you want to preview the exact lines that will be updated.
+- Never manually delete fields in schemas without verifying dependent router handlers.

@@ -57,7 +57,7 @@ def audit_routes() -> None:
     }
 
     table = Table(
-        title=f"[bold {Theme.PRIMARY}]Kaira — API Route Audit[/bold {Theme.PRIMARY}]  "
+        title=f"[bold {Theme.PRIMARY}]Khaira — API Route Audit[/bold {Theme.PRIMARY}]  "
         f"[dim]{api_prefix}/*[/dim]",
         box=box.ROUNDED,
         border_style=Theme.BORDER_PRIMARY,
@@ -434,7 +434,7 @@ def audit_unused() -> None:
             if router_name not in main_content:
                 unused.append(f"{config.routers_dir}/{f.name}")
 
-    table = Table(title="Kaira — Unused Generated Assets", border_style="yellow")
+    table = Table(title="Khaira — Unused Generated Assets", border_style="yellow")
     table.add_column("Asset Path", justify="left")
     table.add_column("Status", justify="left")
 

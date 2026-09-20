@@ -1,0 +1,42 @@
+"""FastAPI Router for Autonomous Agent & Supervisor Streaming Interaction."""
+
+from __future__ import annotations
+
+from fastapi import APIRouter, HTTPException, status
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field
+
+{% if is_supervisor %}
+from services.ai.graphs.{{ graph_slug }} import {{ supervisor_class_name }}
+
+router = APIRouter(prefix="/api/v1/ai/{{ graph_slug }}", tags=["AI — {{ supervisor_name }} Supervisor"])
+supervisor = {{ supervisor_class_name }}()
+{% else %}
+from services.ai.agents.{{ agent_slug }} import {{ agent_class_name }}
+
+router = APIRouter(prefix="/api/v1/ai/{{ agent_slug }}", tags=["AI — {{ agent_name }} Agent"])
+agent = {{ agent_class_name }}()
+{% endif %}
+
+
+class AgentQueryRequest(BaseModel):
+    message: str = Field(..., min_length=1, description="Message or prompt for the agent")
+
+
+@router.post("/chat")
+async def chat_with_agent(payload: AgentQueryRequest) -> StreamingResponse:
+    """Send a message to the agent and receive a real-time streamed response."""
+{% if is_supervisor %}
+    stream = supervisor.run_stream(payload.message)
+{% else %}
+    stream = agent.stream(payload.message)
+{% endif %}
+    return StreamingResponse(
+        stream,
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )

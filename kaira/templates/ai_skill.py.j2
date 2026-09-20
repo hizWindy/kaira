@@ -1,0 +1,63 @@
+"""{{ skill_name }} — AI Agent Skill / Tool Definition.
+
+Wraps domain operations into a structured skill callable by AI Agents.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+from pydantic import BaseModel, Field
+
+try:
+    from langchain_core.tools import tool
+    _HAS_LANGCHAIN = True
+except ImportError:
+    _HAS_LANGCHAIN = False
+    # Graceful fallback decorator if langchain is not installed
+    def tool(func):  # type: ignore
+        func.is_tool = True
+        return func
+
+{% if service_name %}
+from services.{{ service_slug }} import {{ service_name }}
+{% endif %}
+
+
+class {{ skill_class_name }}Input(BaseModel):
+    """Input parameters for {{ skill_name }}."""
+{% if parameters %}
+{% for param in parameters %}
+    {{ param.name }}: {{ param.type_annotation }} = Field(..., description="Argument {{ param.name }}")
+{% endfor %}
+{% else %}
+    query: str = Field(..., description="Query or command input")
+{% endif %}
+
+
+@tool
+async def {{ skill_slug }}(
+{% if parameters %}
+{% for param in parameters %}
+    {{ param.name }}: {{ param.type_annotation }},
+{% endfor %}
+{% else %}
+    query: str,
+{% endif %}
+) -> str:
+    """{{ docstring }}"""
+{% if service_name and method_name %}
+    # Execute wrapped Kaira domain service
+    try:
+        # If the service requires dependencies, initialize or call here
+        result = await {{ service_name }}.{{ method_name }}(
+{% for param in parameters %}
+            {{ param.name }}={{ param.name }},
+{% endfor %}
+        )
+        return f"Successfully executed {{ method_name }}: {result}"
+    except Exception as e:
+        return f"Error executing {{ method_name }}: {str(e)}"
+{% else %}
+    # Custom skill logic
+    return f"Skill {{ skill_name }} received query: {query}"
+{% endif %}

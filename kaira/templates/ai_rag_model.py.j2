@@ -1,0 +1,52 @@
+"""RAG Document Chunk Model with Vector Embeddings."""
+
+from __future__ import annotations
+
+import datetime
+from typing import Any, Optional
+{% if db_type == "mongodb" %}
+from beanie import Document, Indexed
+from pydantic import Field
+
+class {{ model_name }}Chunk(Document):
+    """Document chunk for vector search & retrieval in MongoDB Atlas."""
+    document_id: str = Field(index=True)
+    chunk_index: int
+    content: str
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    embedding: list[float] = Field(default_factory=list)
+    created_at: datetime.datetime = Field(default_factory=datetime.datetime.utcnow)
+
+    class Settings:
+        name = "{{ table_name }}"
+{% else %}
+from sqlalchemy import Integer, String, Text, JSON, DateTime
+from sqlalchemy.orm import Mapped, mapped_column
+from core.database import Base
+
+try:
+    from pgvector.sqlalchemy import Vector
+    _HAS_PGVECTOR = True
+except ImportError:
+    _HAS_PGVECTOR = False
+
+class {{ model_name }}Chunk(Base):
+    """Document chunk for vector search & retrieval in PostgreSQL / pgvector."""
+    __tablename__ = "{{ table_name }}"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    document_id: Mapped[str] = mapped_column(String(255), index=True, nullable=False)
+    chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    
+    # 1536-dimensional vector embedding (default for OpenAI text-embedding-3-small)
+    if _HAS_PGVECTOR:
+        embedding: Mapped[Any] = mapped_column(Vector({{ embedding_dim }}), nullable=True)
+    else:
+        embedding_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=list)
+
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime, default=datetime.datetime.utcnow, nullable=False
+    )
+{% endif %}

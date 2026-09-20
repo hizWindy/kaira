@@ -217,7 +217,7 @@ def env_init(
         Panel(
             "[green]Environment management initialized successfully![/green]\n"
             "Generated .env.development, .env.staging, .env.production, and config/settings.py",
-            title="Kaira — Env Init",
+            title="Khaira — Env Init",
             border_style="green",
         )
     )
@@ -481,7 +481,7 @@ def env_validate() -> None:
                             )
 
     # Print report
-    table = Table(title="Kaira — Environment Security Audit Report")
+    table = Table(title="Khaira — Environment Security Audit Report")
     table.add_column("Environment", justify="left")
     table.add_column("Security Issue / Validation Check", justify="left")
     table.add_column("Severity", justify="right")
@@ -578,7 +578,7 @@ def env_audit() -> None:
     data_table(
         ["Key", "Feature", "Referenced", "Status"],
         table_rows,
-        title="⚡ Kaira — Env Audit",
+        title="⚡ Khaira — Env Audit",
     )
     if unused:
         console.print(

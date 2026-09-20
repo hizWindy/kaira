@@ -1,0 +1,73 @@
+"""Repository for RAG Document Chunks & Vector Similarity Queries."""
+
+from __future__ import annotations
+
+from typing import Any, Sequence
+from models.{{ model_slug }} import {{ model_name }}Chunk
+
+{% if db_type == "mongodb" %}
+class {{ model_name }}Repository:
+    """Data-access repository for MongoDB vector retrieval."""
+
+    async def create_chunks(self, chunks: list[dict[str, Any]]) -> list[{{ model_name }}Chunk]:
+        docs = [{{ model_name }}Chunk(**c) for c in chunks]
+        return await {{ model_name }}Chunk.insert_many(docs)
+
+    async def vector_search(self, query_embedding: list[float], top_k: int = 5) -> list[{{ model_name }}Chunk]:
+        """Perform vector search using MongoDB Atlas Vector Search aggregation."""
+        pipeline = [
+            {
+                "$vectorSearch": {
+                    "index": "vector_index",
+                    "path": "embedding",
+                    "queryVector": query_embedding,
+                    "numCandidates": top_k * 10,
+                    "limit": top_k
+                }
+            }
+        ]
+        return await {{ model_name }}Chunk.aggregate(pipeline).to_list()
+{% else %}
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+class {{ model_name }}Repository:
+    """Data-access repository for PostgreSQL vector retrieval."""
+
+    def __init__(self, db: AsyncSession):
+        self.db = db
+
+    async def insert_chunks(self, chunks: list[dict[str, Any]]) -> list[{{ model_name }}Chunk]:
+        instances = []
+        for c in chunks:
+            inst = {{ model_name }}Chunk(
+                document_id=c["document_id"],
+                chunk_index=c["chunk_index"],
+                content=c["content"],
+                metadata_json=c.get("metadata", {}),
+                embedding=c.get("embedding"),
+            )
+            self.db.add(inst)
+            instances.append(inst)
+        await self.db.commit()
+        return instances
+
+    async def similarity_search(
+        self, query_vector: list[float], top_k: int = 5
+    ) -> Sequence[{{ model_name }}Chunk]:
+        """Query top-k nearest document chunks by cosine distance."""
+        try:
+            # Uses pgvector cosine distance operator '<=>'
+            stmt = (
+                select({{ model_name }}Chunk)
+                .order_by({{ model_name }}Chunk.embedding.cosine_distance(query_vector))
+                .limit(top_k)
+            )
+            result = await self.db.execute(stmt)
+            return result.scalars().all()
+        except AttributeError:
+            # Fallback for non-vector testing databases
+            stmt = select({{ model_name }}Chunk).limit(top_k)
+            result = await self.db.execute(stmt)
+            return result.scalars().all()
+{% endif %}

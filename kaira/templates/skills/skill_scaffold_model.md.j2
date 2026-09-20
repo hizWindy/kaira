@@ -1,0 +1,67 @@
+---
+name: {{ skill_name | default('khaira-scaffold-model') }}
+description: Use this skill whenever the user asks to create, add, or generate a new database entity, model, schema, repository, service, or API endpoint in this project.
+---
+
+# Scaffolding Models in {{ project_name }}
+
+This project uses **Khaira** to maintain a strict 5-layer clean architecture. Whenever you need to introduce a new data entity or domain model, **DO NOT manually write boilerplate files in models/ or routers/**. Use Khaira CLI to generate the entire synchronized pipeline.
+
+---
+
+## Canonical Command
+
+```bash
+khaira generate model <ModelName> --fields "<fieldName>:<type>, <fieldName>:<type>"
+```
+
+* **Shortcut:** `khaira g <ModelName> --fields "..."`
+
+### Examples
+```bash
+# Basic model
+khaira generate model Product --fields "title:str, price:float, in_stock:bool"
+
+# Model with optional fields and datetime
+khaira generate model Article --fields "title:str, content:str, author_email:Optional[str], published_at:Optional[datetime]"
+```
+
+---
+
+## Supported Field Types
+
+- `str`
+- `int`
+- `float`
+- `bool`
+- `datetime`
+- `Optional[str]`
+- `Optional[int]`
+- `Optional[float]`
+- `Optional[bool]`
+- `Optional[datetime]`
+
+---
+
+## What Gets Generated
+
+Khaira will automatically create and wire all 5 layers:
+1. `models/<name>.py`: ORM model ({% if db_type == "mongodb" %}Beanie Document{% else %}SQLAlchemy Async Mapped Table{% endif %})
+2. `repositories/<name>_repository.py`: CRUD data access methods
+3. `schemas/<name>_schema.py`: Pydantic v2 schemas (`Base`, `Create`, `Update`, `Response`)
+4. `services/<name>_service.py`: Business logic layer
+5. `routers/<name>_router.py`: FastAPI endpoints wired with `Depends`
+
+---
+
+## Post-Generation Checklist
+
+1. Verify that `.kaira.json` has recorded the new model.
+{% if db_type != "mongodb" %}
+2. Generate and run the database migration:
+   ```bash
+   khaira migrate make "add <model_name> table"
+   khaira migrate run
+   ```
+{% endif %}
+3. Run `pytest` to confirm generated endpoints function cleanly.

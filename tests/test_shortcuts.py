@@ -335,7 +335,7 @@ def test_guide_shortcuts_page():
     """kaira guide shortcuts renders the guide panel and notes safety exclusions."""
     result = runner.invoke(app, ["guide", "shortcuts"])
     assert result.exit_code == 0
-    assert "⚡ Kaira — Guide: shortcuts" in result.output
+    assert "⚡ Khaira — Guide: shortcuts" in result.output
     assert "No destructive command has an alias" in result.output
     assert "kaira '?'" in result.output
 

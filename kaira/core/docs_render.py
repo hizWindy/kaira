@@ -838,7 +838,7 @@ def render_readme_doc(config: KairaConfig, root: Path) -> str:
         "",
         "---",
         "",
-        f"*Generated on {now} with Kaira v{__version__}.*",
+        f"*Generated on {now} with Khaira v{__version__}.*",
     ]
 
     full_text = "\n".join(lines).rstrip()
@@ -1055,7 +1055,7 @@ def render_root_readme_doc(config: KairaConfig, root: Path) -> str:
             "",
             "---",
             "",
-            f"*Project documentation generated on {now} with Kaira v{__version__}.*",
+            f"*Project documentation generated on {now} with Khaira v{__version__}.*",
         ]
     )
 

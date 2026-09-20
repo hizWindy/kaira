@@ -20,7 +20,7 @@ def print_guide_panel(title: str, content: str, tip: str) -> None:
     console.print(
         Panel(
             full_text,
-            title=f"⚡ Kaira — Guide: {title}",
+            title=f"⚡ Khaira — Guide: {title}",
             border_style="cyan",
             expand=False,
         )

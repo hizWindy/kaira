@@ -67,8 +67,16 @@ from kaira.commands.commands_cmd import app as commands_app
 # ── Monitoring phase command apps ────────────────────────────────────────────
 from kaira.commands.monitor_cmd import app as monitor_app
 
+# ── AI phase command apps ───────────────────────────────────────────────────
+from kaira.commands.ai_cmd import app as ai_app
+
 # ── Import standalone command functions ───────────────────────────────────────
-from kaira.commands.project import init_command
+from kaira.commands.project import (
+    add_dependency_command,
+    init_command,
+    microservice_split_command,
+    upgrade_command,
+)
 from kaira.commands.info import info_command
 from kaira.commands.check import check_command
 from kaira.commands.diff import diff_command
@@ -268,6 +276,14 @@ app.add_typer(
     help="Runtime monitoring — metrics, probes, mini dashboard, alerts.",
 )
 
+# ── Sub-command groups — AI & Multi-Agent ─────────────────────────────────────
+
+app.add_typer(
+    ai_app,
+    name="ai",
+    help="🤖 Production AI, RAG pipelines, and Multi-Agent / Skills scaffolding.",
+)
+
 
 # ── Standalone commands ───────────────────────────────────────────────────────
 
@@ -309,6 +325,12 @@ def cmd_init(
             "--yes", "-y", help="Skip confirmation prompts (non-interactive)."
         ),
     ] = False,
+    tier: Annotated[
+        str,
+        typer.Option(
+            "--tier", help="Project architectural tier: simple, standard, enterprise."
+        ),
+    ] = "standard",
 ) -> None:
     """Scaffold a full FastAPI project structure in a named directory with interactive wizard config.
 
@@ -316,6 +338,7 @@ def cmd_init(
     --------
     kaira init
     kaira init myproject
+    kaira init myproject --tier enterprise
     kaira init myproject --db postgresql --auth jwt --docker
     kaira init proj9 --db postgresql --profile solo
     """
@@ -323,8 +346,78 @@ def cmd_init(
 
     render_large_banner()
     init_command(
-        name=name, db=db, auth=auth, docker=docker, ci=ci, profile=profile, yes=yes
+        name=name,
+        db=db,
+        auth=auth,
+        docker=docker,
+        ci=ci,
+        profile=profile,
+        yes=yes,
+        tier=tier,
     )
+
+
+@app.command("upgrade")
+def cmd_upgrade(
+    tier: Annotated[
+        str,
+        typer.Argument(help="Target architectural tier: standard, enterprise"),
+    ] = "standard",
+    tier_flag: Annotated[
+        Optional[str],
+        typer.Option("--tier", "-t", help="Target architectural tier"),
+    ] = None,
+    dry_run: Annotated[
+        bool,
+        typer.Option(
+            "--dry-run", help="Preview upgrade operations without modifying files"
+        ),
+    ] = False,
+    add: Annotated[
+        Optional[list[str]],
+        typer.Option("--add", help="Specific framework features to enable"),
+    ] = None,
+) -> None:
+    """Upgrade project architectural tier or add framework capabilities."""
+    target_tier = tier_flag or tier
+    upgrade_command(tier=target_tier, dry_run=dry_run, features=add)
+
+
+@app.command("microservice")
+def cmd_microservice(
+    action: Annotated[
+        str,
+        typer.Argument(help="Action to perform: split"),
+    ] = "split",
+    service: Annotated[
+        str,
+        typer.Option(
+            "--service", "-s", help="Name of the extracted microservice directory"
+        ),
+    ] = "",
+    models: Annotated[
+        Optional[list[str]],
+        typer.Option(
+            "--models", "-m", help="List of model names to extract into the service"
+        ),
+    ] = None,
+) -> None:
+    """Decompose monolith models into an autonomous microservice."""
+    if not service:
+        console.print("[red]Error: Please specify --service <name>[/red]")
+        raise typer.Exit(1)
+    microservice_split_command(service_name=service, models=models or [])
+
+
+@app.command("add-dep")
+def cmd_add_dep(
+    dependency: Annotated[
+        str,
+        typer.Argument(help="Dependency package name to add"),
+    ],
+) -> None:
+    """Add a library dependency to the project."""
+    add_dependency_command(dependency)
 
 
 @app.command("info")
@@ -377,14 +470,14 @@ def _version_callback(value: bool) -> None:
         from kaira.core.ui import render_small_banner
 
         render_small_banner()
-        console.print(f"Kaira v{__version__}")
+        console.print(f"Khaira v{__version__}")
         console.print(f"[{Theme.MUTED}]{attribution()}[/{Theme.MUTED}]")
         raise typer.Exit()
 
 
 @app.command("about")
 def cmd_about() -> None:
-    """Show Kaira version, tagline, and attribution."""
+    """Show Khaira version, tagline, and attribution."""
     from rich.panel import Panel
 
     from kaira.core.theme import Theme, attribution, sym

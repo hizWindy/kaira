@@ -1,0 +1,76 @@
+"""FastAPI Router for Document Ingestion & Streaming RAG Q&A."""
+
+from __future__ import annotations
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field
+
+{% if db_type == "mongodb" %}
+from services.{{ model_slug }}_service import {{ model_name }}Service
+from repositories.{{ model_slug }}_repository import {{ model_name }}Repository
+
+def get_service() -> {{ model_name }}Service:
+    repo = {{ model_name }}Repository()
+    return {{ model_name }}Service(repo)
+{% else %}
+from sqlalchemy.ext.asyncio import AsyncSession
+from core.database import get_db
+from services.{{ model_slug }}_service import {{ model_name }}Service
+from repositories.{{ model_slug }}_repository import {{ model_name }}Repository
+
+def get_service(db: AsyncSession = Depends(get_db)) -> {{ model_name }}Service:
+    repo = {{ model_name }}Repository(db)
+    return {{ model_name }}Service(repo)
+{% endif %}
+
+router = APIRouter(prefix="/api/v1/{{ model_slug }}", tags=["AI — {{ model_name }} RAG"])
+
+
+class IngestRequest(BaseModel):
+    document_id: str = Field(..., description="Unique identifier for the document or file")
+    content: str = Field(..., description="Raw text to chunk and index into the vector store")
+    chunk_size: int = Field(default=500, ge=50, le=2000)
+
+
+class IngestResponse(BaseModel):
+    document_id: str
+    chunks_created: int
+    status: str = "indexed"
+
+
+class QueryRequest(BaseModel):
+    query: str = Field(..., min_length=2, description="Question to answer using RAG context")
+    top_k: int = Field(default=4, ge=1, le=20)
+
+
+@router.post("/ingest", response_model=IngestResponse, status_code=status.HTTP_201_CREATED)
+async def ingest_document(
+    payload: IngestRequest,
+    service: {{ model_name }}Service = Depends(get_service),
+) -> IngestResponse:
+    """Upload and chunk a document, computing vector embeddings in the background."""
+    chunks = await service.ingest_document(
+        document_id=payload.document_id,
+        text=payload.content,
+        chunk_size=payload.chunk_size,
+    )
+    return IngestResponse(document_id=payload.document_id, chunks_created=chunks)
+
+
+@router.post("/query")
+async def query_rag(
+    payload: QueryRequest,
+    service: {{ model_name }}Service = Depends(get_service),
+) -> StreamingResponse:
+    """Stream token-by-token answer via Server-Sent Events (SSE) grounded in retrieved context."""
+    stream_generator = service.answer_query_stream(payload.query, top_k=payload.top_k)
+    return StreamingResponse(
+        stream_generator,
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )

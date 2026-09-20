@@ -467,6 +467,7 @@ class TestPlacement:
                 "docker": None,
                 "ci": None,
                 "profile": None,
+                "tier": "standard",
                 "yes": False,
             }
         ]
@@ -482,7 +483,7 @@ class TestPlacement:
         """Non-regression: the banner is additive, the surface still reports."""
         monkeypatch.chdir(tmp_path)
         out = runner.invoke(app, ["--version"]).output
-        assert f"Kaira v{__version__}" in out
+        assert f"Khaira v{__version__}" in out
         assert "Created by Khair" in out
 
     def test_help_still_renders_help(self, tmp_path, monkeypatch):

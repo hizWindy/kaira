@@ -509,7 +509,7 @@ def _print_seed_stats(db_type: str, before: dict[str, int] | None) -> None:
             db_name,
             rows,
             before=before,
-            title=f"⚡ Kaira — After Seeding ({db_type.upper()}: [cyan]{db_name}[/cyan])",
+            title=f"⚡ Khaira — After Seeding ({db_type.upper()}: [cyan]{db_name}[/cyan])",
         )
     )
     total = sum(row.get("count", 0) for row in rows)
