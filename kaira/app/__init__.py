@@ -10,6 +10,7 @@ from kaira.app.exceptions import (
 )
 from kaira.app.kaira_app import KairaApp
 from kaira.app.lifecycle import LifecycleManager
+from kaira.app.logging import detail, http, logger
 from kaira.app.providers.base import KairaProvider
 
 __all__ = [
@@ -20,4 +21,7 @@ __all__ = [
     "LifecycleManager",
     "ProviderError",
     "UpgradeError",
+    "detail",
+    "http",
+    "logger",
 ]

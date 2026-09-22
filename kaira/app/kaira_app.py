@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import importlib.util
+import os
 import sys
 from collections.abc import Callable
 from pathlib import Path
@@ -17,6 +18,10 @@ from kaira.app.exceptions import KairaError
 from kaira.app.lifecycle import LifecycleManager
 from kaira.app.middleware.cors import create_cors_middleware
 from kaira.app.middleware.layer_guard import LayerGuardMiddleware
+from kaira.app.middleware.observability import (
+    ObservabilityMiddleware,
+    register_framework_exception_handlers,
+)
 from kaira.app.middleware.rate_limit import RateLimitMiddleware
 from kaira.app.middleware.security_headers import SecurityHeadersMiddleware
 from kaira.app.providers.base import KairaProvider
@@ -79,6 +84,7 @@ class KairaApp(FastAPI):
         @asynccontextmanager
         async def framework_lifespan(app_instance: FastAPI):
             # Resolve db_mode state if available
+            binding = None
             try:
                 from core.db_mode import resolve_binding
 
@@ -86,6 +92,7 @@ class KairaApp(FastAPI):
                 self.state.db_engine_name = binding.engine
                 self.state.db_name = binding.db_name
                 self.state.db_mode = binding.mode
+                self.state.db_online = getattr(binding, "online", True)
             except Exception:
                 pass
 
@@ -96,6 +103,36 @@ class KairaApp(FastAPI):
             # Initialize database in dev if core.database is present
             await self._init_database()
 
+            # Emit startup ready status block
+            from kaira.app.logging import SEPARATOR, detail, logger
+
+            summary: dict[str, object] = {
+                "environment": os.environ.get("APP_ENV", "development"),
+            }
+            if binding and hasattr(binding, "engine"):
+                mode_str = "online" if getattr(binding, "online", True) else "offline"
+                db_name = getattr(binding, "name", "")
+                if db_name:
+                    summary["database"] = f"{binding.engine}{SEPARATOR}{db_name}{SEPARATOR}{mode_str}"
+                else:
+                    summary["database"] = f"{binding.engine}{SEPARATOR}{mode_str}"
+            elif hasattr(self.state, "db_engine_name") and self.state.db_engine_name:
+                db_name = getattr(self.state, "db_name", "")
+                mode = getattr(self.state, "db_mode", "online")
+                if db_name:
+                    summary["database"] = f"{self.state.db_engine_name}{SEPARATOR}{db_name}{SEPARATOR}{mode}"
+                else:
+                    summary["database"] = f"{self.state.db_engine_name}{SEPARATOR}{mode}"
+            elif hasattr(self.config, "db_type") and self.config.db_type:
+                db_name = getattr(self.config, "db_name", "")
+                if db_name:
+                    summary["database"] = f"{self.config.db_type}{SEPARATOR}{db_name}{SEPARATOR}online"
+                else:
+                    summary["database"] = f"{self.config.db_type}{SEPARATOR}online"
+
+            summary["docs"] = "/docs"
+            logger.success(f"{self.project_name} ready" + detail(**summary))
+
             if user_lifespan:
                 async with user_lifespan(app_instance):
                     yield
@@ -104,8 +141,18 @@ class KairaApp(FastAPI):
             for provider in self.providers:
                 await provider.shutdown()
             await self._lifecycle.run_shutdown()
+            logger.info(f"Shutting down {self.project_name}...")
 
         super().__init__(lifespan=framework_lifespan, **kwargs)
+
+        # Initialize structured logging and intercept handlers
+        try:
+            import core.logger  # noqa: F401
+        except ImportError:
+            pass
+        from kaira.app.logging import configure_intercept
+
+        configure_intercept(sql_echo=os.environ.get("KAIRA_SQL_ECHO") == "1")
 
         # Wire framework layers
         self._apply_middleware()
@@ -215,38 +262,28 @@ class KairaApp(FastAPI):
 
     def _apply_middleware(self) -> None:
         """Wire standard framework middleware in order of execution."""
-        # 1. Security Headers
+        # 1. Observability (outermost layer — measures duration, tags X-Request-ID, logs http())
+        self.add_middleware(ObservabilityMiddleware)
+
+        # 2. Security Headers
         self.add_middleware(SecurityHeadersMiddleware)
 
-        # 2. CORS
+        # 3. CORS
         cors_cls, cors_kwargs = create_cors_middleware()
         self.add_middleware(cors_cls, **cors_kwargs)  # type: ignore[arg-type]
 
-        # 3. Rate limiting
+        # 4. Rate limiting
         self.add_middleware(RateLimitMiddleware)
 
-        # 4. Layer Guard (enforce router cannot bypass service to repo)
+        # 5. Layer Guard (enforce router cannot bypass service to repo)
         self.add_middleware(
             LayerGuardMiddleware,
             routers_dir=self.routers_path,
             enforce=self.enforce_layers,
         )
 
-        # 5. Global Exception Handler
-        @self.exception_handler(Exception)
-        async def global_exception_handler(
-            request: Request, exc: Exception
-        ) -> JSONResponse:
-            from kaira.app.exceptions import LayerViolationError
-
-            if isinstance(exc, LayerViolationError):
-                raise exc
-            if isinstance(exc, KairaError):
-                return JSONResponse(status_code=400, content={"detail": str(exc)})
-            return JSONResponse(
-                status_code=500,
-                content={"detail": "An internal server error occurred."},
-            )
+        # 6. Global Exception Handlers (RequestValidationError, RateLimit, HTTP, Crash)
+        register_framework_exception_handlers(self)
 
     # ── Auto-Registration Subsystem ───────────────────────────────────────────
 
@@ -378,24 +415,30 @@ class KairaApp(FastAPI):
 
         target_app = "main:app" if Path("main.py").exists() else self
 
-        log_config = copy.deepcopy(LOGGING_CONFIG)
+        from kaira.app.logging import InterceptHandler, configure_intercept
+
+        configure_intercept(sql_echo=os.environ.get("KAIRA_SQL_ECHO") == "1")
+
         log_level = os.environ.get("KAIRA_LOG_LEVEL", "INFO").upper()
+        access_log_enabled = os.environ.get("KAIRA_ACCESS_LOG") == "1"
 
-        if "formatters" in log_config:
-            if "default" in log_config["formatters"]:
-                log_config["formatters"]["default"]["fmt"] = "%(asctime)s  %(levelprefix)s %(message)s"
-                log_config["formatters"]["default"]["datefmt"] = "%H:%M:%S"
-            if "access" in log_config["formatters"]:
-                log_config["formatters"]["access"]["fmt"] = '%(asctime)s  %(levelprefix)s %(client_addr)s - "%(request_line)s" %(status_code)s'
-                log_config["formatters"]["access"]["datefmt"] = "%H:%M:%S"
-
+        log_config = copy.deepcopy(LOGGING_CONFIG)
+        log_config["handlers"]["intercept"] = {
+            "()": InterceptHandler,
+        }
         if "loggers" in log_config:
             if "uvicorn" in log_config["loggers"]:
+                log_config["loggers"]["uvicorn"]["handlers"] = ["intercept"]
                 log_config["loggers"]["uvicorn"]["level"] = log_level
             if "uvicorn.error" in log_config["loggers"]:
+                log_config["loggers"]["uvicorn.error"]["handlers"] = ["intercept"]
                 log_config["loggers"]["uvicorn.error"]["level"] = log_level
             if "uvicorn.access" in log_config["loggers"]:
-                log_config["loggers"]["uvicorn.access"]["level"] = log_level
+                log_config["loggers"]["uvicorn.access"]["handlers"] = ["intercept"]
+                log_config["loggers"]["uvicorn.access"]["level"] = (
+                    log_level if access_log_enabled else "WARNING"
+                )
+                log_config["loggers"]["uvicorn.access"]["propagate"] = False
 
         uvicorn_kwargs: dict[str, Any] = {
             "app": target_app,
@@ -403,11 +446,11 @@ class KairaApp(FastAPI):
             "port": port,
             "reload": dev,
             "log_config": log_config,
+            "access_log": access_log_enabled,
         }
-        if os.environ.get("KAIRA_ACCESS_LOG") == "1":
-            uvicorn_kwargs["access_log"] = True
 
-        if dev and target_app == "main:app":
+        has_watchfiles = importlib.util.find_spec("watchfiles") is not None
+        if dev and target_app == "main:app" and has_watchfiles:
             uvicorn_kwargs["reload_includes"] = [
                 "*.py",
                 "routers/**/*.py",

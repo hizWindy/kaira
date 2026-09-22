@@ -8,7 +8,7 @@ from importlib.machinery import ModuleSpec
 from types import ModuleType
 from typing import Any, List, Optional, Set
 
-__version__ = "0.2.5"
+__version__ = "0.2.6"
 __author__ = "Kaira"
 __description__ = "Automated FastAPI scaffolding CLI and framework runtime."
 __homepage__ = "https://github.com/hizWindy/kaira"

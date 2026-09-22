@@ -666,7 +666,7 @@ def init_project(
         "tier": tier,
         "providers": ["cache", "auth", "monitor"] if tier == "enterprise" else ["cache", "auth"],
         "enforce_layers": True,
-        "kaira_version": "0.2.5",
+        "kaira_version": "0.2.6",
     }
 
     # 1. main.py selection based on tier

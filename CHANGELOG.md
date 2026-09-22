@@ -4,6 +4,22 @@ All notable changes to Kaira (formerly DevFlow) will be documented in this file.
 
 ---
 
+## v0.2.6 — Custom Terminal UI & Request Observability Integration
+
+- **Framework Structured Logging Engine**:
+  - Brought Phase 8 Loguru logging engine directly into `kaira.app.logging` (`logger`, `detail`, `http`).
+  - Added `InterceptHandler` to capture and unify all standard library loggers (`uvicorn`, `uvicorn.error`, `uvicorn.access`, `httpx`, `watchfiles`).
+  - Demoted Uvicorn boot & reloader noise to `DEBUG` and silenced raw Uvicorn access log lines in favor of Khaira's status-colored output.
+- **Request Observability & Unified Error Contract**:
+  - Mounted `ObservabilityMiddleware` automatically into `KairaApp` runtime, injecting `X-Request-ID`, `X-Response-Time`, and `X-Kaira-DB-Mode`.
+  - Added formatted single-line request logs (`HH:MM:SS INFO GET 200 / · 0.8ms`).
+  - Implemented structured error envelopes and handlers for `RequestValidationError` (422), `RateLimitExceeded` (429), `StarletteHTTPException`, and unhandled internal errors (500) with project-only traceback filtering.
+- **Server Startup & Reload Cleanliness**:
+  - Guarded `reload_includes` in `KairaApp.run()` to only pass when `watchfiles` is actually installed, eliminating the reload warning banner.
+  - Startup ready block: prints formatted tree displaying environment, database status, and docs path.
+
+---
+
 ## v0.2.5 — Constructor Inversion of Control (IoC), Branded CLI Dashboard & Clean Scaffolding
 
 - **Constructor Inversion of Control (IoC)**:

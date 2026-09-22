@@ -71,3 +71,59 @@ def test_kaira_app_lifecycle_hooks() -> None:
     with TestClient(app):
         assert "started" in hook_events
     assert "stopped" in hook_events
+
+
+def test_kaira_app_observability_headers() -> None:
+    """ObservabilityMiddleware must inject X-Request-ID and X-Response-Time headers."""
+    app = KairaApp(project_name="obs-app", auto_register=False)
+    client = TestClient(app)
+
+    resp = client.get("/")
+    assert resp.status_code == 200
+    assert "x-request-id" in resp.headers
+    assert len(resp.headers["x-request-id"]) == 8
+    assert "x-response-time" in resp.headers
+    assert "ms" in resp.headers["x-response-time"]
+
+
+def test_kaira_app_validation_error_contract() -> None:
+    """Request validation errors return standard 422 envelope with field list."""
+    from pydantic import BaseModel
+
+    class Item(BaseModel):
+        name: str
+        price: float
+
+    app = KairaApp(project_name="val-app", auto_register=False)
+
+    @app.post("/items")
+    def create_item(item: Item):
+        return item
+
+    client = TestClient(app)
+    resp = client.post("/items", json={"price": "not-a-number"})
+    assert resp.status_code == 422
+    body = resp.json()
+    assert "error" in body
+    assert body["error"]["code"] == "validation_error"
+    assert body["error"]["status"] == 422
+    assert "fields" in body["error"]
+    assert "x-request-id" in resp.headers
+
+
+def test_kaira_app_logging_exports() -> None:
+    """Verify detail, http, logger, and status_style are accessible from kaira.app.logging."""
+    from kaira.app.logging import detail, http, logger, status_style
+
+    assert callable(detail)
+    assert callable(http)
+    assert callable(status_style)
+    assert logger is not None
+    assert status_style(200) == "green"
+    assert status_style(404) == "yellow"
+    assert status_style(500) == "red"
+
+    det = detail(env="test", mode="online")
+    assert "env" in det
+    assert "online" in det
+
