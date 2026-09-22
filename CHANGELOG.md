@@ -4,6 +4,33 @@ All notable changes to Kaira (formerly DevFlow) will be documented in this file.
 
 ---
 
+## v0.2.4 — Full Framework Runtime, Auto-Discovery & Interactive Wizard
+
+Transform Khaira into a unified, crash-free, production-grade FastAPI framework runtime with automated 5-layer pipelines, dynamic discovery, and real database provisioning.
+
+### Features & Fixes
+
+- **Full Framework Runtime (`KairaApp`)**:
+  - `kaira init` now defaults to generating `KairaApp`-based architectures across standard and enterprise tiers.
+  - Eager auto-registration of all routes in `routers/` and schemas/models in `models/`.
+  - Prefix routing normalized to eliminate duplicate sub-path collisions (`/api/v1/users` instead of `/user/users`).
+  - Native system endpoints (`GET /` and `GET /health`) reporting engine name and online/offline mode.
+  - Native lifecycle hook decorators `@app.on_startup` and `@app.on_shutdown`.
+- **Interactive Wizard & Credentials**:
+  - `kaira init` prompts for complexity templates (`Standard`, `Enterprise`, `Simple`).
+  - Added secure interactive prompt for PostgreSQL/MySQL database passwords (masked), user, host, and port.
+  - Added CLI flags `--db-user`, `--db-password`, `--db-host`, and `--db-port`.
+  - Database provisioning now creates actual databases on client-server DBMSs with validated credentials.
+- **Dependency & Template Integrity**:
+  - Added `khaira>=0.2.4` to `requirements.txt.j2` and `pyproject_generated.toml.j2` to resolve startup crash.
+  - Modernized `main_simple.py.j2` to use `KairaApp`.
+- **CLI De-splicing & Unified Run**:
+  - Eliminated regex string-splicing of `main.py` in `wiring.py`, `generate.py`, and `monitor_cmd.py` for `KairaApp` projects with graceful fallback for legacy brownfield projects.
+  - Unified `kaira run` to bind `main:app` through `KairaApp` with dynamic port shifting and resolution.
+  - Added `kaira/__main__.py` and `khaira/__main__.py` to support `python -m kaira` and `python -m khaira`.
+
+---
+
 ## Agent Guidelines & Scaffolded Agent Integration Phase
 
 Support autonomous AI coding assistants (Antigravity, Claude Code, Cursor, Copilot) when developing Kaira or working inside applications scaffolded by Kaira.

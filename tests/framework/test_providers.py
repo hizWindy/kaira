@@ -15,25 +15,29 @@ from kaira.app.providers import (
 )
 
 
-@pytest.mark.asyncio
-async def test_cache_provider_in_memory() -> None:
-    cache = CacheProvider()
-    await cache.startup()
+def test_cache_provider_in_memory() -> None:
+    import anyio
 
-    await cache.set("greeting", "hello", expire=60)
-    val = await cache.get("greeting")
-    assert val == "hello"
+    async def _test() -> None:
+        cache = CacheProvider()
+        await cache.startup()
 
-    await cache.delete("greeting")
-    assert await cache.get("greeting") is None
+        await cache.set("greeting", "hello", expire=60)
+        val = await cache.get("greeting")
+        assert val == "hello"
 
-    await cache.set("k1", "v1")
-    await cache.set("k2", "v2")
-    await cache.clear()
-    assert await cache.get("k1") is None
-    assert await cache.get("k2") is None
+        await cache.delete("greeting")
+        assert await cache.get("greeting") is None
 
-    await cache.shutdown()
+        await cache.set("k1", "v1")
+        await cache.set("k2", "v2")
+        await cache.clear()
+        assert await cache.get("k1") is None
+        assert await cache.get("k2") is None
+
+        await cache.shutdown()
+
+    anyio.run(_test)
 
 
 def test_auth_provider_password_and_jwt() -> None:

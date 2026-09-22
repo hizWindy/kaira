@@ -88,7 +88,6 @@ def _default_base_url() -> str:
 # printed instruction instead of a guessed edit.
 _SECURITY_IMPORT = "from middleware.security import"
 _SECURITY_CALL = "register_exception_handlers(app)"
-_ROUTER_MARKER = "# [ROUTER_REGISTRATION]"
 
 _METRICS_IMPORT = "from middleware.metrics import register_metrics_middleware"
 _METRICS_CALL = "register_metrics_middleware(app)"
@@ -178,57 +177,12 @@ def render_sdk_module(provider: str, project_name: str) -> str:
 
 
 def splice_main(content: str, *, dashboard: bool) -> str:
-    """Return ``main.py`` with the monitoring surface wired in.
+    """No-op: KairaApp auto-discovers monitoring routes via providers.
 
-    Pure and idempotent: running it twice produces the same file, so re-running
-    ``monitor init`` never duplicates an import or an ``include_router`` call.
-
-    The metrics middleware call is appended *after* ``register_exception_handlers``
-    — the last line of the security registration block — because Starlette
-    applies user middleware outermost-last. Registering later therefore wraps the
-    security middleware rather than displacing it, which is what preserves both
-    the standing ordering rule and the single-stopwatch guarantee.
-
-    Args:
-        content: Current ``main.py`` source.
-        dashboard: Whether to register the dashboard router too.
-
-    Returns:
-        The rewritten source. Returned unchanged when the expected anchors are
-        missing — a hand-restructured ``main.py`` gets printed instructions, not
-        a guessed edit.
+    Since ``kaira init`` generates projects with ``KairaApp``, monitoring
+    is registered via ``app.register_provider(MonitorProvider())`` at runtime.
+    This function returns content unchanged for backward compatibility.
     """
-    if _SECURITY_CALL not in content or _ROUTER_MARKER not in content:
-        return content
-
-    imports = [_METRICS_IMPORT, _PROBES_IMPORT]
-    includes = [_PROBES_INCLUDE]
-    if dashboard:
-        imports.append(_MONITOR_IMPORT)
-        includes.append(_MONITOR_INCLUDE)
-
-    for line in imports:
-        if line in content:
-            continue
-        anchor_index = content.find(_SECURITY_IMPORT)
-        if anchor_index == -1:
-            content = f"{line}\n{content}"
-            continue
-        end = content.find("\n", anchor_index)
-        end = len(content) if end == -1 else end + 1
-        content = content[:end] + f"{line}\n" + content[end:]
-
-    if _METRICS_CALL not in content:
-        content = content.replace(
-            _SECURITY_CALL, f"{_SECURITY_CALL}\n{_METRICS_BLOCK}", 1
-        )
-
-    pending = [line for line in includes if line not in content]
-    if pending:
-        content = content.replace(
-            _ROUTER_MARKER, "\n".join(pending) + f"\n{_ROUTER_MARKER}", 1
-        )
-
     return content
 
 
@@ -473,16 +427,28 @@ def monitor_init(
     main_path = root / "main.py"
     if not main_path.is_file():
         note("main.py", "not found — register the routers yourself")
-    elif _METRICS_CALL not in main_path.read_text(encoding="utf-8"):
-        note("main.py", "left unchanged — add these two lines yourself:")
-        subtext(_METRICS_CALL)
-        subtext(_PROBES_INCLUDE)
     else:
-        step(
-            "main.py",
-            "metrics middleware after security · probes registered",
-            State.DONE,
-        )
+        main_content = main_path.read_text(encoding="utf-8")
+        if "KairaApp" in main_content or "KhairaApp" in main_content:
+            current_providers = list(getattr(cfg, "providers", ["cache", "auth"]))
+            if "monitor" not in current_providers:
+                current_providers.append("monitor")
+                set_config_values(providers=current_providers)
+            step(
+                "main.py",
+                "KairaApp auto-discovers probes router and loads MonitorProvider",
+                State.DONE,
+            )
+        elif _METRICS_CALL not in main_content:
+            note("main.py", "left unchanged — add these two lines yourself:")
+            subtext(_METRICS_CALL)
+            subtext(_PROBES_INCLUDE)
+        else:
+            step(
+                "main.py",
+                "metrics middleware after security · probes registered",
+                State.DONE,
+            )
 
     if dashboard:
         _wire_dashboard_env(root, strategy)
@@ -648,21 +614,12 @@ _SDK_BLOCK = (
 
 
 def splice_sdk_init(content: str) -> str:
-    """Return ``main.py`` with the provider SDK started in the lifespan block.
+    """No-op: Provider SDK is registered via KairaApp lifecycle hooks.
 
-    Pure and idempotent, like :func:`splice_main`. Returns *content* unchanged
-    when the lifespan anchor is missing, so a restructured ``main.py`` is never
-    edited on a guess.
-
-    Args:
-        content: Current ``main.py`` source.
-
-    Returns:
-        The rewritten source.
+    Returns content unchanged. The monitoring provider handles SDK initialization
+    through KairaApp's LifecycleManager at runtime.
     """
-    if _SDK_CALL in content or _LIFESPAN_ANCHOR not in content:
-        return content
-    return content.replace(_LIFESPAN_ANCHOR, f"{_LIFESPAN_ANCHOR}\n{_SDK_BLOCK}", 1)
+    return content
 
 
 def wire_provider_sdk(

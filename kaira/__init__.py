@@ -8,7 +8,7 @@ from importlib.machinery import ModuleSpec
 from types import ModuleType
 from typing import Any, List, Optional, Set
 
-__version__ = "0.2.3"
+__version__ = "0.2.4"
 __author__ = "Kaira"
 __description__ = "Automated FastAPI scaffolding CLI and framework runtime."
 __homepage__ = "https://github.com/hizWindy/kaira"
@@ -34,6 +34,31 @@ class _ForwardLoader:
 
     def exec_module(self, module: ModuleType) -> None:
         pass
+
+    def get_code(self, fullname: str) -> Any:
+        file = getattr(self.mod, "__file__", None)
+        if file:
+            try:
+                from pathlib import Path
+
+                return compile(Path(file).read_text(encoding="utf-8"), file, "exec")
+            except Exception:
+                pass
+        return None
+
+    def get_source(self, fullname: str) -> Optional[str]:
+        file = getattr(self.mod, "__file__", None)
+        if file:
+            try:
+                from pathlib import Path
+
+                return Path(file).read_text(encoding="utf-8")
+            except Exception:
+                pass
+        return None
+
+    def is_package(self, fullname: str) -> bool:
+        return hasattr(self.mod, "__path__")
 
 
 _in_progress: Set[str] = set()
@@ -75,6 +100,10 @@ class _KairaSubmoduleFinder:
         target: Optional[ModuleType] = None,
     ) -> Any:
         if fullname in _in_progress:
+            return None
+
+        # Let physical __main__.py files execute without interception
+        if fullname in ("kaira.__main__", "khaira.__main__"):
             return None
 
         candidates: List[str] = []

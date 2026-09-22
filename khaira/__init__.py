@@ -44,6 +44,31 @@ class _ForwardLoader:
     def exec_module(self, module: ModuleType) -> None:
         pass
 
+    def get_code(self, fullname: str) -> Any:
+        file = getattr(self.mod, "__file__", None)
+        if file:
+            try:
+                from pathlib import Path
+
+                return compile(Path(file).read_text(encoding="utf-8"), file, "exec")
+            except Exception:
+                pass
+        return None
+
+    def get_source(self, fullname: str) -> Optional[str]:
+        file = getattr(self.mod, "__file__", None)
+        if file:
+            try:
+                from pathlib import Path
+
+                return Path(file).read_text(encoding="utf-8")
+            except Exception:
+                pass
+        return None
+
+    def is_package(self, fullname: str) -> bool:
+        return hasattr(self.mod, "__path__")
+
 
 _in_progress: Set[str] = set()
 
@@ -62,6 +87,10 @@ class _KhairaModuleFinder:
             return None
 
         if not fullname.startswith("khaira."):
+            return None
+
+        # Let physical files like khaira/__main__.py load via default machinery
+        if fullname == "khaira.__main__":
             return None
 
         sub = fullname[len("khaira.") :]

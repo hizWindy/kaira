@@ -1,82 +1,16 @@
-"""Kaira run command -- start the FastAPI dev/prod server.
-
-Wraps the official ``fastapi dev`` / ``fastapi run`` CLI (from fastapi[standard])
-with a smart fallback to plain uvicorn when the fastapi CLI is not available.
-
-Usage examples
---------------
-  kaira run                        # auto-detect entry, dev mode
-  kaira run --entry app/main.py    # explicit entry file
-  kaira run --port 9000            # custom port
-  kaira run --host 0.0.0.0         # bind all interfaces
-  kaira run --prod                 # production mode (fastapi run / no reload)
-  kaira run --no-reload            # disable hot-reload in dev mode
-  kaira run --strict-port          # fail instead of shifting off a taken port
-
-Port 8000 is the FastAPI default and therefore the one another project is most
-likely to be holding.  A taken port is treated as routine: the launcher moves
-to the next free one, says so in the banner, and records the address in
-``.kaira/runtime.json`` so ``kaira api``/``status``/``profile`` still find the
-server.  ``--strict-port`` opts out for callers where the number is part of a
-contract (a registered OAuth callback, a proxy, a published container port).
-"""
+"""Kaira run command -- start the Kaira Framework runtime server."""
 
 from __future__ import annotations
 
-import shutil
-import subprocess
-import sys
 from pathlib import Path
 from typing import Annotated, Optional
 
 import typer
-from rich.panel import Panel
-from rich.table import Table
-from rich import box as rich_box
 
 from kaira.console import console
-from kaira.core.ports import (
-    DEFAULT_HOST,
-    DEFAULT_PORT,
-    PortResolution,
-    PortUnavailableError,
-    clear_server,
-    record_server,
-    resolve_port,
-)
+from kaira.core.ports import DEFAULT_HOST, DEFAULT_PORT, PortUnavailableError, resolve_port
 
-# ---------------------------------------------------------------------------
-# Candidate entry-file search order
-# ---------------------------------------------------------------------------
-
-_ENTRY_CANDIDATES: list[str] = [
-    "main.py",
-    "app/main.py",
-    "src/main.py",
-    "app.py",
-]
-
-
-def _find_entry(cwd: Path) -> Optional[Path]:
-    """Return the first existing candidate entry file, or None."""
-    for candidate in _ENTRY_CANDIDATES:
-        p = cwd / candidate
-        if p.exists():
-            return p
-    return None
-
-
-def _module_from_path(entry: Path, cwd: Path) -> str:
-    """Convert a file path to a dotted Python module string for uvicorn.
-
-    e.g. ``app/main.py`` -> ``app.main``
-    """
-    try:
-        rel = entry.relative_to(cwd)
-    except ValueError:
-        rel = entry
-    parts = list(rel.with_suffix("").parts)
-    return ".".join(parts)
+app = typer.Typer(help="Start the Kaira Framework runtime server.")
 
 
 def _db_banner_info(cwd: Path) -> Optional[tuple[str, str, str, bool]]:
@@ -102,38 +36,9 @@ def _db_banner_info(cwd: Path) -> Optional[tuple[str, str, str, bool]]:
     return engine, name, mode, online
 
 
-def _module_importable(name: str, python_exe: Optional[str] = None) -> bool:
-    """Return True if *name* can be imported (installed as a module)."""
-    if python_exe and python_exe != sys.executable:
-        try:
-            res = subprocess.run(
-                [python_exe, "-c", f"import {name}"],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
-            return res.returncode == 0
-        except Exception:
-            return False
-    else:
-        import importlib.util
-
-        return importlib.util.find_spec(name) is not None
-
-
-# ---------------------------------------------------------------------------
-# Command
-# ---------------------------------------------------------------------------
-
-app = typer.Typer(help="Start the FastAPI development or production server.")
-
-
 @app.callback(invoke_without_command=True)
 def run_command(
     ctx: typer.Context,
-    entry: Annotated[
-        Optional[str],
-        typer.Option("--entry", "-e", help="Entry file (e.g. main.py or app/main.py)."),
-    ] = None,
     host: Annotated[
         str,
         typer.Option("--host", "-H", help="Host to bind the server to."),
@@ -162,7 +67,7 @@ def run_command(
     prod: Annotated[
         bool,
         typer.Option(
-            "--prod", help="Run in production mode (fastapi run / no reload)."
+            "--prod", help="Run in production mode (no reload)."
         ),
     ] = False,
     sql: Annotated[
@@ -185,353 +90,46 @@ def run_command(
             "--access-log", help="Also print uvicorn's own access log line per request."
         ),
     ] = False,
-    framework: Annotated[
-        bool,
-        typer.Option(
-            "--framework",
-            help="Start application directly under Khaira Framework runtime.",
-        ),
-    ] = False,
 ) -> None:
-    """Start the FastAPI server using 'fastapi dev' or 'fastapi run'.
-
-    Falls back to 'uvicorn' when the 'fastapi' CLI (fastapi[standard]) is
-    not installed.
-
-    Examples
-    --------
-    kaira run
-    kaira run --prod
-    kaira run --framework
-    kaira run --port 9000 --host 0.0.0.0
-    kaira run --entry app/main.py
-    kaira run --no-reload
-    """
+    """Start the Kaira Framework runtime server via KairaApp."""
     if ctx.invoked_subcommand is not None:
         return
 
     cwd = Path.cwd()
 
-    # ── Framework Runtime Execution Path ─────────────────────────────────────
-    if framework:
-        from kaira.app import KairaApp
-        from kaira.config import get_config
-
-        cfg = get_config()
-        app_instance = KairaApp(
-            project_name=cfg.db_name or cwd.name,
-            tier=getattr(cfg, "tier", "standard"),
-            providers=getattr(cfg, "providers", ["cache", "auth"]),
-        )
-        from kaira.core.theme import Theme
-
-        console.print(
-            f"[{Theme.PRIMARY}]Starting Khaira Framework runtime on {host}:{port}...[/{Theme.PRIMARY}]"
-        )
-        app_instance.run(dev=not prod, host=host, port=port)
-        return
-
-    # ── Resolve entry file ────────────────────────────────────────────────────
-    entry_path: Optional[Path] = None
-    if entry:
-        entry_path = Path(entry)
-        if not entry_path.is_absolute():
-            entry_path = cwd / entry_path
-        if not entry_path.exists():
-            console.print(
-                Panel(
-                    f"[red]Entry file not found:[/red] [bold]{entry}[/bold]\n\n"
-                    "[dim]Check the path and try again, "
-                    "or omit --entry to auto-detect.[/dim]",
-                    title="[red]x  File not found[/red]",
-                    border_style="red",
-                )
-            )
-            raise typer.Exit(1)
-    else:
-        entry_path = _find_entry(cwd)
-        if entry_path is None:
-            candidates_str = "  |  ".join(_ENTRY_CANDIDATES)
-            console.print(
-                Panel(
-                    "[yellow]Could not auto-detect an entry file.[/yellow]\n\n"
-                    f"Searched for:  {candidates_str}\n\n"
-                    "Specify one with:  [bold cyan]kaira run --entry PATH[/bold cyan]",
-                    title="[yellow]!  Entry file not found[/yellow]",
-                    border_style="yellow",
-                )
-            )
-            raise typer.Exit(1)
-
-    try:
-        entry_display = str(entry_path.relative_to(cwd))
-    except ValueError:
-        entry_display = str(entry_path)
-
-    # ── Resolve the port before anything is printed ───────────────────────────
-    # Done here rather than after the banner so the banner can state the port
-    # the server will actually bind: a launch panel advertising :8000 while
-    # uvicorn comes up on :8001 is worse than no panel at all.
-    try:
-        resolution = resolve_port(host, port, strict=strict_port)
-    except PortUnavailableError as exc:
-        console.print(
-            Panel(
-                f"[red]{exc}[/red]\n\n"
-                + (
-                    "[dim]--strict-port was passed, so the port was not "
-                    "changed.[/dim]\n"
-                    "[dim]Free it, or pick another:[/dim]  "
-                    "[bold cyan]kaira run --port PORT[/bold cyan]"
-                    if strict_port
-                    else "[dim]Every port in the scan range is taken. "
-                    "Pick a range that is free:[/dim]  "
-                    "[bold cyan]kaira run --port PORT[/bold cyan]"
-                ),
-                title="[red]x  No port available[/red]",
-                border_style="red",
-            )
-        )
-        raise typer.Exit(1)
-
-    port = resolution.port
-
-    mode = "production" if prod else "development"
-    mode_color = "yellow" if prod else "cyan"
-
     import os
-    from kaira.config import get_venv_python
 
-    python_exe = get_venv_python(cwd)
+    if sql:
+        os.environ["KAIRA_SQL_ECHO"] = "1"
+    if debug:
+        os.environ["KAIRA_LOG_LEVEL"] = "DEBUG"
 
-    # Prefer the official FastAPI CLI (ships with fastapi[standard]); fall back to
-    # plain uvicorn only when it is unavailable.
-    fastapi_cli = shutil.which("fastapi") is not None or _module_importable(
-        "fastapi_cli", python_exe
-    )
-    uvicorn_available = shutil.which("uvicorn") is not None or _module_importable(
-        "uvicorn", python_exe
-    )
-
-    if not fastapi_cli and not uvicorn_available:
-        console.print(
-            Panel(
-                "[red]Neither the [bold]fastapi[/bold] CLI ([bold]fastapi[standard][/bold]) "
-                "nor [bold]uvicorn[/bold] is installed.\n\n"
-                "[dim]Install with:[/dim]  "
-                '[bold]pip install "fastapi[standard]"[/bold]',
-                title="[red]x  No server runner found[/red]",
-                border_style="red",
+    try:
+        resolved = resolve_port(host=host, requested=port, strict=strict_port)
+        active_port = resolved.port
+        if resolved.shifted:
+            console.print(
+                f"[yellow]Port {port} in use; moved to {active_port}[/yellow]"
             )
-        )
+    except PortUnavailableError as exc:
+        console.print(f"[red]{exc}[/red]")
         raise typer.Exit(1)
 
-    module = _module_from_path(entry_path, cwd)
+    # ── KairaApp Runtime ─────────────────────────────────────
+    from kaira.app import KairaApp
+    from kaira.config import get_config
+    from kaira.core.theme import Theme
 
-    if fastapi_cli:
-        # `fastapi dev` reloads by default; `fastapi run` is the no-reload/prod path.
-        subcmd = "dev" if (not prod and reload) else "run"
-        cmd = [
-            python_exe,
-            "-m",
-            "fastapi",
-            subcmd,
-            entry_display,
-            "--host",
-            host,
-            "--port",
-            str(port),
-        ]
-        runner_name = f"fastapi {subcmd}"
-        runner_note = "Using the official FastAPI CLI (fastapi[standard])"
-    else:
-        cmd = [
-            python_exe,
-            "-m",
-            "uvicorn",
-            f"{module}:app",
-            "--host",
-            host,
-            "--port",
-            str(port),
-        ]
-        if not prod and reload:
-            cmd.extend(
-                [
-                    "--reload",
-                    "--reload-exclude",
-                    "*.db",
-                    "--reload-exclude",
-                    "*.db-journal",
-                    "--reload-exclude",
-                    "*.db-wal",
-                    "--reload-exclude",
-                    "*.log",
-                    "--reload-exclude",
-                    "__pycache__",
-                    "--reload-exclude",
-                    "*.pyc",
-                ]
-            )
-        runner_name = "uvicorn"
-        runner_note = "fastapi CLI not found — falling back to uvicorn"
-
-    # ── Launch banner ─────────────────────────────────────────────────────────
-    info_table = Table(box=rich_box.SIMPLE, show_header=False, padding=(0, 1))
-    info_table.add_column("", style="dim", width=14)
-    info_table.add_column("", style="bold")
-
-    info_table.add_row("Mode", f"[{mode_color}]{mode}[/{mode_color}]")
-    info_table.add_row("Entry", f"[white]{entry_display}[/white]")
-    info_table.add_row("Runner", f"[white]{runner_name}[/white]")
-    # Database + online/offline mode — the primary place a developer learns which
-    # DB they're on (Phase 6, Features 2.3 & 4). Reads the resolved values only.
-    db_info = _db_banner_info(cwd)
-    if db_info:
-        from kaira.core.theme import Theme, sym
-
-        engine_name, db_name, db_mode, online = db_info
-        badge_style = Theme.SUCCESS if online else Theme.WARNING
-        badge_icon = sym("OK") if online else sym("WARN")
-        info_table.add_row(
-            "Database",
-            f"[white]{engine_name}[/white]  [dim]·[/dim]  [white]{db_name}[/white]  "
-            f"[dim]·[/dim]  [{badge_style}]{badge_icon} {db_mode}[/{badge_style}]",
-        )
-    if sql:
-        info_table.add_row("SQL echo", "[yellow]on[/yellow]")
-    info_table.add_row(
-        "Logs",
-        "[yellow]debug[/yellow]  [dim]per-layer traces, request ids[/dim]"
-        if debug
-        else "[white]info[/white]  [dim]one line per request — add --debug for detail[/dim]",
+    cfg = get_config()
+    app_instance = KairaApp(
+        project_name=cfg.db_name or cwd.name,
+        tier=getattr(cfg, "tier", "standard"),
+        providers=getattr(cfg, "providers", ["cache", "auth"]),
     )
-    if resolution.shifted:
-        info_table.add_row("Port", _shift_note(resolution))
-    info_table.add_row("URL", f"[bold cyan]http://{host}:{port}[/bold cyan]")
-    info_table.add_row("Docs", f"[dim]http://{host}:{port}/docs[/dim]")
-    info_table.add_row("ReDoc", f"[dim]http://{host}:{port}/redoc[/dim]")
-    if not prod:
-        reload_label = "[green]on[/green]" if reload else "[dim]off[/dim]"
-        info_table.add_row("Hot-reload", reload_label)
-    if runner_note:
-        info_table.add_row("Note", f"[dim yellow]{runner_note}[/dim yellow]")
 
-    console.print()
     console.print(
-        Panel(
-            info_table,
-            title="[bold cyan]Kaira  --  Launching FastAPI Server[/bold cyan]",
-            border_style="cyan",
-            padding=(0, 2),
-        )
+        f"[{Theme.PRIMARY}]Starting Khaira Framework runtime on {host}:{active_port}...[/{Theme.PRIMARY}]"
     )
-    # Type-fidelity heads-up (§3.4): SQLite can't faithfully mirror Postgres
-    # native types. Flag only — never blocks the run.
-    if db_info and db_info[0] == "postgresql":
-        try:
-            import json
+    app_instance.run(dev=not prod, host=host, port=active_port)
+    return
 
-            from kaira.core.provisioner import models_with_native_types
-
-            data = json.loads((cwd / ".kaira.json").read_text(encoding="utf-8"))
-            flagged = models_with_native_types(data.get("generated_models", []))
-            for model_name in flagged:
-                console.print(
-                    f"  [yellow]⚠️  model {model_name} uses a Postgres-native type — "
-                    f"not faithfully represented in offline SQLite mode[/yellow]"
-                )
-        except (OSError, ValueError):
-            pass
-
-    console.print("  [dim]Press [bold]Ctrl+C[/bold] to stop the server.[/dim]\n")
-
-    # ── Hand off to server process (replaces current process stdin/stdout) ────
-    env = os.environ.copy()
-    env["PYTHONIOENCODING"] = "utf-8"
-    env["PYTHONUTF8"] = "1"
-    # SQL echo is off by default; `--sql`/`--verbose` opts in for this run only.
-    if sql:
-        env["KAIRA_SQL_ECHO"] = "1"
-    # Log verbosity is read by the generated core/logger.py at import time.
-    if debug:
-        env["KAIRA_LOG_LEVEL"] = "DEBUG"
-    if access_log:
-        env["KAIRA_ACCESS_LOG"] = "1"
-
-    # The address is recorded for the duration of the run so the client
-    # commands can reach a server that was shifted off the default port, and
-    # cleared afterwards so they never chase a port nobody is holding.
-    record_server(host, port, cwd)
-
-    interrupted = False
-    exit_code = 0
-    try:
-        exit_code = subprocess.run(cmd, cwd=str(cwd), env=env).returncode
-    except KeyboardInterrupt:
-        interrupted = True
-    finally:
-        clear_server(cwd)
-
-    console.print()
-    if interrupted or exit_code == 0:
-        console.print(
-            Panel(
-                "[bold]Server stopped.[/bold]  "
-                "[dim]Run [cyan]kaira run[/cyan] to start again.[/dim]",
-                border_style="bright_black",
-                padding=(0, 2),
-            )
-        )
-        return
-
-    # Non-zero exit — the server never started, or it crashed. The traceback is
-    # already above; this panel names the likely cause so the developer does not
-    # have to read it to know what to do next.
-    console.print(
-        Panel(
-            _crash_hint(exit_code, host, port),
-            title=f"[red]x  Server exited with code {exit_code}[/red]",
-            border_style="red",
-            padding=(0, 2),
-        )
-    )
-    raise typer.Exit(exit_code)
-
-
-def _shift_note(resolution: PortResolution) -> str:
-    """Describe a port shift in the launch banner.
-
-    Both numbers are shown: the one asked for, so the developer can see their
-    default was honoured as far as it could be, and the one bound, so the URL
-    below is not a surprise.
-    """
-    return (
-        f"[bold]{resolution.port}[/bold]  "
-        f"[dim yellow]moved from {resolution.requested} — "
-        f"another server is on it[/dim yellow]"
-    )
-
-
-def _crash_hint(exit_code: int, host: str, port: int) -> str:
-    """Return a short, actionable diagnosis for a non-zero server exit.
-
-    Ordered by likelihood *given that the launch got this far*.  The port was
-    confirmed bindable seconds ago, so it now sits last: it can still lose a
-    race to another process, but it is no longer the first thing to suspect.
-    """
-    lines = [
-        "[dim]The server process ended unexpectedly. "
-        "The traceback above is the authority — most common causes:[/dim]",
-        "",
-        "  [bold]Import error[/bold]       a module in the entry file failed to import  "
-        "[dim]→ check the last frame above[/dim]",
-        "  [bold]Missing package[/bold]    a dependency is not installed in this venv  "
-        "[dim]→ pip install -r requirements.txt[/dim]",
-        "  [bold]Database refused[/bold]   the configured DATABASE_URL is unreachable  "
-        "[dim]→ kaira db info[/dim]",
-        f"  [bold]Port in use[/bold]        something claimed "
-        f"[cyan]{host}:{port}[/cyan] after the pre-flight check  "
-        "[dim]→ kaira run[/dim]",
-    ]
-    return "\n".join(lines)

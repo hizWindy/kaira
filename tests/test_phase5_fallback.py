@@ -95,7 +95,9 @@ class TestFallbackQueue:
 
     def test_queue_never_contains_raw_password(self):
         """Demonstrate that service layer must hash before enqueuing."""
-        import bcrypt
+        import pytest
+
+        bcrypt = pytest.importorskip("bcrypt")
 
         raw_password = "plaintext_password"
         hashed = bcrypt.hashpw(

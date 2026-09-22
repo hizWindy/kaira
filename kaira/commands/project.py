@@ -665,13 +665,16 @@ def init_project(
         "auth_type": auth,
         "api_version": "v1",
         "tier": tier,
+        "providers": ["cache", "auth", "monitor"] if tier == "enterprise" else ["cache", "auth"],
+        "enforce_layers": True,
+        "kaira_version": "0.2.4",
     }
 
     # 1. main.py selection based on tier
     if tier == "simple":
         main_tmpl = env.get_template("main_simple.py.j2")
     else:
-        main_tmpl = env.get_template("main_app_v3.py.j2")
+        main_tmpl = env.get_template("main_app.py.j2")
     write_with_check(
         cwd / "main.py", main_tmpl.render(**ctx), force=True, non_interactive=True
     )
@@ -702,6 +705,15 @@ def init_project(
     write_with_check(
         cwd / "core" / "db_mode.py",
         dbmode_tmpl.render(**ctx),
+        force=True,
+        non_interactive=True,
+    )
+
+    # 3c. routers/health_router.py
+    health_tmpl = env.get_template("health_router.py.j2")
+    write_with_check(
+        cwd / "routers" / "health_router.py",
+        health_tmpl.render(**ctx),
         force=True,
         non_interactive=True,
     )
@@ -966,6 +978,7 @@ def init_project(
         docker_enabled=docker,
         docker_compose=docker,
         docker_python=docker_python if docker else "",
+        providers=["cache", "auth", "monitor"] if tier == "enterprise" else ["cache", "auth"],
     )
     # Save config directly inside the project directory
     config_path = cwd / ".kaira.json"
@@ -992,7 +1005,11 @@ def init_command(
     ci: Optional[str] = None,
     profile: Optional[str] = None,
     yes: bool = False,
-    tier: str = "standard",
+    tier: Optional[str] = None,
+    db_user: Optional[str] = None,
+    db_password: Optional[str] = None,
+    db_host: Optional[str] = None,
+    db_port: Optional[int] = None,
 ) -> None:
     """Entrypoint for kaira init command with wizard setup."""
     valid_dbs = {"postgresql", "mysql", "mongodb", "sqlite"}
@@ -1033,11 +1050,36 @@ def init_command(
 
     started = time.monotonic()
 
+    in_tests = bool(os.environ.get("PYTEST_CURRENT_TEST"))
+    is_interactive_run = sys.stdin.isatty() and not yes and not in_tests
+
     # Interactive setup wizard.  A fully flag-driven run asks nothing, so the
     # heading would introduce an empty section — the scaffold section below
     # echoes the resolved configuration either way.
-    if not (db and auth and docker is not None and ci is not None):
+    if not (db and auth and docker is not None and ci is not None and tier is not None):
         ui.section("setup", name)
+
+    if not tier:
+        if is_interactive_run:
+            tier_choice = select_option(
+                "architecture tier",
+                [
+                    "Standard (Recommended: 5-Layer Pipeline with KairaApp)",
+                    "Enterprise (5-Layer + Monitoring Probes + Metrics + Advanced Guards)",
+                    "Simple (Lightweight single-file FastAPI)",
+                ],
+                "Standard (Recommended: 5-Layer Pipeline with KairaApp)",
+            )
+            if "enterprise" in tier_choice.lower():
+                tier = "enterprise"
+            elif "simple" in tier_choice.lower():
+                tier = "simple"
+            else:
+                tier = "standard"
+        else:
+            tier = "standard"
+    else:
+        tier = tier.lower()
 
     if not db:
         db_choice = select_option(
@@ -1053,6 +1095,30 @@ def init_command(
             f"[red]Error: Unsupported database '{db}'. Choose: {', '.join(sorted(valid_dbs))}.[/red]"
         )
         raise typer.Exit(1)
+
+    # Database credentials prompt for client-server DBMS
+    if db in ("postgresql", "mysql"):
+        default_user = "postgres" if db == "postgresql" else "root"
+        default_port = 5432 if db == "postgresql" else 3306
+        if is_interactive_run:
+            if db_user is None:
+                user_ans = select_option(f"{db} user", [default_user, "custom"], default_user)
+                if user_ans == "custom":
+                    from kaira.core import prompts
+                    db_user = prompts.text(f"{db} username", default=default_user)
+                else:
+                    db_user = default_user
+            if db_password is None:
+                from kaira.core import prompts
+                db_password = prompts.secret(f"{db} password (Enter if blank)")
+            if db_host is None:
+                db_host = "localhost"
+            if db_port is None:
+                db_port = default_port
+        else:
+            db_user = db_user or default_user
+            db_host = db_host or "localhost"
+            db_port = db_port or default_port
 
     if not auth:
         auth_choice = select_option("auth", ["JWT", "OAuth2", "API Key", "None"], "JWT")
@@ -1187,6 +1253,10 @@ def init_command(
             profile=profile,
             assume_yes=yes,
             non_interactive=in_tests or not sys.stdin.isatty(),
+            user=db_user,
+            password=db_password,
+            host=db_host,
+            port=db_port,
         )
     except Exception as exc:  # provisioning must never abort a successful scaffold
         ui.step("provisioning", str(exc).splitlines()[0][:60], State.FAILED)

@@ -346,3 +346,45 @@ class TestInitProjectAgents:
                 assert f"name: {skill_name}" in text
                 assert "description:" in text
 
+    def test_init_generates_kaira_framework_structure(self, tmp_path):
+        with runner.isolated_filesystem(temp_dir=tmp_path):
+            result = run(
+                "init",
+                "framework-app",
+                "--db",
+                "sqlite",
+                "--auth",
+                "jwt",
+                "--no-docker",
+                "--ci",
+                "none",
+                "--yes",
+            )
+            assert result.exit_code == 0, result.output
+            app_dir = Path.cwd() / "framework-app"
+
+            # 1. main.py must use KairaApp
+            main_file = app_dir / "main.py"
+            assert main_file.is_file(), "main.py was not generated"
+            main_code = main_file.read_text(encoding="utf-8")
+            assert "from kaira.app import KairaApp" in main_code
+            assert "app = KairaApp(" in main_code
+
+            # 2. requirements.txt must contain khaira
+            req_file = app_dir / "requirements.txt"
+            assert req_file.is_file(), "requirements.txt was not generated"
+            req_text = req_file.read_text(encoding="utf-8")
+            assert "khaira>=" in req_text
+
+            # 3. pyproject.toml must contain khaira
+            pyproject_file = app_dir / "pyproject.toml"
+            assert pyproject_file.is_file(), "pyproject.toml was not generated"
+            pyproject_text = pyproject_file.read_text(encoding="utf-8")
+            assert "khaira>=" in pyproject_text
+
+            # 4. routers/health_router.py must exist
+            health_router = app_dir / "routers" / "health_router.py"
+            assert health_router.is_file(), "routers/health_router.py was not generated"
+            health_code = health_router.read_text(encoding="utf-8")
+            assert "router = APIRouter(" in health_code
+

@@ -44,6 +44,7 @@ class KairaApp(FastAPI):
         enforce_layers: bool = True,
         providers: Optional[List[str]] = None,
         routers_dir: Optional[Path] = None,
+        models_dir: Optional[Path] = None,
         lifespan: Optional[Any] = None,
         **kwargs: Any,
     ) -> None:
@@ -53,8 +54,11 @@ class KairaApp(FastAPI):
         self.tier: str = getattr(cfg, "tier", tier)
         self.auto_register: bool = getattr(cfg, "auto_register", auto_register)
         self.enforce_layers: bool = getattr(cfg, "enforce_layers", enforce_layers)
-        self.routers_path: Path = routers_dir or Path(
+        self.routers_path: Path = Path(routers_dir) if routers_dir else Path(
             getattr(cfg, "routers_dir", "routers")
+        )
+        self.models_path: Path = Path(models_dir) if models_dir else Path(
+            getattr(cfg, "models_dir", "models")
         )
 
         # Set default OpenAPI metadata if not provided
@@ -74,9 +78,24 @@ class KairaApp(FastAPI):
 
         @asynccontextmanager
         async def framework_lifespan(app_instance: FastAPI):
+            # Resolve db_mode state if available
+            try:
+                from core.db_mode import resolve_binding
+
+                binding = resolve_binding()
+                self.state.db_engine_name = binding.engine
+                self.state.db_name = binding.db_name
+                self.state.db_mode = binding.mode
+            except Exception:
+                pass
+
             await self._lifecycle.run_startup()
             for provider in self.providers:
                 await provider.startup()
+
+            # Initialize database in dev if core.database is present
+            await self._init_database()
+
             if user_lifespan:
                 async with user_lifespan(app_instance):
                     yield
@@ -90,8 +109,12 @@ class KairaApp(FastAPI):
 
         # Wire framework layers
         self._apply_middleware()
+        self._setup_system_routes()
+
+        # Eagerly auto-register routers and models at boot
         if self.auto_register:
-            self._setup_lazy_registration()
+            self._register_routers()
+            self._register_models()
 
         # Initialize configured providers
         configured_providers = (
@@ -130,12 +153,63 @@ class KairaApp(FastAPI):
         except Exception:
             pass  # Provider optional or dependency uninstalled
 
+    # ── Lifecycle Hooks ───────────────────────────────────────────────────────
+
+    def register_lifecycle_hook(self, event: str, func: Callable[[], Any]) -> None:
+        """Register a startup or shutdown lifecycle hook."""
+        ev = event.lower()
+        if ev in ("startup", "start"):
+            self._lifecycle.on_startup(func)
+        elif ev in ("shutdown", "stop"):
+            self._lifecycle.on_shutdown(func)
+        else:
+            raise ValueError(
+                f"Unknown lifecycle event: {event!r}. Expected 'startup' or 'shutdown'."
+            )
+
+    def on_startup(self, func: Callable[[], Any]) -> Callable[[], Any]:
+        """Decorator to register a startup hook."""
+        self.register_lifecycle_hook("startup", func)
+        return func
+
+    def on_shutdown(self, func: Callable[[], Any]) -> Callable[[], Any]:
+        """Decorator to register a shutdown hook."""
+        self.register_lifecycle_hook("shutdown", func)
+        return func
+
     # ── Router Registration ───────────────────────────────────────────────────
 
     def register_router(self, router: Any, prefix: str = "", **kwargs: Any) -> None:
         """Explicitly register an APIRouter instance with the application."""
         self.include_router(router, prefix=prefix or "", **kwargs)
         self._registered_routers.append(router)
+
+    # ── Built-in System Routes ────────────────────────────────────────────────
+
+    def _setup_system_routes(self) -> None:
+        """Provide default root and /health endpoints if not overridden by routers."""
+        @self.get("/", tags=["system"], summary="Root status", include_in_schema=False)
+        async def _root() -> dict[str, Any]:
+            return {
+                "status": "online",
+                "app": self.project_name,
+                "version": getattr(self, "version", "0.1.0"),
+                "tier": self.tier,
+            }
+
+        @self.get("/health", tags=["system"], summary="Health status", include_in_schema=True)
+        async def _health() -> dict[str, Any]:
+            db_state = {
+                "engine": getattr(self.state, "db_engine_name", getattr(self.config, "db_type", "unknown")),
+                "name": getattr(self.state, "db_name", getattr(self.config, "db_name", "")),
+                "mode": getattr(self.state, "db_mode", "online"),
+            }
+            return {
+                "status": "ok",
+                "app": self.project_name,
+                "version": getattr(self, "version", "0.1.0"),
+                "database": db_state,
+            }
 
     # ── Middleware Pipeline ───────────────────────────────────────────────────
 
@@ -177,54 +251,60 @@ class KairaApp(FastAPI):
     # ── Auto-Registration Subsystem ───────────────────────────────────────────
 
     def _setup_lazy_registration(self) -> None:
-        """Register routers and models on the first incoming HTTP request."""
+        """Retained for compatibility. Eager registration in __init__ is now default."""
+        pass
 
-        @self.middleware("http")
-        async def lazy_registration_middleware(
-            request: Request, call_next: Callable[[Request], Any]
-        ) -> Any:
-            if not self._lazy_registered:
-                async with self._registration_lock:
-                    if not self._lazy_registered:
-                        await self._register_routers()
-                        await self._register_models()
-                        self._lazy_registered = True
-            return await call_next(request)
-
-    async def _register_routers(self) -> None:
+    def _register_routers(self) -> None:
         """Scan project routers directory and register any found APIRouters."""
         cwd = Path.cwd()
-        r_dir_name = getattr(self.config, "routers_dir", "routers")
-        routers_dir = cwd / r_dir_name
+        routers_dir = self.routers_path if self.routers_path.is_absolute() else cwd / self.routers_path
         if not routers_dir.exists():
             return
 
-        for r_file in routers_dir.rglob("*.py"):
+        api_prefix = getattr(self.config, "api_prefix", "") or "/api/v1"
+
+        for r_file in sorted(routers_dir.rglob("*.py")):
             if r_file.name.startswith("__"):
                 continue
             router_obj = self._import_module_attr(r_file, "router")
             if router_obj is not None and router_obj not in self._registered_routers:
-                # Derive endpoint prefix e.g. /users from user_router.py
+                existing_prefix = getattr(router_obj, "prefix", "")
                 stem = r_file.stem.replace("_router", "").replace("router_", "")
-                prefix = f"/{stem}" if stem else ""
+                if existing_prefix:
+                    # Router already defines its own sub-prefix e.g. /users
+                    if not existing_prefix.startswith(api_prefix) and stem not in ("health", "root", "probe", "probes"):
+                        prefix = api_prefix
+                    else:
+                        prefix = ""
+                else:
+                    # No prefix defined on router
+                    if stem in ("health", "root", "probe", "probes"):
+                        prefix = ""
+                    else:
+                        prefix = f"{api_prefix}/{stem}s" if stem else api_prefix
+
                 self.include_router(router_obj, prefix=prefix)
                 self._registered_routers.append(router_obj)
 
-    async def _register_models(self) -> None:
+    def _register_models(self) -> None:
         """Scan project models directory and import definitions for ORM/ODM registration."""
         cwd = Path.cwd()
-        m_dir_name = getattr(self.config, "models_dir", "models")
-        models_dir = cwd / m_dir_name
+        models_dir = self.models_path if self.models_path.is_absolute() else cwd / self.models_path
         if not models_dir.exists():
             return
 
-        for m_file in models_dir.rglob("*.py"):
+        for m_file in sorted(models_dir.rglob("*.py")):
             if m_file.name.startswith("__"):
                 continue
             self._import_module_attr(m_file, None)
 
     def _import_module_attr(self, file_path: Path, attr_name: Optional[str]) -> Any:
         """Dynamically load module from file and optionally return an attribute."""
+        cwd = Path.cwd()
+        cwd_str = str(cwd)
+        if cwd_str not in sys.path:
+            sys.path.insert(0, cwd_str)
+
         mod_name = f"_kaira_dyn_{file_path.stem}"
         try:
             spec = importlib.util.spec_from_file_location(mod_name, str(file_path))
@@ -235,11 +315,38 @@ class KairaApp(FastAPI):
                 if attr_name:
                     return getattr(mod, attr_name, None)
                 return mod
-        except Exception:
+        except Exception as exc:
+            import logging
+
+            logging.getLogger("kaira.app").debug(f"Failed to dynamically import {file_path}: {exc}")
             return None
         return None
 
-    # ── Database Migration Auto-Run ───────────────────────────────────────────
+    # ── Database Migration & Init ─────────────────────────────────────────────
+
+    async def _init_database(self) -> None:
+        """Initialize database schema or document models at application boot."""
+        try:
+            import importlib
+
+            try:
+                db_mod = importlib.import_module("core.database")
+            except ImportError:
+                return
+
+            if hasattr(db_mod, "init_db"):
+                # MongoDB / Beanie
+                await db_mod.init_db()
+            elif hasattr(db_mod, "create_tables"):
+                # SQLAlchemy async in development mode
+                import os
+
+                if os.getenv("APP_ENV", "development") == "development":
+                    await db_mod.create_tables()
+        except Exception as exc:
+            import logging
+
+            logging.getLogger("kaira.app").debug(f"Database initialization skipped or deferred: {exc}")
 
     def _run_migrations(self) -> None:
         """Run Alembic migrations on startup in production mode."""
@@ -266,14 +373,22 @@ class KairaApp(FastAPI):
         if not dev:
             self._run_migrations()
 
+        target_app = "main:app" if Path("main.py").exists() else self
+
         uvicorn_kwargs: Dict[str, Any] = {
-            "app": self,
+            "app": target_app,
             "host": host,
             "port": port,
             "reload": dev,
         }
-        if dev:
-            uvicorn_kwargs["reload_includes"] = ["*.py", "app/**/*.py"]
+        if dev and target_app == "main:app":
+            uvicorn_kwargs["reload_includes"] = [
+                "*.py",
+                "routers/**/*.py",
+                "models/**/*.py",
+                "schemas/**/*.py",
+                "services/**/*.py",
+            ]
 
         uvicorn_kwargs.update(kwargs)
         uvicorn.run(**uvicorn_kwargs)

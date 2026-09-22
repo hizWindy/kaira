@@ -36,6 +36,7 @@ LEAK_COLUMNS = ("password", "api_key", "refresh_token", "client_secret")
 
 def _seed_database(db_path: Path) -> str:
     """Create a sqlite database with a leaky users table and a clean posts table."""
+    pytest.importorskip("aiosqlite")
     from sqlalchemy import Column, DateTime, Integer, MetaData, String, Table, insert
     from sqlalchemy.ext.asyncio import create_async_engine
 
@@ -1098,6 +1099,12 @@ def test_document_path_requires_a_url_when_no_collection_is_given():
 @pytest.mark.parametrize("fmt", ["xlsx", "pdf", "docx"])
 def test_document_export_never_leaks_in_any_format(fmt, tmp_path):
     """The document-store half of the leak regression."""
+    if fmt == "xlsx":
+        pytest.importorskip("openpyxl")
+    elif fmt == "docx":
+        pytest.importorskip("docx")
+    elif fmt == "pdf":
+        pytest.importorskip("reportlab")
     out = tmp_path / f"docs.{fmt}"
     asyncio.run(
         ex.write_rows(

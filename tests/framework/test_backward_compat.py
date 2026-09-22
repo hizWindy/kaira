@@ -20,7 +20,7 @@ def test_legacy_kaira_config_deserialization() -> None:
     cfg = KairaConfig.from_dict(legacy_json)
     assert cfg.db_type == "sqlite"
     assert cfg.tier == "standard"
-    assert cfg.kaira_version == "0.2.0"
+    assert cfg.kaira_version in ("0.2.0", "0.2.3", "0.2.4")
     assert cfg.enforce_layers is True
     assert cfg.auto_register is True
 

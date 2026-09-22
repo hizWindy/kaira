@@ -396,6 +396,10 @@ def provision_and_persist(
     profile: str = "solo",
     assume_yes: bool = False,
     non_interactive: bool = False,
+    user: Optional[str] = None,
+    password: Optional[str] = None,
+    host: Optional[str] = None,
+    port: Optional[int] = None,
 ) -> "object":
     """Provision the database and persist the result to ``.env*`` and ``.kaira.json``.
 
@@ -412,6 +416,10 @@ def provision_and_persist(
         profile: ``solo`` | ``standard`` | ``scale`` (scale never auto-creates).
         assume_yes: Skip the create confirmation (``--yes``).
         non_interactive: Never prompt (CI / non-TTY).
+        user: Optional custom DB username.
+        password: Optional custom DB password.
+        host: Optional DB host (default: localhost).
+        port: Optional DB port.
 
     Returns:
         The :class:`~kaira.core.provisioner.ProvisionResult`.
@@ -439,8 +447,12 @@ def provision_and_persist(
         engine,
         project_name,
         db_name=db_name,
+        host=host or "localhost",
+        port=port,
+        user=user,
+        password=password,
         skip=effective_skip,
-        env_password=_env_password(engine),
+        env_password=password or _env_password(engine),
         prompt_password=_password_prompt_factory(non_interactive),
         confirm_create=confirm_create,
         announce=announce,

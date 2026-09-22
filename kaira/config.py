@@ -126,7 +126,7 @@ class KairaConfig:
     docker_python: str = ""  # Python version pinned in the Dockerfile
     # Framework Runtime fields (Phase 8)
     tier: str = "standard"  # simple | standard | enterprise
-    kaira_version: str = "0.2.0"
+    kaira_version: str = "0.2.4"
     enforce_layers: bool = True  # Enforce 5-layer pipeline separation
     auto_register: bool = True  # Auto-register routers and models
     providers: list[str] = field(default_factory=lambda: ["cache", "auth"])

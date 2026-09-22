@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from fastapi import FastAPI
+from kaira.app import KairaApp
 
-app = FastAPI(
-    title="{{ project_name }}",
-    version="0.1.0",
+app = KairaApp(
+    project_name="{{ project_name }}",
+    auto_register=True,
+    enforce_layers=True,
 )
 
-# ── Simple tier uses FastAPI directly ────────────────────
-# For full framework features, use: khaira upgrade --tier standard
+# ── Simple tier uses KairaApp runtime ────────────
+# For full framework features, use: kaira upgrade --tier standard

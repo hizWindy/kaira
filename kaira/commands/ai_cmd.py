@@ -19,7 +19,7 @@ from rich.panel import Panel
 
 from kaira.console import console
 from kaira.core.detector import write_with_check
-from kaira.core.wiring import register_router_in_main
+from kaira.core.wiring import register_router
 from kaira.core.ai_introspect import introspect_service_file
 
 TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
@@ -239,7 +239,7 @@ def ai_rag(
         f"from routers.{model_slug}_router import router as {model_slug}_router"
     )
     include_line = f"app.include_router({model_slug}_router)"
-    register_router_in_main(main_path, import_line, include_line)
+    register_router(main_path, import_line, include_line)
 
     console.print(
         Panel(
@@ -427,7 +427,7 @@ def ai_agent(
         f"from routers.ai_{agent_slug}_router import router as ai_{agent_slug}_router"
     )
     include_line = f"app.include_router(ai_{agent_slug}_router)"
-    register_router_in_main(main_path, import_line, include_line)
+    register_router(main_path, import_line, include_line)
 
     console.print(
         Panel(
@@ -527,7 +527,7 @@ def ai_graph(
         f"from routers.ai_{graph_slug}_router import router as ai_{graph_slug}_router"
     )
     include_line = f"app.include_router(ai_{graph_slug}_router)"
-    register_router_in_main(main_path, import_line, include_line)
+    register_router(main_path, import_line, include_line)
 
     console.print(
         Panel(

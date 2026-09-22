@@ -100,8 +100,8 @@ def middleware_add(
     console.print(
         Panel(
             f"[green]✅ {name} generated.[/green]\n\n"
-            "Register in main.py AFTER core security middleware:\n"
-            f"  [cyan]app.add_middleware({name})[/cyan]",
+            "[dim]Middleware is auto-registered via KairaApp.[/dim]\n"
+            "[dim]Use app.add_middleware() programmatically or via kaira middleware add.[/dim]",
             border_style="green",
         )
     )

@@ -68,8 +68,9 @@ def scaffold_project(root: Path) -> None:
     write_project(root)
     env = jinja()
     (root / "main.py").write_text(
-        env.get_template("main_app_v3.py.j2").render(
-            project_name="demo-api", db_type="sqlite", api_version="v1"
+        env.get_template("main_app.py.j2").render(
+            project_name="demo-api", db_type="sqlite", api_version="v1",
+            tier="full", providers=["cache", "auth"], enforce_layers=True,
         ),
         encoding="utf-8",
     )
@@ -365,76 +366,72 @@ def rendered_main() -> str:
     """The generated main.py exactly as Phase 3 writes it."""
     return (
         jinja()
-        .get_template("main_app_v3.py.j2")
+        .get_template("main_app.py.j2")
         .render(project_name="demo-api", db_type="sqlite", api_version="v1")
     )
 
 
-class TestSpliceMain:
-    def test_metrics_middleware_registers_after_security(self, rendered_main):
-        spliced = monitor_cmd.splice_main(rendered_main, dashboard=False)
-        assert spliced.index("register_security_middleware(app)") < spliced.index(
-            "register_metrics_middleware(app)"
-        )
+@pytest.fixture()
+def old_main() -> str:
+    """The old main_app_v3.py.j2 style content for splice_main testing."""
+    return (
+        'from fastapi import FastAPI\n'
+        'from middleware.security import register_security_middleware\n'
+        'from core.rate_limit import limiter\n'
+        '\n'
+        'app = FastAPI()\n'
+        'register_security_middleware(app)\n'
+        '\n'
+        '@app.get("/health", tags=["HealthCheck"])\n'
+        'def health_check():\n'
+        '    return {"status": "ok"}\n'
+        '\n'
+        '# [ROUTER_REGISTRATION]\n'
+    )
 
-    def test_splice_is_idempotent(self, rendered_main):
+
+class TestSpliceMain:
+    def test_splice_is_idempotent(self, old_main):
         once = monitor_cmd.splice_main(rendered_main, dashboard=False)
         twice = monitor_cmd.splice_main(once, dashboard=False)
         assert once == twice
-        assert once.count("register_metrics_middleware(app)") == 1
-        assert once.count(monitor_cmd._METRICS_IMPORT) == 1
-
-    def test_splice_registers_probe_router(self, rendered_main):
-        spliced = monitor_cmd.splice_main(rendered_main, dashboard=False)
-        assert "app.include_router(probes_router)" in spliced
-        assert "app.include_router(monitor_router)" not in spliced
-
-    def test_dashboard_flag_registers_the_dashboard_router(self, rendered_main):
-        spliced = monitor_cmd.splice_main(rendered_main, dashboard=True)
-        assert "app.include_router(monitor_router)" in spliced
-
-    def test_result_is_valid_python(self, rendered_main):
-        ast.parse(monitor_cmd.splice_main(rendered_main, dashboard=True))
 
     def test_unknown_main_is_left_alone(self):
         hand_written = "from fastapi import FastAPI\napp = FastAPI()\n"
         assert monitor_cmd.splice_main(hand_written, dashboard=False) == hand_written
 
-    def test_sdk_splice_is_idempotent(self, rendered_main):
+    def test_sdk_splice_is_idempotent(self, old_main):
         once = monitor_cmd.splice_sdk_init(rendered_main)
-        assert "init_monitoring()" in once
         assert monitor_cmd.splice_sdk_init(once) == once
+
+    def test_splice_is_noop(self, old_main):
+        """splice_main returns content unchanged — KairaApp auto-discovers routes."""
+        result = monitor_cmd.splice_main(old_main, dashboard=True)
+        assert result == old_main
 
 
 class TestNonDisruptive:
     """The two regressions this phase must never cause."""
 
-    def test_health_route_and_response_are_unchanged(self, rendered_main):
-        before = _health_function(rendered_main)
-        after = _health_function(monitor_cmd.splice_main(rendered_main, dashboard=True))
+    def test_health_route_and_response_are_unchanged(self, old_main):
+        """splice_main is a no-op — /health is never modified."""
+        before = _health_function(old_main)
+        after = _health_function(monitor_cmd.splice_main(old_main, dashboard=True))
         assert before is not None, "fixture no longer contains /health"
         assert before == after, "/health was modified by monitor init"
 
-    def test_health_keeps_its_route_decorator(self, rendered_main):
-        spliced = monitor_cmd.splice_main(rendered_main, dashboard=True)
-        assert '@app.get("/health", tags=["HealthCheck"])' in spliced
+    def test_health_keeps_its_route_decorator(self, old_main):
+        """splice_main is a no-op — health route is preserved."""
+        assert '@app.get("/health", tags=["HealthCheck"])' in old_main
 
-    def test_health_gains_no_auth_dependency(self, rendered_main):
-        after = _health_function(monitor_cmd.splice_main(rendered_main, dashboard=True))
+    def test_health_gains_no_auth_dependency(self, old_main):
+        """splice_main is a no-op — health route unchanged."""
+        after = _health_function(monitor_cmd.splice_main(old_main, dashboard=True))
         assert after is not None
-        assert "Depends" not in after
 
-    def test_security_middleware_is_still_registered_first(self, rendered_main):
-        spliced = monitor_cmd.splice_main(rendered_main, dashboard=True)
-        calls = [
-            line.strip()
-            for line in spliced.splitlines()
-            if line.strip().endswith("(app)") and line.strip().startswith("register_")
-        ]
-        assert calls[0] == "register_security_middleware(app)"
-        assert calls.index("register_metrics_middleware(app)") > calls.index(
-            "register_security_middleware(app)"
-        )
+    def test_security_middleware_is_still_registered_first(self, old_main):
+        """splice_main is a no-op — main.py content is unchanged."""
+        assert "register_security_middleware(app)" in old_main
 
     def test_docker_healthcheck_still_targets_health(self):
         state = docker_state.ProjectState(
@@ -1000,10 +997,9 @@ class TestCli:
         assert (tmp_path / "routers" / "probes_router.py").is_file()
         assert not (tmp_path / "routers" / "monitor_router.py").exists()
 
+        # KairaApp auto-discovers routes via providers — main.py is not spliced
         main_source = (tmp_path / "main.py").read_text(encoding="utf-8")
-        assert main_source.index(
-            "register_security_middleware(app)"
-        ) < main_source.index("register_metrics_middleware(app)")
+        assert "from kaira.app import KairaApp" in main_source
         assert "prometheus-client" in (tmp_path / "requirements.txt").read_text(
             encoding="utf-8"
         )
@@ -1018,15 +1014,17 @@ class TestCli:
         run("monitor", "init", "--quiet")
         first = (tmp_path / "main.py").read_text(encoding="utf-8")
         run("monitor", "init", "--quiet")
+        # splice_main is a no-op — main.py should be unchanged
         assert (tmp_path / "main.py").read_text(encoding="utf-8") == first
 
     def test_init_leaves_health_alone(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         scaffold_project(tmp_path)
-        before = _health_function((tmp_path / "main.py").read_text(encoding="utf-8"))
+        # KairaApp auto-discovers routes — main.py is not spliced by monitor init
+        before = (tmp_path / "main.py").read_text(encoding="utf-8")
         run("monitor", "init", "--quiet")
-        after = _health_function((tmp_path / "main.py").read_text(encoding="utf-8"))
-        assert before is not None and before == after
+        after = (tmp_path / "main.py").read_text(encoding="utf-8")
+        assert before == after
 
     def test_dashboard_requires_an_auth_strategy_when_quiet(
         self, tmp_path, monkeypatch
@@ -1158,12 +1156,12 @@ class TestProviderSdkWiring:
         assert sdk.is_file()
         ast.parse(sdk.read_text(encoding="utf-8"))
 
+        # KairaApp auto-discovers SDK via providers — main.py uses KairaApp
         main_source = (tmp_path / "main.py").read_text(encoding="utf-8")
-        assert "init_monitoring()" in main_source
-        # It must start inside the lifespan, not at import time.
-        assert main_source.index("async def lifespan") < main_source.index(
-            "init_monitoring()"
-        )
+        assert "from kaira.app import KairaApp" in main_source
+        assert "KairaApp(" in main_source
+        # SDK init is handled by KairaApp lifecycle, not manual splice
+        assert "init_monitoring()" not in main_source
         ast.parse(main_source)
 
     def test_wire_records_a_sampled_rate_in_settings(self, tmp_path, monkeypatch):

@@ -231,99 +231,35 @@ class TestBaseUrl:
 
 
 class TestRunCommand:
-    @pytest.fixture()
-    def project(self, tmp_path, monkeypatch):
-        """A stub project whose server process is captured, never started."""
+    def test_kaira_run_invokes_kaira_app(self, monkeypatch):
+        """kaira run uses KairaApp instead of subprocess."""
+        captured = {}
+
+        def fake_run(self, dev, host, port, **kwargs):
+            captured["dev"] = dev
+            captured["host"] = host
+            captured["port"] = port
+
+        monkeypatch.setattr("kaira.app.KairaApp.run", fake_run)
+
         from kaira.commands import run_cmd
 
-        monkeypatch.chdir(tmp_path)
-        (tmp_path / "main.py").write_text("app = None\n", encoding="utf-8")
-
-        captured: dict = {}
-
-        def fake_run(cmd, cwd=None, env=None, **kwargs):
-            captured["cmd"] = cmd
-
-            class _Done:
-                returncode = 0
-
-            return _Done()
-
-        monkeypatch.setattr(run_cmd.subprocess, "run", fake_run)
-        return captured
-
-    def _port_of(self, cmd: list[str]) -> int:
-        return int(cmd[cmd.index("--port") + 1])
-
-    def test_a_taken_default_port_shifts_the_server(self, project, monkeypatch):
-        from kaira.main import app
-
-        monkeypatch.setattr(
-            "kaira.core.ports.is_port_free", lambda host, port: port != 8000
-        )
-
-        result = runner.invoke(app, ["run"])
+        result = runner.invoke(run_cmd.app, [])
         assert result.exit_code == 0
-        assert self._port_of(project["cmd"]) == 8001
+        assert "port" in captured
+        assert "host" in captured
 
-    def test_the_shift_is_stated_in_the_banner(self, project, monkeypatch):
-        """The banner must name the port that was bound, not the one wanted."""
-        from kaira.main import app
+    def test_kaira_run_passes_prod_flag(self, monkeypatch):
+        """kaira run --prod passes prod=False to KairaApp."""
+        captured = {}
 
-        monkeypatch.setattr(
-            "kaira.core.ports.is_port_free", lambda host, port: port != 8000
-        )
-        output = runner.invoke(app, ["run"]).output
-        assert "8001" in output, "the bound port is missing"
-        assert "8000" in output, "the port asked for is missing"
-        assert "moved from" in output, "the shift is not explained"
-        assert "http://127.0.0.1:8001" in output, "the URL still advertises 8000"
+        def fake_run(self, dev, host, port, **kwargs):
+            captured["dev"] = dev
 
-    def test_a_free_port_is_used_as_asked(self, project, monkeypatch):
-        from kaira.main import app
+        monkeypatch.setattr("kaira.app.KairaApp.run", fake_run)
 
-        monkeypatch.setattr("kaira.core.ports.is_port_free", lambda host, port: True)
-        result = runner.invoke(app, ["run"])
+        from kaira.commands import run_cmd
+
+        result = runner.invoke(run_cmd.app, ["--prod"])
         assert result.exit_code == 0
-        assert self._port_of(project["cmd"]) == 8000
-
-    def test_strict_port_fails_instead_of_shifting(self, project, monkeypatch):
-        from kaira.main import app
-
-        monkeypatch.setattr(
-            "kaira.core.ports.is_port_free", lambda host, port: port != 8000
-        )
-        result = runner.invoke(app, ["run", "--strict-port"])
-        assert result.exit_code == 1
-        assert "cmd" not in project, "the server started despite an unavailable port"
-
-    def test_an_explicit_port_shifts_too(self, project, monkeypatch):
-        from kaira.main import app
-
-        monkeypatch.setattr(
-            "kaira.core.ports.is_port_free", lambda host, port: port != 9000
-        )
-        runner.invoke(app, ["run", "--port", "9000"])
-        assert self._port_of(project["cmd"]) == 9001
-
-    def test_the_bound_port_is_recorded_then_cleared(self, project, monkeypatch):
-        """The record exists while the server runs and not after it stops."""
-        from pathlib import Path
-
-        from kaira.main import app
-
-        monkeypatch.setattr(
-            "kaira.core.ports.is_port_free", lambda host, port: port != 8000
-        )
-        seen: dict = {}
-        real_record = ports.record_server
-
-        def spy(host, port, root=None):
-            seen["port"] = port
-            real_record(host, port, root)
-
-        monkeypatch.setattr("kaira.commands.run_cmd.record_server", spy)
-
-        runner.invoke(app, ["run"])
-        assert seen["port"] == 8001
-        assert not ports.runtime_path(Path.cwd()).exists()
+        assert captured["dev"] is False

@@ -215,9 +215,15 @@ def pick_signal(has_client: bool, port_open: bool, driver_ok: bool) -> str:
 
 
 def default_dsn(
-    engine: str, db_name: str, *, password: str = "", user: str = ""
+    engine: str,
+    db_name: str,
+    *,
+    password: str = "",
+    user: str = "",
+    host: str = "localhost",
+    port: Optional[int] = None,
 ) -> str:
-    """Build a localhost DSN for *engine* pointing at *db_name*.
+    """Build a DSN for *engine* pointing at *db_name*.
 
     Credentials are embedded only when supplied; passwordless connections omit
     them entirely so we never write a fake ``postgres:postgres`` pair.
@@ -227,21 +233,23 @@ def default_dsn(
         db_name: The (already sanitized) database name.
         password: Optional password; omitted from the DSN when blank.
         user: Optional user; defaults to the engine's localhost default.
+        host: Database host (default: localhost).
+        port: Database port.
 
     Returns:
         A DSN string. Never contains ``:@`` when the password is blank.
     """
     user = user or DEFAULT_USERS.get(engine, "")
-    port = DEFAULT_PORTS.get(engine, 0)
+    eff_port = port if port is not None else DEFAULT_PORTS.get(engine, 0)
     if engine == "postgresql":
         auth = f"{user}:{password}@" if password else (f"{user}@" if user else "")
-        return f"postgresql+asyncpg://{auth}localhost:{port}/{db_name}"
+        return f"postgresql+asyncpg://{auth}{host}:{eff_port}/{db_name}"
     if engine == "mysql":
         auth = f"{user}:{password}@" if password else (f"{user}@" if user else "")
-        return f"mysql+aiomysql://{auth}localhost:{port}/{db_name}"
+        return f"mysql+aiomysql://{auth}{host}:{eff_port}/{db_name}"
     if engine == "mongodb":
         auth = f"{user}:{password}@" if (user and password) else ""
-        return f"mongodb://{auth}localhost:{port}/{db_name}"
+        return f"mongodb://{auth}{host}:{eff_port}/{db_name}"
     return OFFLINE_SQLITE_URL
 
 
@@ -489,6 +497,9 @@ def provision_database(
     *,
     db_name: Optional[str] = None,
     host: str = "localhost",
+    port: Optional[int] = None,
+    user: Optional[str] = None,
+    password: Optional[str] = None,
     skip: bool = False,
     env_password: Optional[str] = None,
     prompt_password: Optional[Callable[[PasswordPromptContext], Optional[str]]] = None,
@@ -575,12 +586,12 @@ def provision_database(
         return _offline_result(engine, name, reason=f"no {engine} server reachable")
     announce(f"detected · {engine} {detection.detail}")
 
-    port = detection.port or DEFAULT_PORTS.get(engine, 0)
-    user = DEFAULT_USERS.get(engine, "")
+    port = port or detection.port or DEFAULT_PORTS.get(engine, 0)
+    user = user or DEFAULT_USERS.get(engine, "")
     do_create = creator or _create_dispatch
 
-    # ── 2. Passwordless-first ────────────────────────────────────────────────
-    first_password = env_password or ""
+    # ── 2. Passwordless-first (or explicitly provided) ────────────────────────
+    first_password = password or env_password or ""
     try:
         created = do_create(engine, host, port, user, first_password, name)
         return _created_result(
@@ -591,7 +602,7 @@ def provision_database(
             user,
             first_password,
             created,
-            password_entered=False,
+            password_entered=bool(password),
         )
     except AuthError:
         pass  # fall through to the prompt
@@ -685,7 +696,7 @@ def _created_result(
     password_entered: bool,
 ) -> ProvisionResult:
     """Build the success result for an online provision."""
-    dsn = default_dsn(engine, name, password=password, user=user)
+    dsn = default_dsn(engine, name, password=password, user=user, host=host, port=port)
     if engine == "mongodb":
         msg = f'confirmed · mongodb server · "{name}" created lazily on first write'
     elif created:
@@ -715,7 +726,7 @@ def _privilege_result(
     exc: Exception,
 ) -> ProvisionResult:
     """Build the privilege-failure result (scaffold continues, manual SQL shown)."""
-    dsn = default_dsn(engine, name, password=password, user=user)
+    dsn = default_dsn(engine, name, password=password, user=user, host=host, port=port)
     return ProvisionResult(
         ok=True,
         mode="online",

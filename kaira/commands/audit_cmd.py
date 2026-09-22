@@ -423,15 +423,17 @@ def audit_unused() -> None:
         return
 
     main_content = main_app_path.read_text(encoding="utf-8")
+    uses_kaira_app = "KairaApp" in main_content or "KhairaApp" in main_content
+    auto_register = uses_kaira_app and getattr(config, "auto_register", True)
 
     routers_dir = output_root / config.routers_dir
     unused = []
 
     if routers_dir.exists():
-        for f in routers_dir.glob("*_router.py"):
+        for f in sorted(routers_dir.glob("*_router.py")):
             router_name = f.stem
-            # Check if router is imported or registered in main.py
-            if router_name not in main_content:
+            # If KairaApp auto-registration is active, all routers in routers_dir are registered
+            if not auto_register and router_name not in main_content:
                 unused.append(f"{config.routers_dir}/{f.name}")
 
     table = Table(title="Khaira — Unused Generated Assets", border_style="yellow")
@@ -444,6 +446,9 @@ def audit_unused() -> None:
     if unused:
         console.print(table)
     else:
-        console.print(
-            "[green]✔ No unused generated assets found. All registered in main.py![/green]"
+        status_msg = (
+            "[green]✔ No unused generated assets found. All auto-registered in KairaApp![/green]"
+            if auto_register
+            else "[green]✔ No unused generated assets found. All registered in main.py![/green]"
         )
+        console.print(status_msg)

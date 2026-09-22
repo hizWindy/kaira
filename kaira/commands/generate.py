@@ -37,7 +37,6 @@ from kaira.core.generator import (
     TEMPLATES_DIR,
 )
 from kaira.core.detector import write_with_check
-from kaira.core.wiring import register_router_in_main
 from kaira.core.aliases import complete_model_name
 
 
@@ -113,18 +112,6 @@ def _print_skipped(path: Path) -> None:
     console.print(f"  [yellow]→[/yellow]  Skipped: [dim]{path}[/dim]")
 
 
-def _register_router_in_main(model_name: str, base: Path, config) -> None:
-    """Register a generated router in Phase 3 main.py when the placeholder exists."""
-    snake = camel_to_snake(model_name)
-    routers_dir = config.routers_dir.replace("/", ".").replace("\\", ".")
-    router_var = f"{snake}_router"
-    register_router_in_main(
-        base / "main.py",
-        f"from {routers_dir}.{snake}_router import router as {router_var}",
-        f"app.include_router({router_var}, prefix=API_VERSION_PREFIX)",
-    )
-
-
 def _generate_and_write(
     layers: list[str],
     model_name: str,
@@ -146,9 +133,7 @@ def _generate_and_write(
         if result == "written":
             _ruff_format(out_path)
             _print_success(out_path)
-            if layer == "router":
-                _register_router_in_main(model_name, base, config)
-                _ensure_message_schema(config, base)
+            _ensure_message_schema(config, base)
         else:
             _print_skipped(out_path)
 
@@ -355,8 +340,6 @@ def generate_model(
             if result == "written":
                 _ruff_format(out_path)
                 _print_success(out_path)
-                if lyr == "router":
-                    _register_router_in_main(model_name, base, config)
                 item.done(detail=_relative_to(out_path, base))
                 written_count += 1
             else:

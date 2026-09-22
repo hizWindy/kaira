@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from kaira.app import KairaApp
 
 # ── Create the KairaApp instance ─────────────────────────
@@ -16,11 +15,15 @@ app = KairaApp(
     providers={{ providers | tojson }},
 )
 
-# ── Routers — auto-registered by KairaApp ────────────────
-# Add your routers here if not using auto-registration:
+# ── Routers — auto-registered by KairaApp ────────
+# Drop router files in routers/ and they are discovered automatically.
+# Or register explicitly:
 # from routers.user_router import router as user_router
 # app.register_router(user_router, prefix="/api/v1/users")
 
+# ── Health & Database Status ─────────────────────────────
+# KairaApp natively exposes /health with {"status": "ok", "database": {"engine": db_engine_name, "mode": db_mode}}
+
 # ── Run the app ──────────────────────────────────────────
-# Run with: kaira run --framework
-# Or:       kaira run --framework --prod
+# Run with: kaira run
+# Or:       kaira run --prod

@@ -13,7 +13,7 @@ from rich.panel import Panel
 from kaira.config import get_config
 from kaira.console import console
 from kaira.core.detector import write_with_check
-from kaira.core.wiring import register_router_in_main
+from kaira.core.wiring import register_router
 
 # Auth types that expose an APIRouter, mapped to the module holding it.
 # ``api-key`` is intentionally absent — it ships a dependency, not routes.
@@ -208,19 +208,10 @@ def auth_register(
         mounted_at = f"/api/{getattr(config, 'api_version', 'v1')}/auth"
 
     main_path = output_root / "main.py"
-    result = register_router_in_main(main_path, import_line, include_line)
+    result = register_router(main_path, import_line, include_line)
 
     if result == "no-main":
         console.print(f"[red]main.py not found:[/red] {main_path}")
-        raise typer.Exit(1)
-
-    if result == "no-marker":
-        console.print(
-            f"[yellow]⚠  No [cyan]# \\[ROUTER_REGISTRATION][/cyan] marker in {main_path}.[/yellow]\n"
-            "  Add these two lines by hand:\n\n"
-            f"  [cyan]{import_line}[/cyan]\n"
-            f"  [cyan]{include_line}[/cyan]\n"
-        )
         raise typer.Exit(1)
 
     if result == "already":

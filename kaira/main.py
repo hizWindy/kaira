@@ -331,6 +331,22 @@ def cmd_init(
             "--tier", help="Project architectural tier: simple, standard, enterprise."
         ),
     ] = "standard",
+    db_user: Annotated[
+        Optional[str],
+        typer.Option("--db-user", help="Database username (PostgreSQL/MySQL)."),
+    ] = None,
+    db_password: Annotated[
+        Optional[str],
+        typer.Option("--db-password", help="Database password (PostgreSQL/MySQL)."),
+    ] = None,
+    db_host: Annotated[
+        Optional[str],
+        typer.Option("--db-host", help="Database host (default: localhost)."),
+    ] = None,
+    db_port: Annotated[
+        Optional[int],
+        typer.Option("--db-port", help="Database port (default: 5432 / 3306)."),
+    ] = None,
 ) -> None:
     """Scaffold a full FastAPI project structure in a named directory with interactive wizard config.
 
@@ -339,22 +355,33 @@ def cmd_init(
     kaira init
     kaira init myproject
     kaira init myproject --tier enterprise
+    kaira init myproject --db postgresql --db-user postgres --db-password secret
     kaira init myproject --db postgresql --auth jwt --docker
     kaira init proj9 --db postgresql --profile solo
     """
     from kaira.core.ui import render_large_banner
 
     render_large_banner()
-    init_command(
-        name=name,
-        db=db,
-        auth=auth,
-        docker=docker,
-        ci=ci,
-        profile=profile,
-        yes=yes,
-        tier=tier,
-    )
+    init_kwargs: dict[str, Any] = {
+        "name": name,
+        "db": db,
+        "auth": auth,
+        "docker": docker,
+        "ci": ci,
+        "profile": profile,
+        "tier": tier,
+        "yes": yes,
+    }
+    if db_user is not None:
+        init_kwargs["db_user"] = db_user
+    if db_password is not None:
+        init_kwargs["db_password"] = db_password
+    if db_host is not None:
+        init_kwargs["db_host"] = db_host
+    if db_port is not None:
+        init_kwargs["db_port"] = db_port
+
+    init_command(**init_kwargs)
 
 
 @app.command("upgrade")

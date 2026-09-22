@@ -88,29 +88,11 @@ def event_generate(
             "  [dim]ℹ️  Cache not detected — init_cache() not included. Run kaira cache init first.[/dim]"
         )
 
-    lifespan_snippet = (
-        (
-            "from contextlib import asynccontextmanager\n"
-            "from events.startup import on_startup\n"
-            "from events.shutdown import on_shutdown\n\n"
-            "@asynccontextmanager\n"
-            "async def lifespan(app):\n"
-            "    await on_startup()\n"
-            "    yield\n"
-            "    await on_shutdown()\n\n"
-            "app = FastAPI(lifespan=lifespan)\n"
-        )
-        if event_type == "startup"
-        else (
-            "# Add on_shutdown to your lifespan context manager:\n"
-            "from events.shutdown import on_shutdown\n"
-        )
-    )
-
     console.print(
         Panel(
             f"[green]✅ {event_type.capitalize()} event generated.[/green]\n\n"
-            "[dim]Register in main.py:[/dim]\n" + lifespan_snippet,
+            "[dim]Events are registered via KairaApp lifecycle hooks.[/dim]\n"
+            '[dim]Use @app.on_event("startup") or register via app.register_lifecycle_hook().[/dim]',
             border_style="green",
         )
     )

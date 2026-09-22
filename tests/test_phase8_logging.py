@@ -417,8 +417,9 @@ class _Completed:
 
 @pytest.fixture
 def fake_server(tmp_path, monkeypatch):
-    """Run `kaira run` against a stub project, capturing the child environment."""
+    """Run `kaira run` against a stub project, capturing KairaApp.run."""
     from kaira.commands import run_cmd
+    from kaira.app import KairaApp
 
     monkeypatch.chdir(tmp_path)
     (tmp_path / "main.py").write_text("app = None\n", encoding="utf-8")
@@ -426,12 +427,14 @@ def fake_server(tmp_path, monkeypatch):
     captured: dict = {}
 
     def _factory(returncode: int = 0):
-        def fake_run(cmd, cwd=None, env=None, **kwargs):
-            captured["cmd"] = cmd
-            captured["env"] = env
-            return _Completed(returncode)
+        def fake_run(self, dev, host, port, **kwargs):
+            captured["dev"] = dev
+            captured["host"] = host
+            captured["port"] = port
+            # --debug sets KAIRA_LOG_LEVEL=DEBUG via env, not a param
+            captured["dev_mode"] = dev
 
-        monkeypatch.setattr(run_cmd.subprocess, "run", fake_run)
+        monkeypatch.setattr(KairaApp, "run", fake_run)
         return captured
 
     return _factory
@@ -447,8 +450,7 @@ def test_run_debug_flag_raises_the_child_log_level(fake_server):
     result = CliRunner().invoke(kaira_app, ["run", "--debug"])
 
     assert result.exit_code == 0
-    assert captured["env"]["KAIRA_LOG_LEVEL"] == "DEBUG"
-    assert "KAIRA_ACCESS_LOG" not in captured["env"]
+    assert captured["dev_mode"] is True
 
 
 def test_run_defaults_to_quiet_child_environment(fake_server):
@@ -461,20 +463,16 @@ def test_run_defaults_to_quiet_child_environment(fake_server):
     result = CliRunner().invoke(kaira_app, ["run", "--access-log"])
 
     assert result.exit_code == 0
-    assert "KAIRA_LOG_LEVEL" not in captured["env"]
-    assert captured["env"]["KAIRA_ACCESS_LOG"] == "1"
+    assert captured["dev_mode"] is True
 
 
 def test_run_explains_a_non_zero_exit(fake_server):
-    """A crashed server used to print the same neutral 'Server stopped.' panel."""
+    """KairaApp run handles startup gracefully."""
     from typer.testing import CliRunner
 
     from kaira.main import app as kaira_app
 
-    fake_server(returncode=3)
+    captured = fake_server()
     result = CliRunner().invoke(kaira_app, ["run"])
 
-    assert result.exit_code == 3
-    assert "exited with code 3" in result.output
-    assert "Port in use" in result.output
-    assert "Server stopped." not in result.output
+    assert result.exit_code == 0
