@@ -2,9 +2,10 @@
 
 import json
 from pathlib import Path
+
 from typer.testing import CliRunner
 
-from kaira.main import app
+from kaira.config import get_config
 from kaira.core.docs_render import (
     DOC_CONFIG,
     DOC_ENDPOINTS,
@@ -19,7 +20,7 @@ from kaira.core.docs_render import (
     render_models_doc,
     render_readme_doc,
 )
-from kaira.config import get_config
+from kaira.main import app
 
 runner = CliRunner()
 

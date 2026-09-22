@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
-import pytest
+
 from click.testing import CliRunner
 from typer.main import get_command
 
@@ -80,7 +79,9 @@ class TestPhase3Commands:
             assert (project_dir / "models").exists()
             assert (project_dir / "core" / "database.py").exists()
             assert (project_dir / "core" / "logger.py").exists()
-            assert (project_dir / "middleware" / "security.py").exists()
+            # middleware/security.py and rate_limit.py are no longer scaffolded — KairaApp provides them natively
+            assert not (project_dir / "middleware" / "security.py").exists()
+            assert not (project_dir / "rate_limit.py").exists()
             assert (project_dir / "pyproject.toml").exists()
             assert (project_dir / ".kaira.json").exists()
 

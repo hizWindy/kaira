@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typer.testing import CliRunner
+
 from kaira.main import app
 
 

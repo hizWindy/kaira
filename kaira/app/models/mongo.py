@@ -10,7 +10,6 @@ try:
     class MongoDocument(Document):
         """Beanie Document base class for Kaira."""
 
-        pass
 
     Model = MongoDocument
 except ImportError:

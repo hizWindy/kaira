@@ -3,20 +3,18 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
 
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
 from kaira.config import (
-    KairaConfig,
-    TIER_LAYERS,
     LAYER_SUFFIX,
     SERVER_MANAGED_FIELDS,
+    TIER_LAYERS,
+    KairaConfig,
     get_config,
 )
-from kaira.core.parser import FieldDef, RelationDef, camel_to_snake, table_name
 from kaira.core.drivers import get_engine_driver
-
+from kaira.core.parser import FieldDef, RelationDef, camel_to_snake, table_name
 
 # ---------------------------------------------------------------------------
 # Jinja2 Environment
@@ -118,7 +116,7 @@ def generate_layer(
     model_name: str,
     fields: list[FieldDef],
     relations: list[RelationDef],
-    config: Optional[KairaConfig] = None,
+    config: KairaConfig | None = None,
 ) -> str:
     """Render and return the source code for a single pipeline layer.
 
@@ -164,7 +162,7 @@ def generate_layer(
 def generate_embedded_model(
     model_name: str,
     fields: list[FieldDef],
-    config: Optional[KairaConfig] = None,
+    config: KairaConfig | None = None,
 ) -> str:
     """Render the source for an embedded (nested) document type.
 
@@ -191,7 +189,7 @@ def generate_all(
     fields: list[FieldDef],
     relations: list[RelationDef],
     tier: str = "full",
-    config: Optional[KairaConfig] = None,
+    config: KairaConfig | None = None,
 ) -> dict[str, str]:
     """Render all layers for *model_name* and return a dict of layer → source.
 
@@ -231,8 +229,8 @@ def generate_all(
 def resolve_output_path(
     layer: str,
     model_name: str,
-    config: Optional[KairaConfig] = None,
-    base_dir: Optional[Path] = None,
+    config: KairaConfig | None = None,
+    base_dir: Path | None = None,
 ) -> Path:
     """Return the output file path for a given layer and model.
 
@@ -254,8 +252,8 @@ def resolve_output_path(
 def resolve_association_path(
     model_a: str,
     model_b: str,
-    config: Optional[KairaConfig] = None,
-    base_dir: Optional[Path] = None,
+    config: KairaConfig | None = None,
+    base_dir: Path | None = None,
 ) -> Path:
     """Return the association table file path for a many-to-many relation."""
     if config is None:

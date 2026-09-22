@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import time
 from collections import defaultdict
-from typing import Any, Callable, Dict
+from collections.abc import Callable
+from typing import Any
+
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
@@ -16,7 +18,7 @@ class InMemoryLimiter:
     def __init__(self, limit: int = 100, window_seconds: int = 60) -> None:
         self.limit = limit
         self.window_seconds = window_seconds
-        self._history: Dict[str, list[float]] = defaultdict(list)
+        self._history: dict[str, list[float]] = defaultdict(list)
 
     def is_allowed(self, key: str) -> bool:
         now = time.time()

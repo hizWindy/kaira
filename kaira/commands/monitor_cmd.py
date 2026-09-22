@@ -34,7 +34,7 @@ import subprocess  # nosec B404 - used only to hand a desktop notifier a string
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Annotated, Any, Optional
+from typing import Annotated, Any
 
 import typer
 from jinja2 import Environment, FileSystemLoader
@@ -260,7 +260,7 @@ def _update_env_files(key: str, value: str) -> None:
             pass
 
 
-def _settings_path(root: Path) -> Optional[Path]:
+def _settings_path(root: Path) -> Path | None:
     """Return the project's settings module, or ``None`` when absent."""
     for candidate in (root / "config" / "settings.py", root / "core" / "config.py"):
         if candidate.is_file():
@@ -342,7 +342,7 @@ def monitor_init(
         ),
     ] = False,
     auth: Annotated[
-        Optional[str],
+        str | None,
         typer.Option(
             "--auth",
             help="Dashboard auth strategy: reuse | token. Required with --dashboard "
@@ -498,7 +498,7 @@ def replace_auth(state: MonitorState, strategy: str) -> MonitorState:
 
 
 def _resolve_auth_strategy(
-    state: MonitorState, *, dashboard: bool, auth: Optional[str], quiet: bool
+    state: MonitorState, *, dashboard: bool, auth: str | None, quiet: bool
 ) -> str:
     """Decide which auth strategy gates the dashboard.
 
@@ -694,7 +694,7 @@ def wire_provider_sdk(
 # ---------------------------------------------------------------------------
 
 
-def _fetch_json(url: str, token: str, timeout: float) -> Optional[dict[str, Any]]:
+def _fetch_json(url: str, token: str, timeout: float) -> dict[str, Any] | None:
     """GET *url* and return the decoded JSON body, or ``None`` on any failure."""
     try:
         import httpx
@@ -788,7 +788,7 @@ def parse_prometheus(text: str) -> dict[str, Any]:
 
 def fetch_live_payload(
     base_url: str = DEFAULT_BASE_URL, timeout: float = 2.0
-) -> Optional[dict[str, Any]]:
+) -> dict[str, Any] | None:
     """Return live metrics from the running app, or ``None`` when unreachable.
 
     Prefers the dashboard's JSON endpoint because it carries the full picture;
@@ -822,7 +822,7 @@ def fetch_live_payload(
 @app.command("status")
 def monitor_status(
     url: Annotated[
-        Optional[str],
+        str | None,
         typer.Option(
             "--url",
             help="Base URL of the running application "
@@ -1041,7 +1041,7 @@ def evaluate_thresholds(
 @app.command("watch")
 def monitor_watch(
     url: Annotated[
-        Optional[str],
+        str | None,
         typer.Option(
             "--url",
             help="Base URL of the running application "

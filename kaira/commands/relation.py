@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated
 
 import typer
 from rich.panel import Panel
@@ -37,7 +37,7 @@ def _build_relation_block(
     model_name: str,
     relation_type: str,
     target: str,
-    cascade: Optional[str],
+    cascade: str | None,
     embedded: bool = False,
     db_type: str = "sqlite",
 ) -> str:
@@ -99,17 +99,17 @@ def _build_relation_block(
 def add_relation(
     model_a: Annotated[str, typer.Argument(help="Source model (PascalCase)")],
     has_many: Annotated[
-        Optional[str], typer.Option("--has-many", help="Target model for one-to-many")
+        str | None, typer.Option("--has-many", help="Target model for one-to-many")
     ] = None,
     has_one: Annotated[
-        Optional[str], typer.Option("--has-one", help="Target model for many-to-one")
+        str | None, typer.Option("--has-one", help="Target model for many-to-one")
     ] = None,
     many_to_many: Annotated[
-        Optional[str],
+        str | None,
         typer.Option("--many-to-many", help="Target model for many-to-many"),
     ] = None,
     cascade: Annotated[
-        Optional[str],
+        str | None,
         typer.Option("--cascade", help='Cascade option e.g. "all, delete-orphan"'),
     ] = None,
     embedded: Annotated[

@@ -14,7 +14,7 @@ import os
 import re
 from datetime import datetime
 from pathlib import Path
-from typing import Annotated, Any, Optional
+from typing import Annotated, Any
 
 import typer
 from jinja2 import Environment, FileSystemLoader
@@ -110,7 +110,7 @@ def _resolve_model(config: Any, model_name: str) -> str:
     return model_name  # unreachable — smart_error exits
 
 
-def _parse_key_values(raw: Optional[str], flag: str) -> dict[str, str]:
+def _parse_key_values(raw: str | None, flag: str) -> dict[str, str]:
     """Parse the ``"key:value,key:value"`` grammar shared across Kaira flags.
 
     Values may contain a colon (a timestamp, a URL); only the first one
@@ -143,7 +143,7 @@ def _parse_key_values(raw: Optional[str], flag: str) -> dict[str, str]:
     return parsed
 
 
-def _parse_field_list(raw: Optional[str]) -> Optional[list[str]]:
+def _parse_field_list(raw: str | None) -> list[str] | None:
     """Parse ``--fields "name,email"`` into an allowlist, or None for all."""
     if not raw:
         return None
@@ -306,7 +306,7 @@ def _fetch(config: Any, model: str, url: str, **kwargs: Any) -> Any:
 @app.command("data")
 def export_data(
     model_name: Annotated[
-        Optional[str], typer.Argument(help="PascalCase model to export, e.g. User")
+        str | None, typer.Argument(help="PascalCase model to export, e.g. User")
     ] = None,
     fmt: Annotated[
         str, typer.Option("--format", help="Output format: xlsx, pdf or docx.")
@@ -315,20 +315,20 @@ def export_data(
         bool, typer.Option("--all", help="Export every registered model.")
     ] = False,
     output: Annotated[
-        Optional[str],
+        str | None,
         typer.Option(
             "--output", help="Output file (single model) or directory (--all)."
         ),
     ] = None,
     limit: Annotated[
-        Optional[int], typer.Option("--limit", help="Maximum rows to export.")
+        int | None, typer.Option("--limit", help="Maximum rows to export.")
     ] = None,
     fields: Annotated[
-        Optional[str],
+        str | None,
         typer.Option("--fields", help='Comma-separated allowlist, e.g. "name,email".'),
     ] = None,
     filter_expr: Annotated[
-        Optional[str],
+        str | None,
         typer.Option(
             "--filter", help='Equality filters, e.g. "status:active,role:admin".'
         ),
@@ -439,11 +439,11 @@ def _export_all_workbook(
     models: list[str],
     url: str,
     exports_dir: Path,
-    output: Optional[str],
+    output: str | None,
     stamp: str,
-    field_list: Optional[list[str]],
+    field_list: list[str] | None,
     filters: dict[str, str],
-    limit: Optional[int],
+    limit: int | None,
 ) -> list[tuple[str, Path, int]]:
     """``--all --format xlsx`` — one workbook, one sheet per model."""
     target = Path(output) if output else exports_dir / f"export_{stamp}.xlsx"
@@ -469,12 +469,12 @@ def _export_per_model(
     models: list[str],
     url: str,
     exports_dir: Path,
-    output: Optional[str],
+    output: str | None,
     stamp: str,
     fmt: str,
-    field_list: Optional[list[str]],
+    field_list: list[str] | None,
     filters: dict[str, str],
-    limit: Optional[int],
+    limit: int | None,
     *,
     single: bool,
 ) -> list[tuple[str, Path, int]]:
@@ -660,7 +660,7 @@ def export_add(
         typer.Option("--format", help="Format(s) to offer: xlsx, pdf, docx or all."),
     ] = "xlsx",
     rate_limit: Annotated[
-        Optional[str],
+        str | None,
         typer.Option("--rate-limit", help="Override the endpoint rate limit."),
     ] = None,
     force: Annotated[

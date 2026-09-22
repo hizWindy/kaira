@@ -1,6 +1,6 @@
 # Khaira
 
-[![Version](https://img.shields.io/badge/khaira-v0.2.4-blue)](https://pypi.org/project/khaira/)
+[![Version](https://img.shields.io/badge/khaira-v0.2.5-blue)](https://pypi.org/project/khaira/)
 [![License](https://img.shields.io/badge/License-MIT-green)](https://opensource.org/licenses/MIT)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue)](https://www.python.org/)
 

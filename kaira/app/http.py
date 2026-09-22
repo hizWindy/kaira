@@ -20,6 +20,8 @@ from fastapi import (
     status,
 )
 
+from kaira.app.rate_limit import Limiter, get_remote_address, limiter
+
 # First-class alias for APIRouter
 Router = APIRouter
 
@@ -45,4 +47,8 @@ __all__ = [
     "Cookie",
     "File",
     "Form",
+    # Rate limiting
+    "limiter",
+    "Limiter",
+    "get_remote_address",
 ]

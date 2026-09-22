@@ -11,7 +11,7 @@ class Email:
     def __init__(self, provider: str = "smtp") -> None:
         self.provider = provider
 
-    async def send(self, to: str | List[str], subject: str, body: str) -> bool:
+    async def send(self, to: str | list[str], subject: str, body: str) -> bool:
         return True
 
 
@@ -25,4 +25,4 @@ class SMS:
         return True
 
 
-__all__ = ["Email", "SMS"]
+__all__ = ["SMS", "Email"]

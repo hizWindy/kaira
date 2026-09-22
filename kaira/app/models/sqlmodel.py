@@ -10,7 +10,6 @@ try:
     class SQLModelBase(_SQLModel):
         """SQLModel base class for Kaira."""
 
-        pass
 
     Model = SQLModelBase
 except ImportError:

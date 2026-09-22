@@ -19,6 +19,7 @@ app = typer.Typer(help="API auditing and security checking commands.")
 def audit_routes() -> None:
     """List all project endpoints with full paths, auth, and rate-limit details."""
     from rich import box
+
     from kaira.core.theme import Theme, sym
 
     config = get_config()
@@ -151,7 +152,7 @@ def audit_routes() -> None:
                             handler = fn_m.group(1)
                             # Check auth in function signature
                             sig_lines = []
-                            for so in range(0, 12):
+                            for so in range(12):
                                 if idx + off + so < len(lines):
                                     sig_lines.append(lines[idx + off + so])
                                     if "):" in lines[idx + off + so]:

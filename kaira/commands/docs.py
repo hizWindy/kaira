@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated
 
 import typer
 
+from kaira.commands.ux_helpers import print_next_steps
 from kaira.config import get_config
 from kaira.console import console
 from kaira.core.docs_render import (
@@ -18,7 +19,6 @@ from kaira.core.parser import camel_to_snake
 from kaira.core.route_discovery import discover_routes
 from kaira.core.theme import Theme, sym
 from kaira.core.ui import data_table, spinner_context, with_summary
-from kaira.commands.ux_helpers import print_next_steps
 
 app = typer.Typer(help="Documentation generation and status management.")
 
@@ -62,18 +62,18 @@ def _fallback_doc(group, fields: list[dict]) -> str:
 @with_summary
 def docs_generate(
     target: Annotated[
-        Optional[str],
+        str | None,
         typer.Argument(help="Section/model to document (e.g. User). Omit for all."),
     ] = None,
     only: Annotated[
-        Optional[str],
+        str | None,
         typer.Option(
             "--only",
             help="Generate only specified document: models | endpoints | erd | config | readme",
         ),
     ] = None,
     output: Annotated[
-        Optional[Path],
+        Path | None,
         typer.Option(
             "--output",
             "-o",
@@ -304,7 +304,7 @@ def docs_generate(
 @app.command("status")
 def docs_status(
     output: Annotated[
-        Optional[Path],
+        Path | None,
         typer.Option(
             "--output",
             "-o",

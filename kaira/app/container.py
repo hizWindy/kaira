@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, Type, TypeVar
+from collections.abc import Callable
+from typing import Any, TypeVar
 
 T = TypeVar("T")
 
@@ -11,8 +12,8 @@ class Container:
     """Lightweight service registry and dependency container."""
 
     def __init__(self) -> None:
-        self._singletons: Dict[Any, Any] = {}
-        self._factories: Dict[Any, Callable[[], Any]] = {}
+        self._singletons: dict[Any, Any] = {}
+        self._factories: dict[Any, Callable[[], Any]] = {}
 
     def register_singleton(self, key: Any, instance: Any) -> None:
         """Register a pre-instantiated singleton instance."""
@@ -22,7 +23,7 @@ class Container:
         """Register a factory callable to construct instances on-demand."""
         self._factories[key] = factory
 
-    def resolve(self, key: Type[T] | str) -> T:
+    def resolve(self, key: type[T] | str) -> T:
         """Resolve a service by class type or string identifier."""
         if key in self._singletons:
             return self._singletons[key]  # type: ignore[no-any-return]

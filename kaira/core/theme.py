@@ -11,7 +11,8 @@ import itertools
 import os
 import shutil
 import sys
-from typing import TYPE_CHECKING, Sequence
+from collections.abc import Sequence
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:  # pragma: no cover - typing-only import
     from rich.text import Text
@@ -341,7 +342,7 @@ def _resolve_banner_tier_uncached(surface: str) -> int:
 # --- Renderable output -----------------------------------------------------
 
 
-def _composite_row(cells: Sequence["str | None"]) -> "Text":
+def _composite_row(cells: Sequence[str | None]) -> Text:
     """Render one composite grid row as a styled Rich ``Text``.
 
     Consecutive cells sharing a layer collapse into one span, so a single row
@@ -361,7 +362,7 @@ def _composite_row(cells: Sequence["str | None"]) -> "Text":
     return text
 
 
-def large_banner_lines(*, shadow: bool) -> list["Text"]:
+def large_banner_lines(*, shadow: bool) -> list[Text]:
     """Return the large lockup as styled lines, indented and ready to print.
 
     Args:
@@ -383,7 +384,7 @@ def large_banner_lines(*, shadow: bool) -> list["Text"]:
     return lines
 
 
-def large_banner_tagline() -> "Text":
+def large_banner_tagline() -> Text:
     """Return the indented, muted tagline shown under the large lockup."""
     from rich.text import Text
 
@@ -405,7 +406,7 @@ def _small_banner_rule_length(version_text: str) -> int:
     return width - cell_len(mark) - cell_len(version_text) - padding
 
 
-def _small_banner_text(version_text: str, rule: "Text | None") -> "Text":
+def _small_banner_text(version_text: str, rule: Text | None) -> Text:
     """Assemble the small lockup from an already-styled *rule*.
 
     Args:
@@ -430,7 +431,7 @@ def _small_banner_text(version_text: str, rule: "Text | None") -> "Text":
     return text
 
 
-def small_banner_line(version: str | None) -> "Text":
+def small_banner_line(version: str | None) -> Text:
     """Return the small lockup: mark, rule, and optional right-aligned version.
 
     The rule fills whatever is left between mark and version, which is what
@@ -454,7 +455,7 @@ def small_banner_line(version: str | None) -> "Text":
     return _small_banner_text(version_text, rule)
 
 
-def small_banner_sweep(version: str | None) -> list["Text"]:
+def small_banner_sweep(version: str | None) -> list[Text]:
     """Return the frames of a highlight travelling once along the rule.
 
     Every frame is the still lockup with one run of the rule lifted to a

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import List, Optional
 
 from kaira.app.exceptions import UpgradeError
 from kaira.migrations.config_updater import ConfigUpdater
@@ -18,7 +17,7 @@ from kaira.migrations.verifier import MigrationVerifier
 class MigrationEngine:
     """Executes tier upgrades, feature additions, and microservice decompositions."""
 
-    def __init__(self, root: Optional[Path] = None) -> None:
+    def __init__(self, root: Path | None = None) -> None:
         self.root = root or Path.cwd()
         self.config_updater = ConfigUpdater(self.root)
         self.file_writer = FileWriter(self.root)
@@ -52,8 +51,8 @@ class MigrationEngine:
         self,
         target_tier: str,
         dry_run: bool = False,
-        features: Optional[List[str]] = None,
-    ) -> List[str]:
+        features: list[str] | None = None,
+    ) -> list[str]:
         """Execute project upgrade to target_tier with full rollback on error."""
         current_tier = self.get_current_tier()
         target = target_tier.lower()

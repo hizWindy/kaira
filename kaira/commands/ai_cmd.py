@@ -11,16 +11,16 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated
 
 import typer
 from jinja2 import Environment, FileSystemLoader
 from rich.panel import Panel
 
 from kaira.console import console
+from kaira.core.ai_introspect import introspect_service_file
 from kaira.core.detector import write_with_check
 from kaira.core.wiring import register_router
-from kaira.core.ai_introspect import introspect_service_file
 
 TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
 
@@ -268,7 +268,7 @@ def ai_skill(
         ),
     ],
     from_service: Annotated[
-        Optional[str],
+        str | None,
         typer.Option(
             "--from-service",
             "-s",
@@ -276,11 +276,11 @@ def ai_skill(
         ),
     ] = None,
     method: Annotated[
-        Optional[str],
+        str | None,
         typer.Option("--method", "-m", help="Specific method on the service to call"),
     ] = None,
     docstring: Annotated[
-        Optional[str],
+        str | None,
         typer.Option(
             "--docstring", "-d", help="Description of what the skill accomplishes"
         ),
@@ -365,7 +365,7 @@ def ai_agent(
         str, typer.Option("--role", "-r", help="Agent role or domain focus")
     ] = "Helpful Assistant",
     skills: Annotated[
-        Optional[str],
+        str | None,
         typer.Option("--skills", "-s", help="Comma-separated skill names to bind"),
     ] = None,
     model: Annotated[

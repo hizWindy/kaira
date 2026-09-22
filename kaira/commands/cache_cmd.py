@@ -8,15 +8,15 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated
 
 import typer
 from jinja2 import Environment, FileSystemLoader  # nosec B701
 from rich.panel import Panel
 from rich.table import Table
 
-from kaira.console import console
 from kaira.commands.ux_helpers import mask_credentials, typed_confirmation
+from kaira.console import console
 
 TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
 
@@ -205,7 +205,7 @@ def cache_add(
 
 @app.command("clear")
 def cache_clear(
-    route: Annotated[Optional[str], typer.Argument(help="Route path to clear")] = None,
+    route: Annotated[str | None, typer.Argument(help="Route path to clear")] = None,
     all_keys: Annotated[
         bool, typer.Option("--all", help="Clear ALL cached keys")
     ] = False,

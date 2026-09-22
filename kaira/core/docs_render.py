@@ -16,7 +16,6 @@ import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 from rich.panel import Panel
 from rich.prompt import Prompt
@@ -269,13 +268,13 @@ def _build_footer(doc_key: str, state_str: str) -> str:
     return f'\n\n<!-- kaira:docs doc="{doc_key}" fingerprint="{fp}" generated_at="{now}" -->\n'
 
 
-def _extract_fingerprint(file_content: str) -> Optional[str]:
+def _extract_fingerprint(file_content: str) -> str | None:
     """Read fingerprint from the footer comment of a generated Markdown file."""
     match = re.search(r'<!--\s*kaira:docs\s+.*?fingerprint="([a-f0-9]+)"', file_content)
     return match.group(1) if match else None
 
 
-def _extract_generated_at(file_content: str) -> Optional[str]:
+def _extract_generated_at(file_content: str) -> str | None:
     """Read generated_at from the footer comment of a generated Markdown file."""
     match = re.search(r'<!--\s*kaira:docs\s+.*?generated_at="([^"]+)"', file_content)
     return match.group(1) if match else None
@@ -417,8 +416,8 @@ def _render_single_model_section(model: dict, db_type: str = "sqlite") -> str:
 def render_models_doc(
     config: KairaConfig,
     root: Path,
-    target_model: Optional[str] = None,
-    existing_content: Optional[str] = None,
+    target_model: str | None = None,
+    existing_content: str | None = None,
 ) -> str:
     """Render `docs/models.md` for all models or surgically update one model."""
     models = _ensure_models_snapshot(config, root)
@@ -1072,8 +1071,8 @@ def render_root_readme_doc(config: KairaConfig, root: Path) -> str:
 def render_all_docs(
     config: KairaConfig,
     root: Path,
-    target_model: Optional[str] = None,
-    output_dir: Optional[Path] = None,
+    target_model: str | None = None,
+    output_dir: Path | None = None,
 ) -> dict[str, str]:
     """Render mapping of relative doc path -> content for the documentation surface."""
     out_dir = output_dir or (root / "docs")
@@ -1122,11 +1121,11 @@ class DocPlan:
 
 
 def build_docs_plan(
-    root: Optional[Path] = None,
-    config: Optional[KairaConfig] = None,
-    target_model: Optional[str] = None,
-    only: Optional[str] = None,
-    output_dir: Optional[Path] = None,
+    root: Path | None = None,
+    config: KairaConfig | None = None,
+    target_model: str | None = None,
+    only: str | None = None,
+    output_dir: Path | None = None,
 ) -> list[DocPlan]:
     """Compare on-disk docs against freshly rendered projections."""
     root = Path.cwd() if root is None else root
@@ -1210,7 +1209,7 @@ def build_docs_plan(
     return plans
 
 
-def is_docs_out_of_sync(root: Optional[Path] = None) -> bool:
+def is_docs_out_of_sync(root: Path | None = None) -> bool:
     """True when generated documentation exists and is out of sync with project state."""
     root = Path.cwd() if root is None else root
     docs_dir = root / "docs"
@@ -1323,8 +1322,8 @@ def apply_docs_plan(
 
 
 def get_docs_status(
-    root: Optional[Path] = None,
-    output_dir: Optional[Path] = None,
+    root: Path | None = None,
+    output_dir: Path | None = None,
 ) -> list[dict[str, str]]:
     """Return status records for all documentation files with full location and metadata."""
     root = Path.cwd() if root is None else root
@@ -1380,7 +1379,7 @@ def get_docs_status(
 # ---------------------------------------------------------------------------
 
 
-def maybe_autodocs(*, quiet: bool = False, root: Optional[Path] = None) -> bool:
+def maybe_autodocs(*, quiet: bool = False, root: Path | None = None) -> bool:
     """Prompt user to regenerate documentation after state-changing commands.
 
     Called by: generate model, sync model, add relation, auth add-guard, cache add.

@@ -19,7 +19,7 @@ if sys.platform == "win32":
         except Exception:
             pass
 
-from rich.console import Console  # noqa: E402 — must come after reconfigure
+from rich.console import Console
 
 console = Console(legacy_windows=False, safe_box=True)
 err_console = Console(legacy_windows=False, safe_box=True, stderr=True)

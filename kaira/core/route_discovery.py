@@ -26,7 +26,6 @@ import json
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
 
 HTTP_METHODS = ("get", "post", "put", "patch", "delete", "head", "options")
 
@@ -104,7 +103,7 @@ with open({out!r}, "w", encoding="utf-8") as fh:
 """
 
 
-def load_openapi_spec(project_root: Path) -> Optional[dict]:
+def load_openapi_spec(project_root: Path) -> dict | None:
     """Return the project's OpenAPI schema, or ``None`` if it cannot be built.
 
     Runs in the project's own interpreter so its dependencies resolve. The
@@ -131,7 +130,7 @@ def load_openapi_spec(project_root: Path) -> Optional[dict]:
             return None
 
 
-def _ref_name(schema: Optional[dict]) -> str:
+def _ref_name(schema: dict | None) -> str:
     """Extract a component name from a ``$ref``/array-of-``$ref`` schema node."""
     if not isinstance(schema, dict):
         return ""
@@ -188,7 +187,7 @@ def _endpoints_from_spec(spec: dict) -> list[Endpoint]:
 # ---------------------------------------------------------------------------
 
 
-def _literal(node: Optional[ast.expr]) -> Optional[object]:
+def _literal(node: ast.expr | None) -> object | None:
     """Best-effort literal evaluation; ``None`` for anything dynamic."""
     if node is None:
         return None
@@ -345,7 +344,7 @@ def _group_name(endpoint: Endpoint, fallback: str) -> str:
 def _group_endpoints(
     endpoints: list[Endpoint],
     model_names: set[str],
-    source_by_name: Optional[dict[str, str]] = None,
+    source_by_name: dict[str, str] | None = None,
 ) -> list[RouteGroup]:
     """Bucket endpoints into groups and mark which are model-backed."""
     source_by_name = source_by_name or {}
@@ -397,7 +396,7 @@ def _looks_like_version(segment: str) -> bool:
 
 def discover_routes(
     project_root: Path,
-    model_names: Optional[set[str]] = None,
+    model_names: set[str] | None = None,
     *,
     prefer_live: bool = True,
     api_prefix: str = "",

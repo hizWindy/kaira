@@ -112,7 +112,7 @@ def status_command() -> None:
     Shows: project/env info, DB connection, pending migrations,
     dev server status, model/route counts, auth status, last action.
     """
-    from kaira.config import find_config_path, KairaConfig
+    from kaira.config import KairaConfig, find_config_path
 
     config_path = find_config_path()
     if not config_path.exists():

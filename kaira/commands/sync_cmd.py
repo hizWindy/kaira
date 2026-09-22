@@ -23,10 +23,13 @@ from __future__ import annotations
 
 import ast
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated
 
 import typer
 
+from kaira.commands.seed_cmd import render_seed
+from kaira.commands.smart_errors import smart_error
+from kaira.commands.ux_helpers import require_project, typed_confirmation
 from kaira.config import (
     SERVER_MANAGED_FIELDS,
     SUPPORTED_FIELD_TYPES,
@@ -37,9 +40,9 @@ from kaira.config import (
     save_config,
 )
 from kaira.console import console
+from kaira.core.aliases import complete_model_name
 from kaira.core.detector import write_with_check
 from kaira.core.generator import generate_layer, resolve_output_path
-from kaira.commands.seed_cmd import render_seed
 from kaira.core.parser import (
     FieldDef,
     RelationDef,
@@ -53,9 +56,6 @@ from kaira.core.parser import (
 )
 from kaira.core.theme import Theme, sym
 from kaira.core.ui import panel, with_summary
-from kaira.commands.smart_errors import smart_error
-from kaira.commands.ux_helpers import require_project, typed_confirmation
-from kaira.core.aliases import complete_model_name
 
 app = typer.Typer(help="Synchronise model field changes across all layers.")
 
@@ -75,7 +75,7 @@ _DOCUMENT_DB_TYPES = {"mongodb", "atlas", "firebase", "firestore"}
 # ---------------------------------------------------------------------------
 
 
-def _mapped_inner_type(annotation: ast.expr) -> Optional[str]:
+def _mapped_inner_type(annotation: ast.expr) -> str | None:
     """Return the inner type of a ``Mapped[...]`` annotation, or ``None``.
 
     Example: ``Mapped[Optional[str]]`` or ``sqlalchemy.orm.Mapped[str]``.
@@ -95,7 +95,7 @@ def _mapped_inner_type(annotation: ast.expr) -> Optional[str]:
     return None
 
 
-def _is_relationship_or_fk(value: Optional[ast.expr]) -> bool:
+def _is_relationship_or_fk(value: ast.expr | None) -> bool:
     """Return True when a column assignment is a relationship or foreign key.
 
     These are managed by the relationship system, not plain user fields, so
@@ -118,7 +118,7 @@ def _is_relationship_or_fk(value: Optional[ast.expr]) -> bool:
     return False
 
 
-def _embedded_field_type(raw_type: str, embedded: set[str]) -> Optional[str]:
+def _embedded_field_type(raw_type: str, embedded: set[str]) -> str | None:
     """Return the canonical embedded type for *raw_type*, or ``None``.
 
     Recognises ``EmergencyContact``, ``Optional[EmergencyContact]`` and
@@ -141,9 +141,9 @@ def _embedded_field_type(raw_type: str, embedded: set[str]) -> Optional[str]:
 
 def _parse_model_fields(
     model_path: Path,
-    target_model_name: Optional[str] = None,
-    embedded: Optional[set[str]] = None,
-) -> Optional[list[FieldDef]]:
+    target_model_name: str | None = None,
+    embedded: set[str] | None = None,
+) -> list[FieldDef] | None:
     """Read user-defined fields back from a generated model file via AST.
 
     Handles SQLAlchemy ``Mapped[T]`` annotations, plain Beanie/Pydantic
@@ -157,7 +157,7 @@ def _parse_model_fields(
     except (OSError, SyntaxError):
         return None
 
-    target_node: Optional[ast.ClassDef] = None
+    target_node: ast.ClassDef | None = None
     if target_model_name:
         for node in ast.walk(tree):
             if isinstance(node, ast.ClassDef) and node.name == target_model_name:
@@ -186,7 +186,7 @@ def _parse_model_fields(
     fields: list[FieldDef] = []
     for stmt in target_node.body:
         name = ""
-        stmt_val: Optional[ast.expr] = None
+        stmt_val: ast.expr | None = None
 
         if isinstance(stmt, ast.AnnAssign) and isinstance(stmt.target, ast.Name):
             name = stmt.target.id
@@ -204,7 +204,7 @@ def _parse_model_fields(
         if _is_relationship_or_fk(stmt_val):
             continue
 
-        norm_type: Optional[str] = None
+        norm_type: str | None = None
         if isinstance(stmt, ast.AnnAssign):
             raw_type = _mapped_inner_type(stmt.annotation)
             if raw_type is None:
@@ -245,7 +245,7 @@ def _parse_model_fields(
 
 
 def _snapshot_fields(
-    entry: dict, embedded: Optional[set[str]] = None
+    entry: dict, embedded: set[str] | None = None
 ) -> list[FieldDef]:
     """Rebuild :class:`FieldDef` objects from a ``.kaira.json`` model entry.
 
@@ -286,14 +286,14 @@ def _merge_fields(base: list[FieldDef], extra: list[FieldDef]) -> list[FieldDef]
 @with_summary
 def sync_model(
     model_name: Annotated[
-        Optional[str],
+        str | None,
         typer.Argument(
             help="PascalCase model name to sync (omit with --all).",
             autocompletion=complete_model_name,
         ),
     ] = None,
     fields: Annotated[
-        Optional[str],
+        str | None,
         typer.Option(
             "--fields", "-f", help='Fields to add/update: "phone:str, verified:bool"'
         ),
@@ -357,7 +357,7 @@ def sync_model(
 
 def _sync_one(
     model_name: str,
-    fields: Optional[str],
+    fields: str | None,
     dry_run: bool,
     force: bool,
     config: KairaConfig,

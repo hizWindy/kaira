@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 
 class TracerManager:
     """Manages distributed tracing via OpenTelemetry when installed."""
 
     def __init__(
-        self, service_name: str = "kaira-service", endpoint: Optional[str] = None
+        self, service_name: str = "kaira-service", endpoint: str | None = None
     ) -> None:
         self.service_name = service_name
         self.endpoint = endpoint
@@ -52,4 +52,4 @@ class TracerManager:
 # First-class alias
 Tracer = TracerManager
 
-__all__ = ["TracerManager", "Tracer"]
+__all__ = ["Tracer", "TracerManager"]

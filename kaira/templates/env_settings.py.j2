@@ -1,6 +1,6 @@
 """Application settings management."""
 
-from typing import List, Optional
+from typing import Any, List, Optional
 import os
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -42,7 +42,7 @@ class Settings(BaseSettings):
 
     @field_validator("ALLOWED_ORIGINS", mode="before")
     @classmethod
-    def parse_allowed_origins(cls, v: object) -> list[str]:
+    def parse_allowed_origins(cls, v: Any) -> Any:
         """Accept both a JSON array string and a plain comma-separated string."""
         if isinstance(v, list):
             return v

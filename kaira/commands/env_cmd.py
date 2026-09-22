@@ -607,8 +607,8 @@ def env_prune(
     --------
     kaira env prune
     """
-    from kaira.core.theme import Theme, sym
     from kaira.commands.ux_helpers import typed_confirmation
+    from kaira.core.theme import Theme, sym
 
     config = get_config()
     output_root = Path.cwd() / config.output_dir

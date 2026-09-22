@@ -8,18 +8,31 @@ from importlib.machinery import ModuleSpec
 from types import ModuleType
 from typing import Any, List, Optional, Set
 
-__version__ = "0.2.4"
+__version__ = "0.2.5"
 __author__ = "Kaira"
 __description__ = "Automated FastAPI scaffolding CLI and framework runtime."
 __homepage__ = "https://github.com/hizWindy/kaira"
 
-from kaira.app.http import APIRouter, Depends, HTTPException, Router, status
+from kaira.app.database import AsyncSession, Base, Database, Session
+from kaira.app.http import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    Limiter,
+    Query,
+    Request,
+    Router,
+    get_remote_address,
+    limiter,
+    status,
+)
 from kaira.app.kaira_app import KairaApp
 from kaira.app.models import Document, Model
 from kaira.app.providers.base import KairaProvider
 from kaira.app.schemas import Schema
 from kaira.config import KairaConfig, get_config
 
+RateLimiter = limiter
 KhairaApp = KairaApp
 KhairaProvider = KairaProvider
 KhairaConfig = KairaConfig
@@ -46,7 +59,7 @@ class _ForwardLoader:
                 pass
         return None
 
-    def get_source(self, fullname: str) -> Optional[str]:
+    def get_source(self, fullname: str) -> str | None:
         file = getattr(self.mod, "__file__", None)
         if file:
             try:
@@ -61,7 +74,7 @@ class _ForwardLoader:
         return hasattr(self.mod, "__path__")
 
 
-_in_progress: Set[str] = set()
+_in_progress: set[str] = set()
 
 _APP_SUBMODULES = {
     "http",
@@ -96,8 +109,8 @@ class _KairaSubmoduleFinder:
     def find_spec(
         cls,
         fullname: str,
-        path: Optional[List[str]] = None,
-        target: Optional[ModuleType] = None,
+        path: list[str] | None = None,
+        target: ModuleType | None = None,
     ) -> Any:
         if fullname in _in_progress:
             return None
@@ -106,7 +119,7 @@ class _KairaSubmoduleFinder:
         if fullname in ("kaira.__main__", "khaira.__main__"):
             return None
 
-        candidates: List[str] = []
+        candidates: list[str] = []
         if fullname.startswith("khaira."):
             sub = fullname[len("khaira.") :]
             candidates = [f"kaira.app.{sub}", f"kaira.{sub}"]
@@ -127,7 +140,7 @@ class _KairaSubmoduleFinder:
                     mod = importlib.import_module(cand)
                     spec = ModuleSpec(
                         fullname,
-                        _ForwardLoader(mod),
+                        _ForwardLoader(mod),  # type: ignore[arg-type]
                         origin=getattr(mod, "__file__", None),
                     )
                     if hasattr(mod, "__path__"):
@@ -144,26 +157,36 @@ class _KairaSubmoduleFinder:
 if not any(
     getattr(f, "__name__", "") == "_KairaSubmoduleFinder" for f in sys.meta_path
 ):
-    sys.meta_path.insert(0, _KairaSubmoduleFinder)
+    sys.meta_path.insert(0, _KairaSubmoduleFinder)  # type: ignore[arg-type]
 
 __all__ = [
-    "__version__",
+    "APIRouter",
+    "AsyncSession",
+    "Base",
+    "Database",
+    "Depends",
+    "Document",
+    "HTTPException",
+    "KairaApp",
+    "KairaConfig",
+    "KairaProvider",
+    "KhairaApp",
+    "KhairaConfig",
+    "KhairaProvider",
+    "Limiter",
+    "Model",
+    "Query",
+    "RateLimiter",
+    "Request",
+    "Router",
+    "Schema",
+    "Session",
     "__author__",
     "__description__",
     "__homepage__",
-    "KairaApp",
-    "KhairaApp",
-    "KairaProvider",
-    "KhairaProvider",
-    "KairaConfig",
-    "KhairaConfig",
+    "__version__",
     "get_config",
-    "Model",
-    "Document",
-    "Schema",
-    "Router",
-    "APIRouter",
-    "Depends",
-    "HTTPException",
+    "get_remote_address",
+    "limiter",
     "status",
 ]

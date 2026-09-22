@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import os
-from typing import Any, Callable, Optional
+from collections.abc import Callable
+from typing import Any
 
 from kaira.app.providers.base import KairaProvider
 
@@ -13,7 +14,7 @@ class TaskProvider(KairaProvider):
 
     name: str = "task"
 
-    def __init__(self, broker_url: Optional[str] = None) -> None:
+    def __init__(self, broker_url: str | None = None) -> None:
         self.broker_url = broker_url or os.getenv(
             "CELERY_BROKER_URL", "redis://localhost:6379/1"
         )

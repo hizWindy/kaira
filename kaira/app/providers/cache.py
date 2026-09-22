@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import time
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 from kaira.app.providers.base import KairaProvider
 
@@ -14,10 +14,10 @@ class CacheProvider(KairaProvider):
 
     name: str = "cache"
 
-    def __init__(self, redis_url: Optional[str] = None) -> None:
+    def __init__(self, redis_url: str | None = None) -> None:
         self.redis_url = redis_url or os.getenv("REDIS_URL", "redis://localhost:6379/0")
         self._client: Any = None
-        self._memory_cache: Dict[str, Tuple[str, Optional[float]]] = {}
+        self._memory_cache: dict[str, tuple[str, float | None]] = {}
         self._use_redis = False
 
     def register(self, app: Any) -> None:
@@ -41,7 +41,7 @@ class CacheProvider(KairaProvider):
         if self._client and self._use_redis:
             await self._client.aclose()
 
-    async def get(self, key: str) -> Optional[str]:
+    async def get(self, key: str) -> str | None:
         """Retrieve a cached string value."""
         if self._use_redis and self._client:
             val = await self._client.get(key)
@@ -55,7 +55,7 @@ class CacheProvider(KairaProvider):
             del self._memory_cache[key]
         return None
 
-    async def set(self, key: str, value: str, expire: Optional[int] = 3600) -> None:
+    async def set(self, key: str, value: str, expire: int | None = 3600) -> None:
         """Set a cached key with an optional TTL in seconds."""
         if self._use_redis and self._client:
             await self._client.set(key, value, ex=expire)

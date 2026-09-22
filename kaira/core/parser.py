@@ -5,12 +5,11 @@ from __future__ import annotations
 import ast
 import re
 from dataclasses import dataclass
-from typing import Optional
 
 from kaira.config import (
     EMBEDDED_SQLALCHEMY_TYPE,
-    SQLALCHEMY_TYPE_MAP,
     PYTHON_TYPE_MAP,
+    SQLALCHEMY_TYPE_MAP,
 )
 
 # An embedded field's type is the name of another declared model, optionally
@@ -66,7 +65,7 @@ class FieldDef:
         return bool(self.embedded_model)
 
 
-def _embedded_target(raw_type: str) -> Optional[str]:
+def _embedded_target(raw_type: str) -> str | None:
     """Return the model name an embedded type refers to, or ``None``.
 
     Recognises the shape only — whether the name is a *registered* embedded
@@ -88,8 +87,8 @@ class RelationDef:
 
     relation_type: str  # "one-to-many", "many-to-one", "many-to-many"
     target: str  # Target model name (PascalCase)
-    cascade: Optional[str] = None
-    back_populates: Optional[str] = None
+    cascade: str | None = None
+    back_populates: str | None = None
 
     def __post_init__(self) -> None:
         if self.back_populates is None:
@@ -149,11 +148,10 @@ _OPTIONAL_RE = re.compile(r"^Optional\[(.+)\]$")
 _VALID_BASE_TYPES = {"str", "int", "float", "bool", "datetime"}
 
 
-def normalize_ast_type(raw_type: str) -> Optional[str]:
+def normalize_ast_type(raw_type: str) -> str | None:
     """Normalize raw type annotations (e.g. 'str | None', 'typing.Optional[int]') to canonical forms."""
     raw = raw_type.strip().strip('"').strip("'")
-    if raw.startswith("typing."):
-        raw = raw[7:]
+    raw = raw.removeprefix("typing.")
     raw = raw.replace("typing.", "")
 
     if " | None" in raw or "None | " in raw:
@@ -173,7 +171,7 @@ def normalize_ast_type(raw_type: str) -> Optional[str]:
     return None
 
 
-def infer_column_type(value: Optional[ast.expr]) -> Optional[str]:
+def infer_column_type(value: ast.expr | None) -> str | None:
     """Infer field type from Column(...) or mapped_column(...) AST call arguments."""
     if value is None or not isinstance(value, ast.Call):
         return None
@@ -238,7 +236,7 @@ def infer_column_type(value: Optional[ast.expr]) -> Optional[str]:
     return f"Optional[{base}]" if nullable else base
 
 
-def _normalize_type(raw: str, embedded: Optional[set[str]] = None) -> str:
+def _normalize_type(raw: str, embedded: set[str] | None = None) -> str:
     """Normalize a raw type string to a canonical form.
 
     *embedded* is the set of registered embedded model names. A type naming one
@@ -286,7 +284,7 @@ def _normalize_type(raw: str, embedded: Optional[set[str]] = None) -> str:
 
 
 def parse_fields(
-    fields_str: str, embedded: Optional[set[str]] = None
+    fields_str: str, embedded: set[str] | None = None
 ) -> list[FieldDef]:
     """Parse a fields string like 'name:str, age:int, email:Optional[str]'.
 
@@ -342,7 +340,7 @@ VALID_RELATION_TYPES = {"one-to-many", "many-to-one", "many-to-many"}
 def parse_relation(
     relation_type: str,
     target: str,
-    cascade: Optional[str] = None,
+    cascade: str | None = None,
 ) -> RelationDef:
     """Create a :class:`RelationDef` from raw CLI inputs."""
     if relation_type not in VALID_RELATION_TYPES:

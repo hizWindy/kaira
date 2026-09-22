@@ -2,15 +2,11 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 import os
 import stat
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # FallbackMode enum
@@ -83,8 +79,7 @@ class TestFallbackQueue:
             {"id": "uuid-2", "operation": "PATCH", "data": {"name": "Bob"}},
         ]
         with open(queue_file, "w") as f:
-            for e in entries:
-                f.write(json.dumps(e) + "\n")
+            f.writelines(json.dumps(e) + "\n" for e in entries)
 
         lines = queue_file.read_text().splitlines()
         assert len(lines) == 2

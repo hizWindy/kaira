@@ -15,7 +15,7 @@ except ImportError:
 
 try:
     from reportlab.lib.pagesizes import letter
-    from reportlab.platypus import SimpleDocTemplate, Paragraph
+    from reportlab.platypus import Paragraph, SimpleDocTemplate
 
     _HAS_REPORTLAB = True
 except ImportError:
@@ -26,7 +26,7 @@ class Export:
     """Export dataset to XLSX, PDF, or CSV format."""
 
     @staticmethod
-    def to_csv(data: List[dict[str, Any]]) -> str:
+    def to_csv(data: list[dict[str, Any]]) -> str:
         """Export data to CSV format."""
         if not data:
             return ""
@@ -37,7 +37,7 @@ class Export:
         return output.getvalue()
 
     @staticmethod
-    def to_xlsx(data: List[dict[str, Any]], filename: str = "export.xlsx") -> str:
+    def to_xlsx(data: list[dict[str, Any]], filename: str = "export.xlsx") -> str:
         """Export data to XLSX format."""
         if not _HAS_OPENPYXL:
             raise RuntimeError(
@@ -55,14 +55,14 @@ class Export:
         return filename
 
     @staticmethod
-    def to_pdf(data: List[dict[str, Any]], filename: str = "export.pdf") -> str:
+    def to_pdf(data: list[dict[str, Any]], filename: str = "export.pdf") -> str:
         """Export data to PDF format."""
         if not _HAS_REPORTLAB:
             raise RuntimeError(
                 "reportlab is not installed. Install with 'pip install reportlab'"
             )
         doc = SimpleDocTemplate(filename, pagesize=letter)
-        elements: List[Any] = []
+        elements: list[Any] = []
         if data:
             headers = list(data[0].keys())
             elements.append(Paragraph(" | ".join(headers), doc.style))

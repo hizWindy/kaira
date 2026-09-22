@@ -27,9 +27,10 @@ tested without a terminal.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any
 
 # ---------------------------------------------------------------------------
 # Base image pinning
@@ -60,7 +61,7 @@ class InvalidPythonVersion(ValueError):
     """Raised when a requested Python version cannot be resolved to a tag."""
 
 
-def resolve_python_version(value: Optional[str]) -> str:
+def resolve_python_version(value: str | None) -> str:
     """Return a full ``X.Y.Z`` base-image version for *value*.
 
     Accepts a supported minor version (``"3.12"`` → the pinned patch) or an
@@ -245,9 +246,9 @@ def slugify_project_name(name: str) -> str:
 
 
 def resolve_state(
-    root: Optional[Path] = None,
+    root: Path | None = None,
     *,
-    python_version: Optional[str] = None,
+    python_version: str | None = None,
 ) -> ProjectState:
     """Build the :class:`ProjectState` for the project rooted at *root*.
 
@@ -312,17 +313,17 @@ def _service(
     env: str,
     image: str = "",
     build: bool = False,
-    command: Optional[list[str]] = None,
-    environment: Optional[dict[str, str]] = None,
-    env_file: Optional[str] = None,
-    ports: Optional[list[str]] = None,
-    volumes: Optional[list[str]] = None,
-    depends_on: Optional[dict[str, str]] = None,
-    healthcheck: Optional[dict[str, Any]] = None,
+    command: list[str] | None = None,
+    environment: dict[str, str] | None = None,
+    env_file: str | None = None,
+    ports: list[str] | None = None,
+    volumes: list[str] | None = None,
+    depends_on: dict[str, str] | None = None,
+    healthcheck: dict[str, Any] | None = None,
     read_only: bool = False,
-    tmpfs: Optional[list[str]] = None,
-    deploy: Optional[dict[str, str]] = None,
-    volume_names: Optional[list[str]] = None,
+    tmpfs: list[str] | None = None,
+    deploy: dict[str, str] | None = None,
+    volume_names: list[str] | None = None,
     comment: str = "",
 ) -> dict[str, Any]:
     """Assemble one compose service block in the shape the macro renders.
@@ -370,7 +371,7 @@ def build_app(state: ProjectState, env: str) -> list[dict[str, Any]]:
         depends["search"] = "service_healthy"
 
     volumes: list[str] = []
-    command: Optional[list[str]] = None
+    command: list[str] | None = None
     if env == DEV:
         # Bind-mount for live reload.  The anonymous volume on .venv stops a
         # host virtualenv from shadowing the container's installed packages.

@@ -5,12 +5,11 @@ from __future__ import annotations
 import datetime
 import json
 from pathlib import Path
-from typing import Optional
+from typing import Annotated
 
 import typer
 from rich.panel import Panel
 from rich.table import Table
-from typing import Annotated
 
 from kaira.console import console
 
@@ -20,7 +19,7 @@ _HISTORY_DIR = ".kaira"
 _HISTORY_FILE = "history.jsonl"
 
 
-def _load_history(since: Optional[datetime.datetime] = None) -> list[dict]:
+def _load_history(since: datetime.datetime | None = None) -> list[dict]:
     """Load history records from .kaira/history.jsonl.
 
     Args:
@@ -85,7 +84,7 @@ def recap_command(
         limit: Cap on number of records shown.
     """
     now = datetime.datetime.utcnow()
-    since: Optional[datetime.datetime] = None
+    since: datetime.datetime | None = None
 
     if today:
         since = now.replace(hour=0, minute=0, second=0, microsecond=0)

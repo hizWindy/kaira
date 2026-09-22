@@ -5,14 +5,14 @@ from __future__ import annotations
 import asyncio
 import importlib.util
 import sys
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
 
 from fastapi import FastAPI
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from kaira.config import KairaConfig, get_config
 from kaira.app.exceptions import KairaError
 from kaira.app.lifecycle import LifecycleManager
 from kaira.app.middleware.cors import create_cors_middleware
@@ -20,7 +20,7 @@ from kaira.app.middleware.layer_guard import LayerGuardMiddleware
 from kaira.app.middleware.rate_limit import RateLimitMiddleware
 from kaira.app.middleware.security_headers import SecurityHeadersMiddleware
 from kaira.app.providers.base import KairaProvider
-
+from kaira.config import KairaConfig, get_config
 
 NON_RELATIONAL_DB_TYPES = {"mongodb", "atlas", "firebase", "firestore"}
 
@@ -37,15 +37,15 @@ class KairaApp(FastAPI):
 
     def __init__(
         self,
-        project_name: Optional[str] = None,
+        project_name: str | None = None,
         config_path: str = ".kaira.json",
         tier: str = "standard",
         auto_register: bool = True,
         enforce_layers: bool = True,
-        providers: Optional[List[str]] = None,
-        routers_dir: Optional[Path] = None,
-        models_dir: Optional[Path] = None,
-        lifespan: Optional[Any] = None,
+        providers: list[str] | None = None,
+        routers_dir: Path | None = None,
+        models_dir: Path | None = None,
+        lifespan: Any | None = None,
         **kwargs: Any,
     ) -> None:
         cfg = self._load_project_config(config_path)
@@ -65,9 +65,9 @@ class KairaApp(FastAPI):
         kwargs.setdefault("title", self.project_name.replace("-", " ").title())
         kwargs.setdefault("version", getattr(cfg, "kaira_version", "0.2.0"))
 
-        self.providers: List[KairaProvider] = []
-        self._registered_routers: List[Any] = []
-        self._registered_models: List[Any] = []
+        self.providers: list[KairaProvider] = []
+        self._registered_routers: list[Any] = []
+        self._registered_models: list[Any] = []
         self._lazy_registered: bool = False
         self._registration_lock: asyncio.Lock = asyncio.Lock()
         self._lifecycle: LifecycleManager = LifecycleManager()
@@ -252,7 +252,6 @@ class KairaApp(FastAPI):
 
     def _setup_lazy_registration(self) -> None:
         """Retained for compatibility. Eager registration in __init__ is now default."""
-        pass
 
     def _register_routers(self) -> None:
         """Scan project routers directory and register any found APIRouters."""
@@ -298,7 +297,7 @@ class KairaApp(FastAPI):
                 continue
             self._import_module_attr(m_file, None)
 
-    def _import_module_attr(self, file_path: Path, attr_name: Optional[str]) -> Any:
+    def _import_module_attr(self, file_path: Path, attr_name: str | None) -> Any:
         """Dynamically load module from file and optionally return an attribute."""
         cwd = Path.cwd()
         cwd_str = str(cwd)
@@ -367,20 +366,47 @@ class KairaApp(FastAPI):
     def run(
         self, dev: bool = True, host: str = "0.0.0.0", port: int = 8000, **kwargs: Any
     ) -> None:
-        """Start the framework application server via Uvicorn."""
+        """Start the framework application server via Uvicorn with Khaira logging."""
+        import copy
+        import os
+
         import uvicorn
+        from uvicorn.config import LOGGING_CONFIG
 
         if not dev:
             self._run_migrations()
 
         target_app = "main:app" if Path("main.py").exists() else self
 
-        uvicorn_kwargs: Dict[str, Any] = {
+        log_config = copy.deepcopy(LOGGING_CONFIG)
+        log_level = os.environ.get("KAIRA_LOG_LEVEL", "INFO").upper()
+
+        if "formatters" in log_config:
+            if "default" in log_config["formatters"]:
+                log_config["formatters"]["default"]["fmt"] = "%(asctime)s  %(levelprefix)s %(message)s"
+                log_config["formatters"]["default"]["datefmt"] = "%H:%M:%S"
+            if "access" in log_config["formatters"]:
+                log_config["formatters"]["access"]["fmt"] = '%(asctime)s  %(levelprefix)s %(client_addr)s - "%(request_line)s" %(status_code)s'
+                log_config["formatters"]["access"]["datefmt"] = "%H:%M:%S"
+
+        if "loggers" in log_config:
+            if "uvicorn" in log_config["loggers"]:
+                log_config["loggers"]["uvicorn"]["level"] = log_level
+            if "uvicorn.error" in log_config["loggers"]:
+                log_config["loggers"]["uvicorn.error"]["level"] = log_level
+            if "uvicorn.access" in log_config["loggers"]:
+                log_config["loggers"]["uvicorn.access"]["level"] = log_level
+
+        uvicorn_kwargs: dict[str, Any] = {
             "app": target_app,
             "host": host,
             "port": port,
             "reload": dev,
+            "log_config": log_config,
         }
+        if os.environ.get("KAIRA_ACCESS_LOG") == "1":
+            uvicorn_kwargs["access_log"] = True
+
         if dev and target_app == "main:app":
             uvicorn_kwargs["reload_includes"] = [
                 "*.py",

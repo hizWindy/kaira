@@ -36,7 +36,7 @@ import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 # ---------------------------------------------------------------------------
 # Reserved namespace and routes
@@ -326,7 +326,7 @@ def detect_json_logs(root: Path) -> bool:
         return False
 
 
-def resolve_state(root: Optional[Path] = None) -> MonitorState:
+def resolve_state(root: Path | None = None) -> MonitorState:
     """Build the :class:`MonitorState` for the project rooted at *root*.
 
     Explicit ``.kaira.json`` flags win; filesystem detection fills the gaps so a
@@ -399,15 +399,15 @@ def build_context(state: MonitorState) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-def snapshot_dir(root: Optional[Path] = None) -> Path:
+def snapshot_dir(root: Path | None = None) -> Path:
     """Return the snapshot directory for the project rooted at *root*."""
     root = Path.cwd() if root is None else root
     return root / SNAPSHOT_DIR
 
 
 def save_snapshot(
-    payload: dict[str, Any], root: Optional[Path] = None
-) -> Optional[Path]:
+    payload: dict[str, Any], root: Path | None = None
+) -> Path | None:
     """Persist one metrics *payload* for later comparison.
 
     Snapshots are the only thing this phase writes to disk at runtime, and they
@@ -436,7 +436,7 @@ def save_snapshot(
     return path
 
 
-def list_snapshots(root: Optional[Path] = None) -> list[Path]:
+def list_snapshots(root: Path | None = None) -> list[Path]:
     """Return every stored snapshot, oldest first."""
     directory = snapshot_dir(root)
     if not directory.is_dir():
@@ -462,7 +462,7 @@ _RELATIVE_SINCE = {
 }
 
 
-def parse_since(value: str) -> Optional[datetime]:
+def parse_since(value: str) -> datetime | None:
     """Resolve a ``--since`` value to an aware UTC datetime.
 
     Accepts the words in :data:`_RELATIVE_SINCE` (``yesterday``, ``week``, …) or
@@ -486,7 +486,7 @@ def parse_since(value: str) -> Optional[datetime]:
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
 
 
-def snapshot_time(path: Path) -> Optional[datetime]:
+def snapshot_time(path: Path) -> datetime | None:
     """Return the capture instant encoded in a snapshot filename."""
     try:
         return datetime.strptime(path.stem, "%Y%m%dT%H%M%SZ").replace(
@@ -497,8 +497,8 @@ def snapshot_time(path: Path) -> Optional[datetime]:
 
 
 def find_snapshot_pair(
-    since: str, root: Optional[Path] = None
-) -> tuple[Optional[Path], Optional[Path]]:
+    since: str, root: Path | None = None
+) -> tuple[Path | None, Path | None]:
     """Return ``(baseline, latest)`` snapshots for a ``--since`` value.
 
     The baseline is the newest snapshot taken at or before the resolved instant,

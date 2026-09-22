@@ -4,9 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from unittest.mock import patch
 
-import pytest
 from click.testing import CliRunner
 from typer.main import get_command
 

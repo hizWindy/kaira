@@ -6,38 +6,37 @@ import json
 import shutil
 import subprocess
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated
 
 import typer
 from rich.panel import Panel
 
-from kaira.console import console
 from kaira.commands.ux_helpers import print_next_steps
-
 from kaira.config import (
     TIER_LAYERS,
-    get_config,
-    save_config,
-    register_model,
-    register_embedded_model,
     embedded_model_names,
+    get_config,
+    register_embedded_model,
+    register_model,
+    save_config,
+)
+from kaira.console import console
+from kaira.core.aliases import complete_model_name
+from kaira.core.detector import write_with_check
+from kaira.core.generator import (
+    TEMPLATES_DIR,
+    generate_embedded_model,
+    generate_layer,
+    resolve_output_path,
 )
 from kaira.core.parser import (
+    FieldDef,
+    RelationDef,
+    camel_to_snake,
     parse_fields,
     parse_relations_from_json,
     validate_model_name,
-    camel_to_snake,
-    FieldDef,
-    RelationDef,
 )
-from kaira.core.generator import (
-    generate_layer,
-    generate_embedded_model,
-    resolve_output_path,
-    TEMPLATES_DIR,
-)
-from kaira.core.detector import write_with_check
-from kaira.core.aliases import complete_model_name
 
 
 def _ensure_message_schema(config, base: Path) -> None:
@@ -158,7 +157,7 @@ def generate_embedded(
         str, typer.Argument(help="PascalCase embedded type name, e.g. EmergencyContact")
     ],
     fields: Annotated[
-        Optional[str],
+        str | None,
         typer.Option("--fields", "-f", help='Field definitions: "name:str, phone:str"'),
     ] = None,
     force: Annotated[
@@ -258,7 +257,7 @@ def generate_model(
         ),
     ],
     fields: Annotated[
-        Optional[str],
+        str | None,
         typer.Option("--fields", "-f", help='Field definitions: "name:str, age:int"'),
     ] = None,
     tier: Annotated[
@@ -396,7 +395,7 @@ def generate_model(
 
 
 def _single_layer_cmd(
-    layer: str, model_name: str, fields_str: Optional[str], force: bool
+    layer: str, model_name: str, fields_str: str | None, force: bool
 ) -> None:
     try:
         validate_model_name(model_name)
@@ -424,7 +423,7 @@ def _single_layer_cmd(
 @app.command("router")
 def generate_router(
     model_name: Annotated[str, typer.Argument(help="PascalCase model name")],
-    fields: Annotated[Optional[str], typer.Option("--fields", "-f")] = None,
+    fields: Annotated[str | None, typer.Option("--fields", "-f")] = None,
     force: Annotated[bool, typer.Option("--force")] = False,
 ) -> None:
     """Generate only the FastAPI router for MODEL_NAME."""
@@ -434,7 +433,7 @@ def generate_router(
 @app.command("service")
 def generate_service(
     model_name: Annotated[str, typer.Argument(help="PascalCase model name")],
-    fields: Annotated[Optional[str], typer.Option("--fields", "-f")] = None,
+    fields: Annotated[str | None, typer.Option("--fields", "-f")] = None,
     force: Annotated[bool, typer.Option("--force")] = False,
 ) -> None:
     """Generate only the service layer for MODEL_NAME."""
@@ -444,7 +443,7 @@ def generate_service(
 @app.command("schema")
 def generate_schema(
     model_name: Annotated[str, typer.Argument(help="PascalCase model name")],
-    fields: Annotated[Optional[str], typer.Option("--fields", "-f")] = None,
+    fields: Annotated[str | None, typer.Option("--fields", "-f")] = None,
     force: Annotated[bool, typer.Option("--force")] = False,
 ) -> None:
     """Generate only the Pydantic schemas for MODEL_NAME."""
@@ -454,7 +453,7 @@ def generate_schema(
 @app.command("repository")
 def generate_repository(
     model_name: Annotated[str, typer.Argument(help="PascalCase model name")],
-    fields: Annotated[Optional[str], typer.Option("--fields", "-f")] = None,
+    fields: Annotated[str | None, typer.Option("--fields", "-f")] = None,
     force: Annotated[bool, typer.Option("--force")] = False,
 ) -> None:
     """Generate only the repository layer for MODEL_NAME."""

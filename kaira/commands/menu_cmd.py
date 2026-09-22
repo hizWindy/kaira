@@ -11,10 +11,9 @@ from __future__ import annotations
 
 import subprocess
 import sys
-from typing import Optional
+from typing import Annotated
 
 import typer
-from typing import Annotated
 
 from kaira.console import console
 from kaira.core.theme import Theme, sym
@@ -531,7 +530,7 @@ _COMMANDS: list[tuple[str, str, str]] = [
 def menu_main(
     ctx: typer.Context,
     query: Annotated[
-        Optional[str],
+        str | None,
         typer.Argument(help="Optional pre-filter search query"),
     ] = None,
 ) -> None:
@@ -548,11 +547,12 @@ def menu_main(
     if ctx.invoked_subcommand is not None:
         return
 
-    from kaira.core import prompts
+    from rich.align import Align
     from rich.panel import Panel
     from rich.table import Table
-    from rich.align import Align
     from rich.text import Text
+
+    from kaira.core import prompts
 
     # Build fuzzy choices: "command name  —  description"
     choices = [

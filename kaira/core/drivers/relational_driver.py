@@ -1,6 +1,7 @@
 """Relational (SQL) Engine Driver for PostgreSQL, MySQL, and SQLite."""
 
-from typing import Dict, Any
+from typing import Any
+
 from kaira.core.drivers.base import BaseEngineDriver
 
 
@@ -39,7 +40,7 @@ class RelationalEngineDriver(BaseEngineDriver):
         relation_type: str,
         cascade: str = "",
         embedded: bool = False,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Return SQLAlchemy relationship code snippets."""
         cascade_part = f', cascade="{cascade}"' if cascade else ""
 

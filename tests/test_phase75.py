@@ -27,16 +27,16 @@ from kaira.commands.project import (
     classify_install_error,
     install_packages,
 )
+from kaira.core import ui
 from kaira.core.progress import (
     MAX_VISIBLE_ROWS,
-    state_symbol,
     ProgressItem,
     ProgressPhase,
     ProgressRenderer,
     State,
     create_install_renderer,
+    state_symbol,
 )
-from kaira.core import ui
 from kaira.core.theme import GUTTER, RULE_WIDTH
 from kaira.main import app
 

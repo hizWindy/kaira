@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import List
 
 from kaira.app.exceptions import VerificationError
 
@@ -17,7 +16,7 @@ class MigrationVerifier:
 
     def check(self, expected_tier: str = "standard") -> bool:
         """Run all verification checks. Raises VerificationError on failure."""
-        errors: List[str] = []
+        errors: list[str] = []
 
         cfg_path = self.root / ".kaira.json"
         if not cfg_path.exists():

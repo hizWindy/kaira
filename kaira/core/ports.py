@@ -26,9 +26,10 @@ import os
 import socket
 import sys
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any
 
 DEFAULT_HOST = "127.0.0.1"
 """Host ``kaira run`` binds to unless told otherwise."""
@@ -168,7 +169,7 @@ def resolve_port(
     *,
     strict: bool = False,
     limit: int = SCAN_LIMIT,
-    probe: Optional[Callable[[str, int], bool]] = None,
+    probe: Callable[[str, int], bool] | None = None,
 ) -> PortResolution:
     """Return the first bindable port at or above *requested*.
 
@@ -210,12 +211,12 @@ def resolve_port(
 # ---------------------------------------------------------------------------
 
 
-def runtime_path(root: Optional[Path] = None) -> Path:
+def runtime_path(root: Path | None = None) -> Path:
     """Return the path of the runtime record for the project at *root*."""
     return (root or Path.cwd()) / ".kaira" / RUNTIME_FILE
 
 
-def record_server(host: str, port: int, root: Optional[Path] = None) -> None:
+def record_server(host: str, port: int, root: Path | None = None) -> None:
     """Note the address this run bound, for the client commands to find.
 
     Best-effort by design: a read-only or missing ``.kaira/`` must never stop a
@@ -240,7 +241,7 @@ def record_server(host: str, port: int, root: Optional[Path] = None) -> None:
         pass
 
 
-def clear_server(root: Optional[Path] = None) -> None:
+def clear_server(root: Path | None = None) -> None:
     """Delete the runtime record once *this* run's server has stopped.
 
     The pid is checked first.  Two servers can be started from one project —
@@ -262,7 +263,7 @@ def clear_server(root: Optional[Path] = None) -> None:
         pass
 
 
-def read_server(root: Optional[Path] = None) -> Optional[tuple[str, int]]:
+def read_server(root: Path | None = None) -> tuple[str, int] | None:
     """Return ``(host, port)`` of the server recorded for *root*, if live.
 
     The record is confirmed against the port before it is trusted: a crashed
@@ -283,7 +284,7 @@ def read_server(root: Optional[Path] = None) -> Optional[tuple[str, int]]:
 
 
 def resolve_base_url(
-    root: Optional[Path] = None, fallback_port: int = DEFAULT_PORT
+    root: Path | None = None, fallback_port: int = DEFAULT_PORT
 ) -> str:
     """Return the base URL of this project's dev server.
 

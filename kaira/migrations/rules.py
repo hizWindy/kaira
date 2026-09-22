@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Dict, List, Set
+VALID_TIERS: set[str] = {"simple", "standard", "enterprise"}
 
-VALID_TIERS: Set[str] = {"simple", "standard", "enterprise"}
-
-TIER_RANKS: Dict[str, int] = {
+TIER_RANKS: dict[str, int] = {
     "simple": 1,
     "standard": 2,
     "enterprise": 3,
@@ -22,9 +20,9 @@ def is_valid_upgrade(current_tier: str, target_tier: str) -> bool:
     return TIER_RANKS[t] > TIER_RANKS[c]
 
 
-def describe_upgrade(current_tier: str, target_tier: str) -> List[str]:
+def describe_upgrade(current_tier: str, target_tier: str) -> list[str]:
     """Describe actions taken when moving from current_tier to target_tier."""
-    actions: List[str] = []
+    actions: list[str] = []
     if current_tier == "simple" and target_tier in ("standard", "enterprise"):
         actions.extend(
             [

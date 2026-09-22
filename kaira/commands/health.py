@@ -204,8 +204,9 @@ def health_command() -> None:
 
     # Print a beautiful Table with SIMPLE_HEAD box style
     from rich import box
-    from kaira.core.theme import Theme
     from rich.table import Table
+
+    from kaira.core.theme import Theme
 
     table = Table(box=box.SIMPLE_HEAD, border_style=Theme.PRIMARY, show_header=True)
     table.add_column("Aspect", style=f"bold {Theme.PRIMARY}", width=18)
@@ -219,8 +220,8 @@ def health_command() -> None:
     console.print()
 
     # Print score panels side-by-side
-    from rich.columns import Columns
     from rich.align import Align
+    from rich.columns import Columns
 
     sec_color = (
         "green"

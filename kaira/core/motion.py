@@ -27,7 +27,8 @@ from __future__ import annotations
 
 import os
 import time
-from typing import Any, Callable, Optional, Sequence
+from collections.abc import Callable, Sequence
+from typing import Any
 
 from rich.console import RenderableType
 from rich.live import Live
@@ -155,7 +156,7 @@ def reveal(
     lines: Sequence[RenderableType],
     *,
     budget: float = REVEAL_BUDGET_S,
-    printer: Optional[Callable[[RenderableType], Any]] = None,
+    printer: Callable[[RenderableType], Any] | None = None,
 ) -> None:
     """Print *lines* top to bottom, cascading when motion is enabled.
 

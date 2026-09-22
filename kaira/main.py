@@ -5,70 +5,59 @@ Entry point registered as: kaira = "kaira.main:app"
 
 from __future__ import annotations
 
-from typing import Annotated, Any, Optional
+from typing import Annotated, Any
 
 import typer
+from typer.core import TyperGroup
 
 from kaira import __version__
-from kaira.console import console
-
-# ── Import command apps ───────────────────────────────────────────────────────
-from kaira.commands.generate import app as generate_app
-from kaira.commands.relation import app as add_app
-from kaira.commands.migrate import app as migrate_app
-from kaira.commands.list_cmd import app as list_app
-from kaira.commands.docs import app as docs_app
-from kaira.commands.config_cmd import app as config_app
-from kaira.commands.auth_cmd import app as auth_app
-from kaira.commands.test_cmd import app as test_app
-from kaira.commands.env_cmd import app as env_app
-from kaira.commands.docker_cmd import app as docker_app
-from kaira.commands.seed_cmd import app as seed_app
-from kaira.commands.version_cmd import app as version_app
-from kaira.commands.websocket_cmd import app as websocket_app
-from kaira.commands.ci_cmd import app as ci_app
-from kaira.commands.audit_cmd import app as audit_app
-from kaira.commands.guide_cmd import app as guide_app
-
-# ── Phase 4 command apps ──────────────────────────────────────────────────────
-from kaira.commands.status_cmd import app as status_app
-from kaira.commands.recap_cmd import app as recap_app
-from kaira.commands.db_cmd import app as db_app
-from kaira.commands.deps_cmd import app as deps_app
-from kaira.commands.quality_cmd import app as quality_app
-from kaira.commands.cache_cmd import app as cache_app
-from kaira.commands.task_cmd import app as task_app
-from kaira.commands.integrate_cmd import app as integrate_app
-from kaira.commands.api_cmd import app as api_cmd_app
-from kaira.commands.profile_cmd import app as profile_app
-from kaira.commands.loadtest_cmd import app as loadtest_app
-from kaira.commands.deploy_cmd import app as deploy_app
-from kaira.commands.middleware_cmd import app as middleware_app
-from kaira.commands.event_cmd import app as event_app
-from kaira.commands.notify_cmd import app as notify_app
-from kaira.commands.flags_cmd import app as flags_app
-from kaira.commands.health_endpoint_cmd import app as health_endpoint_app
-from kaira.commands.run_cmd import app as run_app
-
-# ── Phase 5 command apps ──────────────────────────────────────────────────────
-from kaira.commands.menu_cmd import app as menu_app
-from kaira.commands.cloud_cmd import app as cloud_app  # noqa: F401 — registered below
-
-# ── Phase 5.5 command apps ────────────────────────────────────────────────────
-from kaira.commands.sync_cmd import app as sync_app
-
-# ── Phase 7 command apps ──────────────────────────────────────────────────────
-from kaira.commands.doc_migrate_cmd import app as doc_migrate_app
-from kaira.commands.export_cmd import app as export_app
-
-# ── Phase 7.5 command apps ───────────────────────────────────────────────────
-from kaira.commands.commands_cmd import app as commands_app
-
-# ── Monitoring phase command apps ────────────────────────────────────────────
-from kaira.commands.monitor_cmd import app as monitor_app
 
 # ── AI phase command apps ───────────────────────────────────────────────────
 from kaira.commands.ai_cmd import app as ai_app
+from kaira.commands.api_cmd import app as api_cmd_app
+from kaira.commands.audit_cmd import app as audit_app
+from kaira.commands.auth_cmd import app as auth_app
+from kaira.commands.cache_cmd import app as cache_app
+from kaira.commands.check import check_command
+from kaira.commands.ci_cmd import app as ci_app
+from kaira.commands.cloud_cmd import app as cloud_app
+
+# ── Phase 7.5 command apps ───────────────────────────────────────────────────
+from kaira.commands.commands_cmd import app as commands_app
+from kaira.commands.config_cmd import app as config_app
+from kaira.commands.db_cmd import app as db_app
+from kaira.commands.deploy_cmd import app as deploy_app
+from kaira.commands.deps_cmd import app as deps_app
+from kaira.commands.diff import diff_command
+
+# ── Phase 7 command apps ──────────────────────────────────────────────────────
+from kaira.commands.doc_migrate_cmd import app as doc_migrate_app
+from kaira.commands.docker_cmd import app as docker_app
+from kaira.commands.docs import app as docs_app
+from kaira.commands.env_cmd import app as env_app
+from kaira.commands.event_cmd import app as event_app
+from kaira.commands.export_cmd import app as export_app
+from kaira.commands.flags_cmd import app as flags_app
+
+# ── Import command apps ───────────────────────────────────────────────────────
+from kaira.commands.generate import app as generate_app
+from kaira.commands.guide_cmd import app as guide_app
+from kaira.commands.health import health_command
+from kaira.commands.health_endpoint_cmd import app as health_endpoint_app
+from kaira.commands.info import info_command
+from kaira.commands.integrate_cmd import app as integrate_app
+from kaira.commands.list_cmd import app as list_app
+from kaira.commands.loadtest_cmd import app as loadtest_app
+
+# ── Phase 5 command apps ──────────────────────────────────────────────────────
+from kaira.commands.menu_cmd import app as menu_app
+from kaira.commands.middleware_cmd import app as middleware_app
+from kaira.commands.migrate import app as migrate_app
+
+# ── Monitoring phase command apps ────────────────────────────────────────────
+from kaira.commands.monitor_cmd import app as monitor_app
+from kaira.commands.notify_cmd import app as notify_app
+from kaira.commands.profile_cmd import app as profile_app
 
 # ── Import standalone command functions ───────────────────────────────────────
 from kaira.commands.project import (
@@ -77,13 +66,22 @@ from kaira.commands.project import (
     microservice_split_command,
     upgrade_command,
 )
-from kaira.commands.info import info_command
-from kaira.commands.check import check_command
-from kaira.commands.diff import diff_command
-from kaira.commands.health import health_command
+from kaira.commands.quality_cmd import app as quality_app
+from kaira.commands.recap_cmd import app as recap_app
+from kaira.commands.relation import app as add_app
+from kaira.commands.run_cmd import app as run_app
+from kaira.commands.seed_cmd import app as seed_app
 
+# ── Phase 4 command apps ──────────────────────────────────────────────────────
+from kaira.commands.status_cmd import app as status_app
 
-from typer.core import TyperGroup
+# ── Phase 5.5 command apps ────────────────────────────────────────────────────
+from kaira.commands.sync_cmd import app as sync_app
+from kaira.commands.task_cmd import app as task_app
+from kaira.commands.test_cmd import app as test_app
+from kaira.commands.version_cmd import app as version_app
+from kaira.commands.websocket_cmd import app as websocket_app
+from kaira.console import console
 
 
 class KairaTyperGroup(TyperGroup):
@@ -105,6 +103,7 @@ class KairaTyperGroup(TyperGroup):
     def parse_args(self, ctx: Any, args: Any) -> Any:
         """Resolve banner state and command aliases for this invocation, then parse."""
         import sys
+
         from kaira.commands.ux_helpers import append_history
         from kaira.core.aliases import ALIASES, tokens_to_args_dict
         from kaira.core.motion import reset_budget
@@ -291,29 +290,29 @@ app.add_typer(
 @app.command("init")
 def cmd_init(
     name: Annotated[
-        Optional[str],
+        str | None,
         typer.Argument(help="Name of the new project directory to create"),
     ] = None,
     db: Annotated[
-        Optional[str],
+        str | None,
         typer.Option("--db", help="Database type: postgresql, mysql, mongodb, sqlite"),
     ] = None,
     auth: Annotated[
-        Optional[str],
+        str | None,
         typer.Option("--auth", help="Auth type: jwt, oauth2, api-key, none"),
     ] = None,
     docker: Annotated[
-        Optional[bool],
+        bool | None,
         typer.Option(
             "--docker/--no-docker", help="Include Docker scaffolding config files"
         ),
     ] = None,
     ci: Annotated[
-        Optional[str],
+        str | None,
         typer.Option("--ci", help="CI/CD platform: github, gitlab, bitbucket, none"),
     ] = None,
     profile: Annotated[
-        Optional[str],
+        str | None,
         typer.Option(
             "--profile",
             help="Provisioning profile: solo (auto-create), standard (confirm), scale (never auto-create).",
@@ -332,19 +331,19 @@ def cmd_init(
         ),
     ] = "standard",
     db_user: Annotated[
-        Optional[str],
+        str | None,
         typer.Option("--db-user", help="Database username (PostgreSQL/MySQL)."),
     ] = None,
     db_password: Annotated[
-        Optional[str],
+        str | None,
         typer.Option("--db-password", help="Database password (PostgreSQL/MySQL)."),
     ] = None,
     db_host: Annotated[
-        Optional[str],
+        str | None,
         typer.Option("--db-host", help="Database host (default: localhost)."),
     ] = None,
     db_port: Annotated[
-        Optional[int],
+        int | None,
         typer.Option("--db-port", help="Database port (default: 5432 / 3306)."),
     ] = None,
 ) -> None:
@@ -391,7 +390,7 @@ def cmd_upgrade(
         typer.Argument(help="Target architectural tier: standard, enterprise"),
     ] = "standard",
     tier_flag: Annotated[
-        Optional[str],
+        str | None,
         typer.Option("--tier", "-t", help="Target architectural tier"),
     ] = None,
     dry_run: Annotated[
@@ -401,7 +400,7 @@ def cmd_upgrade(
         ),
     ] = False,
     add: Annotated[
-        Optional[list[str]],
+        list[str] | None,
         typer.Option("--add", help="Specific framework features to enable"),
     ] = None,
 ) -> None:
@@ -423,7 +422,7 @@ def cmd_microservice(
         ),
     ] = "",
     models: Annotated[
-        Optional[list[str]],
+        list[str] | None,
         typer.Option(
             "--models", "-m", help="List of model names to extract into the service"
         ),
@@ -463,11 +462,11 @@ def cmd_check() -> None:
 def cmd_diff(
     model_name: Annotated[str, typer.Argument(help="PascalCase model name to diff")],
     fields: Annotated[
-        Optional[str],
+        str | None,
         typer.Option("--fields", "-f", help="Field definitions to regenerate with"),
     ] = None,
     layer: Annotated[
-        Optional[str],
+        str | None,
         typer.Option("--layer", "-l", help="Limit diff to a specific layer"),
     ] = None,
 ) -> None:
@@ -535,7 +534,7 @@ def cmd_about() -> None:
 def main(
     ctx: typer.Context,
     version: Annotated[
-        Optional[bool],
+        bool | None,
         typer.Option(
             "--version",
             "-V",
@@ -545,7 +544,7 @@ def main(
         ),
     ] = None,
     quiet: Annotated[
-        Optional[bool],
+        bool | None,
         typer.Option(
             "--quiet", "-q", help="Suppress next-steps hints and informational panels"
         ),

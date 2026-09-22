@@ -3,17 +3,37 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated
 
 import typer
+from rich import box as rich_box
+from rich.panel import Panel
+from rich.table import Table
 
 from kaira.console import console
-from kaira.core.ports import DEFAULT_HOST, DEFAULT_PORT, PortUnavailableError, resolve_port
+from kaira.core.ports import (
+    DEFAULT_HOST,
+    DEFAULT_PORT,
+    PortResolution,
+    PortUnavailableError,
+    clear_server,
+    record_server,
+    resolve_port,
+)
 
 app = typer.Typer(help="Start the Kaira Framework runtime server.")
 
 
-def _db_banner_info(cwd: Path) -> Optional[tuple[str, str, str, bool]]:
+def _shift_note(resolution: PortResolution) -> str:
+    """Describe a port shift in the launch banner."""
+    return (
+        f"[bold]{resolution.port}[/bold]  "
+        f"[dim yellow]moved from {resolution.requested} — "
+        f"another server is on it[/dim yellow]"
+    )
+
+
+def _db_banner_info(cwd: Path) -> tuple[str, str, str, bool] | None:
     """Return ``(engine, name, mode, online)`` for the run banner, or ``None``.
 
     Reads the resolved values from ``.kaira.json`` (``db_type``/``db_name``/
@@ -103,6 +123,8 @@ def run_command(
         os.environ["KAIRA_SQL_ECHO"] = "1"
     if debug:
         os.environ["KAIRA_LOG_LEVEL"] = "DEBUG"
+    if access_log:
+        os.environ["KAIRA_ACCESS_LOG"] = "1"
 
     try:
         resolved = resolve_port(host=host, requested=port, strict=strict_port)
@@ -118,7 +140,7 @@ def run_command(
     # ── KairaApp Runtime ─────────────────────────────────────
     from kaira.app import KairaApp
     from kaira.config import get_config
-    from kaira.core.theme import Theme
+    from kaira.core.theme import Theme, sym
 
     cfg = get_config()
     app_instance = KairaApp(
@@ -127,9 +149,74 @@ def run_command(
         providers=getattr(cfg, "providers", ["cache", "auth"]),
     )
 
-    console.print(
-        f"[{Theme.PRIMARY}]Starting Khaira Framework runtime on {host}:{active_port}...[/{Theme.PRIMARY}]"
-    )
-    app_instance.run(dev=not prod, host=host, port=active_port)
-    return
+    mode = "production" if prod else "development"
+    mode_color = "yellow" if prod else "green"
+    entry_display = "main:app" if (cwd / "main.py").exists() else "KairaApp"
 
+    # ── Launch Dashboard Banner ──────────────────────────────
+    info_table = Table(box=rich_box.SIMPLE, show_header=False, padding=(0, 1))
+    info_table.add_column("", style="dim", width=14)
+    info_table.add_column("", style="bold")
+
+    info_table.add_row("Mode", f"[{mode_color}]{mode}[/{mode_color}]")
+    info_table.add_row("Runtime", f"[{Theme.PRIMARY}]Khaira Framework Runtime (KairaApp)[/{Theme.PRIMARY}]")
+    info_table.add_row("Entry", f"[white]{entry_display}[/white]")
+
+    db_info = _db_banner_info(cwd)
+    if db_info:
+        engine_name, db_name, db_mode, online = db_info
+        badge_style = Theme.SUCCESS if online else Theme.WARNING
+        badge_icon = sym("OK") if online else sym("WARN")
+        info_table.add_row(
+            "Database",
+            f"[white]{engine_name}[/white]  [dim]·[/dim]  [white]{db_name}[/white]  "
+            f"[dim]·[/dim]  [{badge_style}]{badge_icon} {db_mode}[/{badge_style}]",
+        )
+
+    if sql:
+        info_table.add_row("SQL echo", "[yellow]on[/yellow]")
+    info_table.add_row(
+        "Logs",
+        "[yellow]debug[/yellow]  [dim]per-layer traces, request ids[/dim]"
+        if debug
+        else "[white]info[/white]  [dim]one line per request — add --debug for detail[/dim]",
+    )
+    if resolved.shifted:
+        info_table.add_row("Port", _shift_note(resolved))
+    info_table.add_row("URL", f"[bold cyan]http://{host}:{active_port}[/bold cyan]")
+    info_table.add_row("Docs", f"[dim]http://{host}:{active_port}/docs[/dim]")
+    info_table.add_row("ReDoc", f"[dim]http://{host}:{active_port}/redoc[/dim]")
+    if not prod:
+        reload_label = "[green]on[/green]" if reload else "[dim]off[/dim]"
+        info_table.add_row("Hot-reload", reload_label)
+
+    console.print()
+    console.print(
+        Panel(
+            info_table,
+            title="[bold cyan]⚡ Khaira  —  Launching Framework Server[/bold cyan]",
+            border_style="cyan",
+            padding=(0, 2),
+        )
+    )
+    console.print("  [dim]Press [bold]Ctrl+C[/bold] to stop the server.[/dim]\n")
+
+    # ── Hand off to runtime process with lifecycle tracking ──
+    record_server(host, active_port, cwd)
+    try:
+        app_instance.run(dev=not prod, host=host, port=active_port)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        clear_server(cwd)
+
+    console.print()
+    console.print(
+        Panel(
+            "[bold]Server stopped.[/bold]  "
+            "[dim]Run [cyan]khaira run[/cyan] to start again.[/dim]",
+            border_style="bright_black",
+            padding=(0, 2),
+        )
+    )
+    return

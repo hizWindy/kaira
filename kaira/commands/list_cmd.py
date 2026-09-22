@@ -34,6 +34,7 @@ def list_models() -> None:
         return
 
     from rich import box
+
     from kaira.core.theme import Theme
 
     table = Table(
@@ -79,6 +80,7 @@ def list_routes() -> None:
     api_prefix = f"/api/{api_version}"
 
     from rich import box
+
     from kaira.core.theme import Theme
 
     table = Table(
@@ -168,7 +170,7 @@ def list_routes() -> None:
                         if idx + offset < len(lines):
                             if "def " in lines[idx + offset]:
                                 sig_lines = []
-                                for sig_offset in range(0, 10):
+                                for sig_offset in range(10):
                                     if idx + offset + sig_offset < len(lines):
                                         sig_lines.append(
                                             lines[idx + offset + sig_offset]

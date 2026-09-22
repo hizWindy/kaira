@@ -4,16 +4,15 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Optional
 
 
 class MainUpdater:
     """Updates main.py to use KairaApp instead of raw FastAPI."""
 
-    def __init__(self, root: Optional[Path] = None) -> None:
+    def __init__(self, root: Path | None = None) -> None:
         self.root = root or Path.cwd()
 
-    def find_main(self) -> Optional[Path]:
+    def find_main(self) -> Path | None:
         for candidate in ["main.py", "app/main.py", "src/main.py"]:
             p = self.root / candidate
             if p.exists():

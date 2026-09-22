@@ -994,11 +994,11 @@ class _FakeCursor:
         self.batch_sizes: list[int] = []
         self.limits: list[int] = []
 
-    def batch_size(self, size: int) -> "_FakeCursor":
+    def batch_size(self, size: int) -> _FakeCursor:
         self.batch_sizes.append(size)
         return self
 
-    def limit(self, count: int) -> "_FakeCursor":
+    def limit(self, count: int) -> _FakeCursor:
         self.limits.append(count)
         self._docs = self._docs[:count]
         return self

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated
 
 import typer
 from jinja2 import Environment, FileSystemLoader
@@ -143,7 +143,7 @@ def _generate_api_key(env: Environment, ctx: dict, auth_dir: Path, force: bool) 
 @app.command("register")
 def auth_register(
     auth_type: Annotated[
-        Optional[str],
+        str | None,
         typer.Option(
             "--type",
             help="Auth type to register: jwt or oauth2. Auto-detected when omitted.",

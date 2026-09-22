@@ -4,6 +4,23 @@ All notable changes to Kaira (formerly DevFlow) will be documented in this file.
 
 ---
 
+## v0.2.5 — Constructor Inversion of Control (IoC), Branded CLI Dashboard & Clean Scaffolding
+
+- **Constructor Inversion of Control (IoC)**:
+  - Repository layer injects database session via constructor (`db: AsyncSession = Depends(get_db)`).
+  - Service layer injects repository via constructor (`repo: <Model>Repository = Depends()`).
+  - Router layer injects service directly (`service: <Model>Service = Depends()`).
+  - Completely eliminated `get_db` and session imports from all generated routers.
+- **Branded CLI Experience & Logging**:
+  - Restored Rich dashboard panel in `khaira run` with database badge, documentation links, hot-reload status, and port shift notes.
+  - Formatted Uvicorn logs to match Khaira brand styling with `%H:%M:%S` timestamps and level badges.
+- **Template & Scaffolding Cleanup**:
+  - Removed redundant `rate_limit.py` from project root while exporting `limiter` from runtime (`khaira.http`).
+  - Added `@classmethod` to `parse_allowed_origins` validator in `config/settings.py` template to resolve static typing warnings.
+  - Hardened non-interactive init runs against hanging prompts.
+
+---
+
 ## v0.2.4 — Full Framework Runtime, Auto-Discovery & Interactive Wizard
 
 Transform Khaira into a unified, crash-free, production-grade FastAPI framework runtime with automated 5-layer pipelines, dynamic discovery, and real database provisioning.

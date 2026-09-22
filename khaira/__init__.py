@@ -6,7 +6,7 @@ import importlib
 import sys
 from importlib.machinery import ModuleSpec
 from types import ModuleType
-from typing import Any, List, Optional, Set
+from typing import Any
 
 import kaira
 
@@ -55,7 +55,7 @@ class _ForwardLoader:
                 pass
         return None
 
-    def get_source(self, fullname: str) -> Optional[str]:
+    def get_source(self, fullname: str) -> str | None:
         file = getattr(self.mod, "__file__", None)
         if file:
             try:
@@ -70,7 +70,7 @@ class _ForwardLoader:
         return hasattr(self.mod, "__path__")
 
 
-_in_progress: Set[str] = set()
+_in_progress: set[str] = set()
 
 
 class _KhairaModuleFinder:
@@ -80,8 +80,8 @@ class _KhairaModuleFinder:
     def find_spec(
         cls,
         fullname: str,
-        path: Optional[List[str]] = None,
-        target: Optional[ModuleType] = None,
+        path: list[str] | None = None,
+        target: ModuleType | None = None,
     ) -> Any:
         if fullname in _in_progress:
             return None
@@ -123,24 +123,24 @@ if not any(
     sys.meta_path.insert(0, _KhairaModuleFinder)
 
 __all__ = [
-    "__version__",
+    "APIRouter",
+    "Depends",
+    "Document",
+    "HTTPException",
+    "KairaApp",
+    "KairaConfig",
+    "KairaProvider",
+    "KhairaApp",
+    "KhairaConfig",
+    "KhairaProvider",
+    "Model",
+    "Router",
+    "Schema",
     "__author__",
     "__description__",
     "__homepage__",
-    "kaira",
-    "KairaApp",
-    "KhairaApp",
-    "KairaProvider",
-    "KhairaProvider",
-    "KairaConfig",
-    "KhairaConfig",
+    "__version__",
     "get_config",
-    "Model",
-    "Document",
-    "Schema",
-    "Router",
-    "APIRouter",
-    "Depends",
-    "HTTPException",
+    "kaira",
     "status",
 ]

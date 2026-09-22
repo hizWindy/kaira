@@ -1,6 +1,7 @@
 """Document (NoSQL) Engine Driver for MongoDB, Atlas, Firebase, etc."""
 
-from typing import Dict, Any
+from typing import Any
+
 from kaira.core.drivers.base import BaseEngineDriver
 
 
@@ -39,7 +40,7 @@ class DocumentEngineDriver(BaseEngineDriver):
         relation_type: str,
         cascade: str = "",
         embedded: bool = False,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Return Beanie ODM document link or embedded snippet."""
         if embedded:
             if relation_type in ("has-many", "many-to-many"):

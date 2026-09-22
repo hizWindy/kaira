@@ -10,7 +10,7 @@ from kaira.app.providers.cache import CacheProvider
 from kaira.app.providers.monitor import MonitorProvider
 from kaira.app.providers.task import TaskProvider
 
-_PROVIDER_REGISTRY: Dict[str, Type[KairaProvider]] = {
+_PROVIDER_REGISTRY: dict[str, type[KairaProvider]] = {
     "cache": CacheProvider,
     "auth": AuthProvider,
     "monitor": MonitorProvider,
@@ -28,15 +28,15 @@ def get_provider(name: str) -> KairaProvider:
     return provider_cls()
 
 
-def register_provider_type(name: str, provider_cls: Type[KairaProvider]) -> None:
+def register_provider_type(name: str, provider_cls: type[KairaProvider]) -> None:
     """Register a custom or third-party provider type."""
     _PROVIDER_REGISTRY[name.lower()] = provider_cls
 
 
 __all__ = [
-    "KairaProvider",
-    "CacheProvider",
     "AuthProvider",
+    "CacheProvider",
+    "KairaProvider",
     "MonitorProvider",
     "TaskProvider",
     "get_provider",

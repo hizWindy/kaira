@@ -7,10 +7,10 @@ from pathlib import Path
 import typer
 from rich.table import Table
 
-from kaira.config import get_config, TIER_LAYERS
+from kaira.config import TIER_LAYERS, get_config
 from kaira.console import console
-from kaira.core.generator import resolve_output_path
 from kaira.core.detector import file_exists
+from kaira.core.generator import resolve_output_path
 
 
 def check_command() -> None:
@@ -28,6 +28,7 @@ def check_command() -> None:
         raise typer.Exit(0)
 
     from rich import box
+
     from kaira.core.theme import Theme
 
     table = Table(

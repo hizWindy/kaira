@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated
 
 import typer
 from rich.panel import Panel
@@ -26,7 +26,7 @@ _CHANNEL_MAP: dict[str, str] = {
 }
 
 
-def _detect_provider(channel: str, output_root: Path) -> Optional[str]:
+def _detect_provider(channel: str, output_root: Path) -> str | None:
     """Detect whether a provider for the given channel is already integrated.
 
     Args:

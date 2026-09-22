@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import sys
-from typing import Any, Dict
+from typing import Any
 
 try:
     from loguru import logger as _loguru_logger
@@ -21,7 +21,7 @@ class JSONFormatter(logging.Formatter):
         import json
         from datetime import datetime, timezone
 
-        log_obj: Dict[str, Any] = {
+        log_obj: dict[str, Any] = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "level": record.levelname,
             "logger": record.name,
@@ -52,6 +52,6 @@ def setup_logging(json_format: bool = False, level: str = "INFO") -> logging.Log
 if _HAS_LOGURU:
     logger = _loguru_logger
 else:
-    logger = setup_logging()
+    logger = setup_logging()  # type: ignore[assignment]
 
-__all__ = ["logger", "setup_logging", "JSONFormatter"]
+__all__ = ["JSONFormatter", "logger", "setup_logging"]

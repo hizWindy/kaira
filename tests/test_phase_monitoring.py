@@ -477,7 +477,7 @@ def generated_core(tmp_path, monkeypatch):
     import importlib
 
     importlib.invalidate_caches()
-    import core.metrics as metrics  # type: ignore[import-not-found]
+    from core import metrics  # type: ignore[import-not-found]
 
     metrics.WINDOW.reset()
     yield metrics
@@ -639,10 +639,9 @@ class TestGeneratedMetrics:
 @pytest.fixture()
 def instrumented_app(generated_core):
     """A FastAPI app wired the way `monitor init` wires a generated project."""
+    import middleware.metrics as metrics_middleware  # type: ignore[import-not-found]
     from fastapi import FastAPI
     from starlette.testclient import TestClient
-
-    import middleware.metrics as metrics_middleware  # type: ignore[import-not-found]
 
     application = FastAPI()
 

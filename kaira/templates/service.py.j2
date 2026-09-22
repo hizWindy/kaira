@@ -8,7 +8,7 @@ Handles all operations between router and repository.
 from __future__ import annotations
 
 from typing import Optional, List
-from khaira.http import HTTPException, status
+from khaira.http import HTTPException, status, Depends
 from core.logger import logger
 
 {% if db_type == "mongodb" %}
@@ -18,7 +18,6 @@ from {{ repositories_dir }}.{{ snake_name }}_repository import {{ model_name }}R
 from {{ schemas_dir }}.{{ snake_name }}_schema import {{ model_name }}Create, {{ model_name }}Update, {{ model_name }}Response
 {% else %}
 # Relational DB async SQLAlchemy imports
-from khaira.database import AsyncSession
 from {{ models_dir }}.{{ snake_name }} import {{ model_name }}
 from {{ repositories_dir }}.{{ snake_name }}_repository import {{ model_name }}Repository
 from {{ schemas_dir }}.{{ snake_name }}_schema import {{ model_name }}Create, {{ model_name }}Update, {{ model_name }}Response
@@ -31,15 +30,8 @@ class {{ model_name }}Service:
     Coordinates transactional workflows and exception handling.
     """
 
-    {% if db_type == "mongodb" %}
-    def __init__(self, db=None) -> None:
-        self._repo = {{ model_name }}Repository()
-        self._db = db
-    {% else %}
-    def __init__(self, db: AsyncSession) -> None:
-        self._repo = {{ model_name }}Repository(db)
-        self._db = db
-    {% endif %}
+    def __init__(self, repo: {{ model_name }}Repository = Depends()) -> None:
+        self._repo = repo
 
     # ── Create ───────────────────────────────────────────────────────────────
 

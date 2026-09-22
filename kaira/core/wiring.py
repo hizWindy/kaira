@@ -5,7 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-
 ROUTER_MARKER = "# [ROUTER_REGISTRATION]"
 IMPORT_ANCHOR = "from rate_limit import limiter\n"
 

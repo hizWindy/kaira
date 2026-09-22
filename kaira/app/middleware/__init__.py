@@ -10,9 +10,9 @@ from kaira.app.middleware.security_headers import SecurityHeadersMiddleware
 
 __all__ = [
     "BaseHTTPMiddleware",
-    "create_cors_middleware",
-    "SecurityHeadersMiddleware",
-    "RateLimitMiddleware",
     "LayerGuardMiddleware",
+    "RateLimitMiddleware",
+    "SecurityHeadersMiddleware",
     "audit_layers",
+    "create_cors_middleware",
 ]

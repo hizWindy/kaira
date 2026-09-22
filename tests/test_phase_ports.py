@@ -18,7 +18,6 @@ from typer.testing import CliRunner
 
 from kaira.core import ports
 
-
 runner = CliRunner()
 
 

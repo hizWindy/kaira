@@ -26,7 +26,7 @@ from collections.abc import AsyncIterator
 from datetime import date, datetime, time
 from decimal import Decimal
 from pathlib import Path
-from typing import IO, Any, Literal, Optional, Union
+from typing import IO, Any, Literal, Union
 from uuid import UUID
 
 from .security import (  # noqa: F401 — re-exported as the public strip API
@@ -170,7 +170,7 @@ def _sheet_title(name: str) -> str:
 
 def resolve_fields(
     available: list[str],
-    fields: Optional[list[str]] = None,
+    fields: list[str] | None = None,
 ) -> list[str]:
     """Decide which columns an export may read.
 
@@ -209,7 +209,7 @@ def resolve_fields(
     return chosen
 
 
-def validate_filters(available: list[str], filters: Optional[dict[str, str]]) -> None:
+def validate_filters(available: list[str], filters: dict[str, str] | None) -> None:
     """Reject filter keys that are not real, exportable fields.
 
     The keys become column references in a SQLAlchemy expression, so an
@@ -297,9 +297,9 @@ async def _stream_relational(
     conn: Any,
     table: str,
     *,
-    filters: Optional[dict[str, str]],
-    fields: Optional[list[str]],
-    limit: Optional[int],
+    filters: dict[str, str] | None,
+    fields: list[str] | None,
+    limit: int | None,
     batch_size: int,
 ) -> AsyncIterator[dict[str, Any]]:
     """Yield rows from a SQL table in LIMIT/OFFSET batches.
@@ -360,9 +360,9 @@ async def _stream_relational(
 async def _stream_document(
     collection: Any,
     *,
-    filters: Optional[dict[str, str]],
-    fields: Optional[list[str]],
-    limit: Optional[int],
+    filters: dict[str, str] | None,
+    fields: list[str] | None,
+    limit: int | None,
     batch_size: int,
 ) -> AsyncIterator[dict[str, Any]]:
     """Yield documents from a Motor collection using server-side cursor batching.
@@ -376,7 +376,7 @@ async def _stream_document(
     if sensitive_keys:
         raise ExportError(f"Cannot filter on: {', '.join(sensitive_keys)}.")
 
-    projection: Optional[dict[str, int]] = None
+    projection: dict[str, int] | None = None
     if fields:
         allowed = safe_field_names(fields)
         if not allowed:
@@ -407,9 +407,9 @@ async def _stream_document(
 async def fetch_rows(
     model_name: str,
     *,
-    filters: Optional[dict[str, str]] = None,
-    fields: Optional[list[str]] = None,
-    limit: Optional[int] = None,
+    filters: dict[str, str] | None = None,
+    fields: list[str] | None = None,
+    limit: int | None = None,
     batch_size: int = DEFAULT_BATCH_SIZE,
     db: Any = None,
     collection: Any = None,

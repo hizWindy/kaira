@@ -20,10 +20,10 @@ All symbols and styles resolve through :mod:`kaira.core.theme`.
 from __future__ import annotations
 
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from enum import Enum
 from types import TracebackType
-from typing import Optional, Sequence
 
 from rich.console import Group
 from rich.live import Live
@@ -39,7 +39,6 @@ from kaira.core.theme import (
     sym,
     terminal_width,
 )
-
 
 # ---------------------------------------------------------------------------
 # State enum
@@ -259,7 +258,7 @@ class ProgressRenderer:
         self.unit = unit
         self.phases: list[ProgressPhase] = list(phases) if phases else []
         self._start = time.monotonic()
-        self._live: Optional[Live] = None
+        self._live: Live | None = None
         self._plain_emitted: set[int] = set()
 
     # -- Lifecycle -----------------------------------------------------------
@@ -499,7 +498,7 @@ class ProgressRenderer:
         lines.append(self._summary_line())
         return "\n".join(lines)
 
-    def render_failure(self, fix_hints: Optional[list[str]] = None) -> str:
+    def render_failure(self, fix_hints: list[str] | None = None) -> str:
         """Build the result block plus copy-pasteable fix commands.
 
         Args:
@@ -583,7 +582,7 @@ class ProgressRenderer:
 
     # -- High-level orchestration -------------------------------------------
 
-    def print_result(self, fix_hints: Optional[list[str]] = None) -> None:
+    def print_result(self, fix_hints: list[str] | None = None) -> None:
         """Print the final result, selecting interactive vs. plain output.
 
         In plain mode the per-phase lines were already emitted as they

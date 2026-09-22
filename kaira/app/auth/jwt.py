@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, Optional
+from typing import Any
 
 try:
     import jwt  # PyJWT
@@ -42,14 +42,14 @@ class JWTManager:
     """Manages JWT creation and validation."""
 
     def __init__(
-        self, secret_key: Optional[str] = None, algorithm: str = "HS256"
+        self, secret_key: str | None = None, algorithm: str = "HS256"
     ) -> None:
         self.secret_key = secret_key or os.getenv(
             "JWT_SECRET_KEY", "default-32-char-secret-key-kaira!"
         )
         self.algorithm = algorithm
 
-    def create_token(self, payload: Dict[str, Any], expires_minutes: int = 60) -> str:
+    def create_token(self, payload: dict[str, Any], expires_minutes: int = 60) -> str:
         """Encode a dictionary payload into a signed JWT."""
         to_encode = payload.copy()
         exp = datetime.now(timezone.utc) + timedelta(minutes=expires_minutes)
@@ -74,12 +74,12 @@ class JWTManager:
         payload_b64 = _b64url_encode(
             json.dumps(serializable, separators=(",", ":")).encode("utf-8")
         )
-        msg = f"{header_b64}.{payload_b64}".encode("utf-8")
+        msg = f"{header_b64}.{payload_b64}".encode()
         sig = hmac.new(self.secret_key.encode("utf-8"), msg, hashlib.sha256).digest()
         sig_b64 = _b64url_encode(sig)
         return f"{header_b64}.{payload_b64}.{sig_b64}"
 
-    def verify_token(self, token: str) -> Optional[Dict[str, Any]]:
+    def verify_token(self, token: str) -> dict[str, Any] | None:
         """Decode and verify a JWT, returning payload or None if invalid/expired."""
         try:
             if _HAS_PYJWT:
@@ -94,7 +94,7 @@ class JWTManager:
             if len(parts) != 3:
                 return None
             header_b64, payload_b64, sig_b64 = parts
-            msg = f"{header_b64}.{payload_b64}".encode("utf-8")
+            msg = f"{header_b64}.{payload_b64}".encode()
             expected_sig = hmac.new(
                 self.secret_key.encode("utf-8"), msg, hashlib.sha256
             ).digest()
@@ -115,4 +115,3 @@ class JWTManager:
 class JWT(JWTManager):
     """Framework-managed JWT alias."""
 
-    pass

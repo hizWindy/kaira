@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable, Type, TypeVar
+from collections.abc import Callable
+from typing import Any, TypeVar
+
 from fastapi import Depends
 
 T = TypeVar("T")
@@ -13,7 +15,7 @@ def inject(factory: Callable[..., T]) -> Any:
     return Depends(factory)
 
 
-def service_dependency(service_cls: Type[T]) -> Callable[..., T]:
+def service_dependency(service_cls: type[T]) -> Callable[..., T]:
     """Helper to construct a dependency provider for service layer classes."""
 
     def _provide_service(*args: Any, **kwargs: Any) -> T:

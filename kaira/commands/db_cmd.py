@@ -8,14 +8,14 @@ import re
 import shutil
 import subprocess
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated
 
 import typer
 from rich.panel import Panel
 from rich.table import Table
 
-from kaira.console import console
 from kaira.commands.ux_helpers import mask_credentials, typed_confirmation
+from kaira.console import console
 from kaira.core.drivers import get_engine_driver
 from kaira.core.stats import build_stats_table, collect_db_stats
 
@@ -91,7 +91,7 @@ def _get_database_url() -> str:
     return raw
 
 
-def _extract_setting_default(settings_file: Path, key: str) -> Optional[str]:
+def _extract_setting_default(settings_file: Path, key: str) -> str | None:
     """Extract a string-literal default for *key* from a settings module via AST.
 
     Parses ``config/settings.py`` with :mod:`ast` (never imports or executes it)
@@ -180,8 +180,8 @@ def _update_env_files(key: str, value: str) -> None:
 
 def _ensure_driver_installed(package_name: str) -> bool:
     """Auto-install missing database driver package into active Python environment."""
-    import sys
     import subprocess
+    import sys
 
     try:
         console.print(
@@ -234,12 +234,12 @@ def _test_connection_real(db_type: str, raw_url: str) -> tuple[bool, str]:
                 else ("aiomysql" if db_type == "mysql" else "aiosqlite")
             )
             try:
-                from sqlalchemy.ext.asyncio import create_async_engine
                 from sqlalchemy import text
+                from sqlalchemy.ext.asyncio import create_async_engine
             except (ImportError, ModuleNotFoundError):
                 _ensure_driver_installed("sqlalchemy")
-                from sqlalchemy.ext.asyncio import create_async_engine
                 from sqlalchemy import text
+                from sqlalchemy.ext.asyncio import create_async_engine
 
             try:
                 engine = create_async_engine(
@@ -347,7 +347,7 @@ def _password_prompt_factory(non_interactive: bool):
 
     from kaira.core import prompts
 
-    def _prompt(ctx) -> Optional[str]:  # type: ignore[no-untyped-def]
+    def _prompt(ctx) -> str | None:  # type: ignore[no-untyped-def]
         from kaira.core import ui
         from kaira.core.progress import State
 
@@ -377,7 +377,7 @@ def _password_prompt_factory(non_interactive: bool):
     return _prompt
 
 
-def _env_password(engine: str) -> Optional[str]:
+def _env_password(engine: str) -> str | None:
     """Return a password already present in the environment, if any (§1.3)."""
     if engine == "postgresql":
         return os.environ.get("PGPASSWORD") or None
@@ -391,16 +391,16 @@ def provision_and_persist(
     project_name: str,
     cwd: Path,
     *,
-    db_name: Optional[str] = None,
+    db_name: str | None = None,
     skip: bool = False,
     profile: str = "solo",
     assume_yes: bool = False,
     non_interactive: bool = False,
-    user: Optional[str] = None,
-    password: Optional[str] = None,
-    host: Optional[str] = None,
-    port: Optional[int] = None,
-) -> "object":
+    user: str | None = None,
+    password: str | None = None,
+    host: str | None = None,
+    port: int | None = None,
+) -> object:
     """Provision the database and persist the result to ``.env*`` and ``.kaira.json``.
 
     Shared by ``kaira db create`` and ``kaira init``. Announces every step,
@@ -489,7 +489,7 @@ def _confirm_create_factory():
     return _confirm
 
 
-def _persist_provision(cwd: Path, engine: str, result: "object") -> None:
+def _persist_provision(cwd: Path, engine: str, result: object) -> None:
     """Write DSN/mode to env files and update ``.kaira.json`` after provisioning."""
     from kaira.core.provisioner import ProvisionResult, offline_store_url
 
@@ -538,7 +538,7 @@ def _persist_provision(cwd: Path, engine: str, result: "object") -> None:
 @app.command("create")
 def db_create(
     name: Annotated[
-        Optional[str],
+        str | None,
         typer.Option("--name", help="Override the derived database name."),
     ] = None,
     skip: Annotated[
@@ -941,7 +941,7 @@ def db_shell() -> None:
 @app.command("backup")
 def db_backup(
     output: Annotated[
-        Optional[str],
+        str | None,
         typer.Option("--output", "-o", help="Output directory for backup file"),
     ] = None,
 ) -> None:

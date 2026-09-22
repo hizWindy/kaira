@@ -24,8 +24,8 @@ from __future__ import annotations
 import re
 import shutil
 import socket
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, Optional
 
 # ---------------------------------------------------------------------------
 # Engine metadata
@@ -221,7 +221,7 @@ def default_dsn(
     password: str = "",
     user: str = "",
     host: str = "localhost",
-    port: Optional[int] = None,
+    port: int | None = None,
 ) -> str:
     """Build a DSN for *engine* pointing at *db_name*.
 
@@ -283,7 +283,7 @@ class ProvisionResult:
     message: str
     created: bool = False
     password_entered: bool = False
-    manual_sql: Optional[str] = None
+    manual_sql: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -304,7 +304,7 @@ def detect_server(
     engine: str,
     *,
     host: str = "localhost",
-    which: Callable[[str], Optional[str]] = shutil.which,
+    which: Callable[[str], str | None] = shutil.which,
     port_probe: Callable[[str, int, float], bool] = _port_open,
 ) -> Detection:
     """Detect a local *server* for *engine*, reporting the winning signal.
@@ -393,7 +393,7 @@ async def _pg_create(dsn_admin: str, db_name: str) -> bool:
         # DDL identifiers, so the vetted literal is safe to inline.
         await conn.execute(f'CREATE DATABASE "{db_name}"')
         return True
-    except Exception as exc:  # noqa: BLE001 — mapped to a typed error below
+    except Exception as exc:
         msg = str(exc).lower()
         if "permission denied" in msg or "must be" in msg:
             raise PrivilegeError(str(exc)) from exc
@@ -412,7 +412,7 @@ async def _mysql_create(
         conn = await aiomysql.connect(
             host=host, port=port, user=user, password=password, connect_timeout=5
         )
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         if "access denied" in str(exc).lower():
             raise AuthError(str(exc)) from exc
         raise
@@ -425,7 +425,7 @@ async def _mysql_create(
                 raise ValueError(f"unsafe identifier: {db_name!r}")
             try:
                 await cur.execute(f"CREATE DATABASE `{db_name}`")
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 if "denied" in str(exc).lower():
                     raise PrivilegeError(str(exc)) from exc
                 raise
@@ -495,18 +495,18 @@ def provision_database(
     engine: str,
     project_name: str,
     *,
-    db_name: Optional[str] = None,
+    db_name: str | None = None,
     host: str = "localhost",
-    port: Optional[int] = None,
-    user: Optional[str] = None,
-    password: Optional[str] = None,
+    port: int | None = None,
+    user: str | None = None,
+    password: str | None = None,
     skip: bool = False,
-    env_password: Optional[str] = None,
-    prompt_password: Optional[Callable[[PasswordPromptContext], Optional[str]]] = None,
-    confirm_create: Optional[Callable[[str], bool]] = None,
+    env_password: str | None = None,
+    prompt_password: Callable[[PasswordPromptContext], str | None] | None = None,
+    confirm_create: Callable[[str], bool] | None = None,
     announce: Callable[[str], None] = lambda _m: None,
     detector: Callable[..., Detection] = detect_server,
-    creator: Optional[Callable[..., bool]] = None,
+    creator: Callable[..., bool] | None = None,
     max_attempts: int = 3,
 ) -> ProvisionResult:
     """Provision a database for *project_name*, falling back to offline SQLite.

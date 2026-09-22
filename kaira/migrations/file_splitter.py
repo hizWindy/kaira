@@ -4,16 +4,15 @@ from __future__ import annotations
 
 import ast
 from pathlib import Path
-from typing import Dict, List, Optional
 
 
 class FileSplitter:
     """Parses single-file model definitions and distributes code into 5-layer files."""
 
-    def __init__(self, root: Optional[Path] = None) -> None:
+    def __init__(self, root: Path | None = None) -> None:
         self.root = root or Path.cwd()
 
-    def split_combined_model(self, model_file: Path) -> Dict[str, str]:
+    def split_combined_model(self, model_file: Path) -> dict[str, str]:
         """Inspects a combined model file and extracts model, schema, and router code blocks."""
         if not model_file.exists():
             return {}
@@ -26,9 +25,9 @@ class FileSplitter:
         except Exception:
             return {"model": source}
 
-        model_nodes: List[ast.AST] = []
-        schema_nodes: List[ast.AST] = []
-        router_nodes: List[ast.AST] = []
+        model_nodes: list[ast.AST] = []
+        schema_nodes: list[ast.AST] = []
+        router_nodes: list[ast.AST] = []
 
         for node in tree.body:
             if isinstance(node, ast.ClassDef):

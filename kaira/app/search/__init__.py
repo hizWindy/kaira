@@ -11,7 +11,7 @@ class Search:
     def __init__(self, provider: str = "meilisearch") -> None:
         self.provider = provider
 
-    async def search(self, index: str, query: str, limit: int = 20) -> List[Any]:
+    async def search(self, index: str, query: str, limit: int = 20) -> list[Any]:
         return []
 
 

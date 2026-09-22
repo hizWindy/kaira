@@ -34,7 +34,17 @@ dist/
 scratch/
 plans/
 dist_test/
+*_PLAN*.md
+*.plan.md
 
 # Editor & Tooling worktrees
 .kilo/
 .claude/
+
+# Temporary test outputs & local test projects
+*_output*.txt
+test_*.txt
+myapp*/
+testapp*/
+
+

@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 CONFIG_FILE = ".kaira.json"
 
@@ -126,7 +126,7 @@ class KairaConfig:
     docker_python: str = ""  # Python version pinned in the Dockerfile
     # Framework Runtime fields (Phase 8)
     tier: str = "standard"  # simple | standard | enterprise
-    kaira_version: str = "0.2.4"
+    kaira_version: str = "0.2.5"
     enforce_layers: bool = True  # Enforce 5-layer pipeline separation
     auto_register: bool = True  # Auto-register routers and models
     providers: list[str] = field(default_factory=lambda: ["cache", "auth"])
@@ -136,7 +136,7 @@ class KairaConfig:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "KairaConfig":
+    def from_dict(cls, data: dict[str, Any]) -> KairaConfig:
         known = {k: v for k, v in data.items() if k in cls.__dataclass_fields__}
         return cls(**known)
 
@@ -209,7 +209,7 @@ def set_config_values(**values: Any) -> None:
         pass  # Never crash a command because a flag could not be recorded
 
 
-def get_output_root(config: Optional[KairaConfig] = None) -> Path:
+def get_output_root(config: KairaConfig | None = None) -> Path:
     """Return the root output directory."""
     if config is None:
         config = get_config()
@@ -241,7 +241,7 @@ def register_embedded_model(
     config.embedded_models.append({"name": model_name, "fields": fields})
 
 
-def embedded_model_names(config: Optional[KairaConfig] = None) -> set[str]:
+def embedded_model_names(config: KairaConfig | None = None) -> set[str]:
     """Return the set of registered embedded model names.
 
     Used by the field parser to decide whether a non-scalar type such as
@@ -260,10 +260,10 @@ def embedded_model_names(config: Optional[KairaConfig] = None) -> set[str]:
     }
 
 
-def get_venv_python(cwd: Optional[Path] = None) -> str:
+def get_venv_python(cwd: Path | None = None) -> str:
     """Find the virtual environment python in the current workspace or parent directories."""
-    import sys
     import os
+    import sys
 
     if cwd is None:
         cwd = Path.cwd()

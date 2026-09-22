@@ -21,11 +21,9 @@ import os
 import socket
 from pathlib import Path
 
-
 from kaira.console import console
 from kaira.core import motion, ui
 from kaira.core.progress import State
-
 
 # ---------------------------------------------------------------------------
 # Connection probe helpers
@@ -64,7 +62,7 @@ def _probe_db(db_type: str, timeout: float = 2.0) -> tuple[State, str]:
     try:
         with socket.create_connection((host, port), timeout=timeout):
             return State.DONE, f"connected · {host}:{port}"
-    except (OSError, socket.timeout):
+    except (TimeoutError, OSError):
         return State.FAILED, f"unreachable · {host}:{port}"
     except Exception:
         return State.PARTIAL, f"timed out · {host}:{port}"

@@ -5,13 +5,8 @@ deploy, middleware, event, notify, flags, health-endpoint.
 from __future__ import annotations
 
 import json
-import os
-from pathlib import Path
-from unittest.mock import MagicMock, patch
+
 from typer.testing import CliRunner
-
-import pytest
-
 
 # ---------------------------------------------------------------------------
 # Cache tests
@@ -141,7 +136,7 @@ def test_flags_enable_disable(tmp_path, monkeypatch):
             }
         )
     )
-    from kaira.commands.flags_cmd import app, _write_flags, _read_flags
+    from kaira.commands.flags_cmd import _read_flags, _write_flags, app
 
     runner = CliRunner()
 

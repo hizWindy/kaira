@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import List
-
 
 class RAG:
     """Kaira RAG pipeline abstraction wrapping embeddings and vector stores."""
@@ -17,14 +15,14 @@ class RAG:
         self.provider = provider
         self.vector_db = vector_db
         self.embedding_model = embedding_model
-        self._documents: List[str] = []
+        self._documents: list[str] = []
 
-    async def ingest(self, documents: List[str]) -> int:
+    async def ingest(self, documents: list[str]) -> int:
         """Ingest documents into the vector store."""
         self._documents.extend(documents)
         return len(documents)
 
-    async def query(self, question: str, limit: int = 5) -> List[str]:
+    async def query(self, question: str, limit: int = 5) -> list[str]:
         """Query relevant documents for a question."""
         # Simple lexical match fallback if vector DB is not active
         results = [

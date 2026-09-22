@@ -5,14 +5,13 @@ from __future__ import annotations
 import ast
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
 
 
 @dataclass
 class ParameterMeta:
     name: str
     type_annotation: str = "Any"
-    default_value: Optional[str] = None
+    default_value: str | None = None
 
 
 @dataclass
@@ -31,7 +30,7 @@ class ServiceMeta:
     methods: list[MethodMeta] = field(default_factory=list)
 
 
-def _format_annotation(node: Optional[ast.AST]) -> str:
+def _format_annotation(node: ast.AST | None) -> str:
     """Safely convert an AST annotation node to a Python type string."""
     if node is None:
         return "Any"

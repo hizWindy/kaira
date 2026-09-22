@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from pathlib import Path
+
 from click.testing import CliRunner
 from typer.main import get_command
 
+from kaira.core.ai_introspect import introspect_service_file
 from kaira.main import app
-from kaira.core.ai_introspect import introspect_service_file, introspect_all_services
 
 runner = CliRunner()
 cli = get_command(app)

@@ -3,16 +3,17 @@
 from __future__ import annotations
 
 import inspect
-from typing import Any, Callable, List
+from collections.abc import Callable
+from typing import Any
 
 
 class LifecycleManager:
     """Manages application lifecycle events (startup, shutdown, per-request)."""
 
     def __init__(self) -> None:
-        self._startup_hooks: List[Callable[[], Any]] = []
-        self._shutdown_hooks: List[Callable[[], Any]] = []
-        self._request_hooks: List[Callable[[Any], Any]] = []
+        self._startup_hooks: list[Callable[[], Any]] = []
+        self._shutdown_hooks: list[Callable[[], Any]] = []
+        self._request_hooks: list[Callable[[Any], Any]] = []
 
     def on_startup(self, func: Callable[[], Any]) -> Callable[[], Any]:
         """Register a hook to run on app startup."""

@@ -8,12 +8,11 @@ SQL inspector or a Mongo collection listing.
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from rich.table import Table
-
-from pathlib import Path
-from urllib.parse import urlsplit
 
 from kaira.config import get_config
 from kaira.core.drivers import get_engine_driver

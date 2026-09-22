@@ -9,7 +9,7 @@ from typing import Any, Optional
 class Fernet:
     """Symmetric encryption wrapper using cryptography Fernet when available."""
 
-    def __init__(self, key: Optional[bytes] = None) -> None:
+    def __init__(self, key: bytes | None = None) -> None:
         self._fernet: Any = None
         try:
             from cryptography.fernet import Fernet as _Fernet
@@ -33,6 +33,6 @@ class Fernet:
 Encryption = Fernet
 
 __all__ = [
-    "Fernet",
     "Encryption",
+    "Fernet",
 ]

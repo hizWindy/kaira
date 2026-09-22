@@ -18,7 +18,6 @@ from kaira import __version__
 from kaira.core import theme, ui
 from kaira.main import app
 
-
 runner = CliRunner()
 
 MARK = "⚡ kaira"

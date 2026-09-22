@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # core/theme.py
@@ -28,6 +26,7 @@ class TestIsInteractive:
             mock_stdout.isatty.return_value = False
             # re-import to pick up patch
             import importlib
+
             import kaira.core.theme as theme_mod
 
             importlib.reload(theme_mod)
@@ -51,6 +50,7 @@ class TestIsInteractive:
     def test_sym_returns_plain_in_non_interactive(self, monkeypatch):
         monkeypatch.setenv("NO_COLOR", "1")
         import importlib
+
         import kaira.core.theme as theme_mod
 
         importlib.reload(theme_mod)
@@ -60,6 +60,7 @@ class TestIsInteractive:
     def test_sym_returns_emoji_in_interactive(self, monkeypatch):
         monkeypatch.delenv("NO_COLOR", raising=False)
         import importlib
+
         import kaira.core.theme as theme_mod
 
         # Force TTY
@@ -119,6 +120,7 @@ class TestUIHelpers:
 
     def test_with_summary_propagates_typer_exit(self):
         import typer
+
         from kaira.core.ui import with_summary
 
         @with_summary
@@ -131,6 +133,7 @@ class TestUIHelpers:
     def test_spinner_context_non_tty_returns_plain(self, monkeypatch):
         monkeypatch.setenv("NO_COLOR", "1")
         import importlib
+
         import kaira.core.ui as ui_mod
 
         importlib.reload(ui_mod)
@@ -149,6 +152,7 @@ class TestPrompts:
     def test_select_raises_on_non_tty(self):
         """select() must raise typer.Exit when stdin is not a TTY."""
         import typer
+
         from kaira.core import prompts
 
         with patch("sys.stdin") as mock_stdin:
@@ -159,6 +163,7 @@ class TestPrompts:
 
     def test_confirm_raises_on_non_tty(self):
         import typer
+
         from kaira.core import prompts
 
         with patch("kaira.core.prompts.is_interactive", return_value=False):
@@ -167,6 +172,7 @@ class TestPrompts:
 
     def test_text_raises_on_non_tty(self):
         import typer
+
         from kaira.core import prompts
 
         with patch("kaira.core.prompts.is_interactive", return_value=False):
@@ -175,6 +181,7 @@ class TestPrompts:
 
     def test_secret_raises_on_non_tty(self):
         import typer
+
         from kaira.core import prompts
 
         with patch("kaira.core.prompts.is_interactive", return_value=False):
@@ -183,6 +190,7 @@ class TestPrompts:
 
     def test_fuzzy_select_raises_on_non_tty(self):
         import typer
+
         from kaira.core import prompts
 
         with patch("kaira.core.prompts.is_interactive", return_value=False):
@@ -199,6 +207,7 @@ class TestOnboarding:
     def test_config_exists_false_when_no_file(self, tmp_path, monkeypatch):
         monkeypatch.setattr(Path, "home", lambda: tmp_path)
         import importlib
+
         import kaira.commands.onboarding as ob
 
         importlib.reload(ob)
@@ -207,6 +216,7 @@ class TestOnboarding:
     def test_save_and_load_config(self, tmp_path, monkeypatch):
         monkeypatch.setattr(Path, "home", lambda: tmp_path)
         import importlib
+
         import kaira.commands.onboarding as ob
 
         importlib.reload(ob)
@@ -219,6 +229,7 @@ class TestOnboarding:
     def test_reset_config_removes_file(self, tmp_path, monkeypatch):
         monkeypatch.setattr(Path, "home", lambda: tmp_path)
         import importlib
+
         import kaira.commands.onboarding as ob
 
         importlib.reload(ob)
@@ -232,6 +243,7 @@ class TestOnboarding:
         """Onboarding should not show when stdin is not a TTY."""
         monkeypatch.setenv("NO_COLOR", "1")
         import importlib
+
         import kaira.commands.onboarding as ob
 
         importlib.reload(ob)
@@ -241,6 +253,7 @@ class TestOnboarding:
         """Onboarding skipped when user supplies any sub-command."""
         monkeypatch.setattr(Path, "home", lambda: tmp_path)
         import importlib
+
         import kaira.commands.onboarding as ob
 
         importlib.reload(ob)
@@ -251,6 +264,7 @@ class TestOnboarding:
     def test_should_show_false_when_config_exists(self, tmp_path, monkeypatch):
         monkeypatch.setattr(Path, "home", lambda: tmp_path)
         import importlib
+
         import kaira.commands.onboarding as ob
 
         importlib.reload(ob)

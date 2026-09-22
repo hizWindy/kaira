@@ -3,10 +3,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any
-
-if TYPE_CHECKING:
-    pass
+from typing import Any
 
 
 class KairaProvider(ABC):
@@ -17,12 +14,9 @@ class KairaProvider(ABC):
     @abstractmethod
     def register(self, app: Any) -> None:
         """Register provider state, routes, dependencies, or middleware with the app."""
-        pass
 
     async def startup(self) -> None:
         """Lifecycle hook executed on app startup (e.g. establishing pool connections)."""
-        pass
 
     async def shutdown(self) -> None:
         """Lifecycle hook executed on app shutdown (e.g. closing sockets/pools)."""
-        pass

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated
 
 import typer
 from rich.panel import Panel
@@ -36,7 +36,7 @@ def _base_url() -> str:
     return resolve_base_url()
 
 
-def _fetch_openapi(base_url: Optional[str] = None) -> Optional[dict]:
+def _fetch_openapi(base_url: str | None = None) -> dict | None:
     """Fetch and return the OpenAPI spec from the local dev server.
 
     Args:
@@ -187,7 +187,7 @@ def api_test(
     ],
     route: Annotated[str, typer.Argument(help="Route path, e.g. /users")],
     body: Annotated[
-        Optional[str], typer.Option("--body", help="JSON request body")
+        str | None, typer.Option("--body", help="JSON request body")
     ] = None,
 ) -> None:
     """Send a test request to the local dev server.

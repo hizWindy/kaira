@@ -2,23 +2,21 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
 import typer
 from rich.panel import Panel
 
-from kaira.console import console
 from kaira.commands.ux_helpers import suggest_did_you_mean
+from kaira.console import console
 
 
 def smart_error(
     *,
     context: str,
-    typed: Optional[str] = None,
-    candidates: Optional[list[str]] = None,
-    likely: Optional[str] = None,
-    fix_cmd: Optional[str] = None,
-    guide_topic: Optional[str] = None,
+    typed: str | None = None,
+    candidates: list[str] | None = None,
+    likely: str | None = None,
+    fix_cmd: str | None = None,
+    guide_topic: str | None = None,
     exit_code: int = 1,
 ) -> None:
     """Display a structured error message and exit.

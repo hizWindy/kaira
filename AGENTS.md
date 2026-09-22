@@ -16,18 +16,7 @@
 * **Templating Engine:** [Jinja2](https://jinja.palletsprojects.com/)
 * **Target Output Stack:** FastAPI, SQLAlchemy 2.0 (Async) / Beanie (MongoDB), Pydantic v2, Alembic, Docker, Pytest.
 * **Sibling project:** [db](https://github.com/hizWindy/db) — single-entry-point database management CLI
-
----
-
-## 1. Project Overview & Mission
-
-**Kaira** (formerly DevFlow) is an automated FastAPI scaffolding CLI that generates clean, production-grade 5-layer backend pipelines from simple model definitions, schemas, and CLI commands.
-
-* **Primary language:** Python 3.10+
-* **CLI Framework:** [Typer](https://typer.tiangolo.com/) + [Click](https://click.palletsprojects.com/)
-* **Terminal UI:** [Rich](https://rich.readthedocs.io/) + [InquirerPy](https://inquirerpy.readthedocs.io/)
-* **Templating Engine:** [Jinja2](https://jinja.palletsprojects.com/)
-* **Target Output Stack:** FastAPI, SQLAlchemy 2.0 (Async) / Beanie (MongoDB), Pydantic v2, Alembic, Docker, Pytest.
+* **Default runtime:** `KairaApp` (inherits `FastAPI`) — `kaira run` always starts `KairaApp` directly. No `--framework` flag.
 
 ---
 
@@ -37,11 +26,13 @@
 .
 ├── kaira/
 │   ├── main.py              # Application entrypoint & command registration
+│   ├── app/                 # KairaApp runtime (kaira_app.py, __init__.py)
 │   ├── config.py            # Global settings, KairaConfig, supported field types
 │   ├── console.py           # Rich console singleton
-│   ├── commands/            # Modular command handlers (50+ commands, e.g. project, generate, etc.)
-│   ├── core/                # Core engines: generator, theme, prompts, aliases, ports, ui
-│   └── templates/           # Jinja2 templates for all generated code (*.j2)
+│   ├── commands/            # Modular command handlers (project, generate, run, etc.)
+│   ├── core/                # Core engines: generator, theme, prompts, aliases, ports, ui, wiring
+│   ├── templates/           # Jinja2 templates for all generated code (*.j2)
+│   └── utils/               # Shared utilities
 ├── tests/                   # Pytest test suites (split by phase and feature)
 ├── .kaira.json              # Local configuration state
 ├── pyproject.toml           # Package metadata, dependencies, tool configs (ruff, mypy, pytest)
@@ -69,7 +60,7 @@ Kaira provides a curated set of high-frequency shortcuts (`g` for `generate mode
 - **Normalized history:** Invocations recorded in `.kaira/history.jsonl` and `kaira recap` must record the canonical long form.
 
 ### C. Terminal & Prompt Invariants
-- All interactive prompts must route through [kaira.core.prompts](file:///c:/Users/Asus/Documents/scripts/DevFlow/kaira/core/prompts.py).
+- All interactive prompts must route through `kaira.core.prompts`.
 - **Non-TTY degradation:** When running in CI, automated scripts, or subagents (`stdin` is not a TTY), interactive prompts **must not hang**. They must cleanly fail with a friendly message pointing to the exact flag to pass (e.g. `--yes`, `--db`, etc.).
 - Never leak sensitive arguments (passwords, tokens, keys) in echo resolution or command history.
 
@@ -77,6 +68,11 @@ Kaira provides a curated set of high-frequency shortcuts (`g` for `generate mode
 - Generated code strings must come from Jinja2 templates in `kaira/templates/`, rendered via `kaira.core.generator`.
 - Any new file introduced in `kaira init` must be added to `kaira/commands/project.py` under the appropriate step with `write_with_check()`.
 - Updates to model fields or relations must be reflected in `.kaira.json` via `KairaConfig`.
+
+### E. KairaApp Runtime
+- `kaira run` always starts `KairaApp` directly (no subprocess, no `--framework` flag).
+- `KairaApp` auto-discovers routers via providers — `splice_main()` in `monitor_cmd.py` and `wire.py` are no-ops.
+- SDK initialization (`init_monitoring()`) is handled by `KairaApp` lifecycle hooks, not manual string-splicing into `main.py`.
 
 ---
 

@@ -15,7 +15,7 @@ import shutil
 import subprocess  # nosec B404 - the whole point of this module is driving docker
 import time
 from pathlib import Path
-from typing import Annotated, Any, Optional
+from typing import Annotated, Any
 
 import typer
 
@@ -161,7 +161,7 @@ def docker_init(
         bool, typer.Option("--with-compose", help="Also scaffold docker-compose files.")
     ] = False,
     python: Annotated[
-        Optional[str],
+        str | None,
         typer.Option(
             "--python",
             help="Python version for the Dockerfile base image (3.10–3.13).",
@@ -577,7 +577,7 @@ def docker_up(
         bool, typer.Option("--build", help="Rebuild images before starting.")
     ] = False,
     detach: Annotated[
-        Optional[bool],
+        bool | None,
         typer.Option("--detach/--no-detach", help="Run in the background."),
     ] = None,
 ) -> None:
@@ -819,7 +819,7 @@ _SEVERITY_STYLE = {
 _FAILING_SEVERITIES = {"CRITICAL", "HIGH"}
 
 
-def _resolve_scanner() -> Optional[str]:
+def _resolve_scanner() -> str | None:
     """Return the first available scanner: docker scout, trivy, then grype."""
     if shutil.which("docker") and _run(["docker", "scout", "version"]).returncode == 0:
         return "scout"

@@ -7,7 +7,7 @@ or keyword search (--search).
 
 from __future__ import annotations
 
-from typing import Annotated, Optional
+from typing import Annotated
 
 import typer
 
@@ -71,7 +71,7 @@ _CATEGORY_MAP: dict[str, str] = {
 }
 
 
-def _clean_help(help_text: Optional[str]) -> str:
+def _clean_help(help_text: str | None) -> str:
     """Extract first line of docstring / help text, stripping rich markup tags."""
     if not help_text:
         return "(no description)"
@@ -132,7 +132,7 @@ def introspect_typer_app(
 def commands_main(
     ctx: typer.Context,
     group: Annotated[
-        Optional[str],
+        str | None,
         typer.Option(
             "--group",
             "-g",
@@ -140,7 +140,7 @@ def commands_main(
         ),
     ] = None,
     search: Annotated[
-        Optional[str],
+        str | None,
         typer.Option(
             "--search",
             "-s",

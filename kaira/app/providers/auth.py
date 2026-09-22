@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import os
-from typing import Any, Optional
+from typing import Any
 
-from kaira.app.providers.base import KairaProvider
 from kaira.app.auth.jwt import JWTManager
 from kaira.app.auth.password import hash_password, verify_password
+from kaira.app.providers.base import KairaProvider
 
 
 class AuthProvider(KairaProvider):
@@ -17,7 +17,7 @@ class AuthProvider(KairaProvider):
 
     def __init__(
         self,
-        secret_key: Optional[str] = None,
+        secret_key: str | None = None,
         algorithm: str = "HS256",
         access_token_expire_minutes: int = 60,
     ) -> None:
@@ -39,12 +39,12 @@ class AuthProvider(KairaProvider):
         return verify_password(password, hashed)
 
     def create_token(
-        self, payload: dict[str, Any], expires_minutes: Optional[int] = None
+        self, payload: dict[str, Any], expires_minutes: int | None = None
     ) -> str:
         return self.jwt.create_token(
             payload,
             expires_minutes=expires_minutes or self.access_token_expire_minutes,
         )
 
-    def verify_token(self, token: str) -> Optional[dict[str, Any]]:
+    def verify_token(self, token: str) -> dict[str, Any] | None:
         return self.jwt.verify_token(token)

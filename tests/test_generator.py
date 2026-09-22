@@ -5,13 +5,12 @@ from __future__ import annotations
 import pytest
 
 from kaira.config import KairaConfig
-from kaira.core.parser import parse_fields, parse_relation
 from kaira.core.generator import (
-    generate_layer,
     generate_all,
+    generate_layer,
     resolve_output_path,
 )
-
+from kaira.core.parser import parse_fields, parse_relation
 
 # ---------------------------------------------------------------------------
 # Fixtures

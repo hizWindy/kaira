@@ -8,7 +8,8 @@ from __future__ import annotations
 
 import functools
 import time
-from typing import Any, Callable, Sequence, TypeVar
+from collections.abc import Callable, Sequence
+from typing import Any, TypeVar
 
 from rich import box
 from rich.markup import escape
@@ -40,7 +41,6 @@ from kaira.core.theme import (
     sym,
     terminal_width,
 )
-
 
 F = TypeVar("F", bound=Callable[..., Any])
 
@@ -678,14 +678,14 @@ class _PlainStatus:
     def __init__(self, message: str) -> None:
         self._message = message
 
-    def __enter__(self) -> "_PlainStatus":
+    def __enter__(self) -> _PlainStatus:
         console.print(f"... {self._message}")
         return self
 
     def __exit__(self, *_: object) -> None:
         pass
 
-    def update(self, message: str) -> None:  # noqa: D102
+    def update(self, message: str) -> None:
         console.print(f"... {message}")
 
 

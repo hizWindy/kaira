@@ -10,7 +10,7 @@ import re
 import shutil
 import subprocess
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated
 
 import typer
 from jinja2 import Environment, FileSystemLoader
@@ -131,7 +131,7 @@ def task_generate(
         str, typer.Argument(help="PascalCase task class name, e.g. SendEmail")
     ],
     schedule: Annotated[
-        Optional[str],
+        str | None,
         typer.Option(
             "--schedule", help="Cron schedule, e.g. crontab(minute=0, hour='*')"
         ),

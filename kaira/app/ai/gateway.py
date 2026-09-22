@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from typing import Any, Optional
+from typing import Any
 
 
 class LLMGateway:
@@ -13,7 +13,7 @@ class LLMGateway:
         self,
         provider: str = "openai",
         model: str = "gpt-4o",
-        api_key: Optional[str] = None,
+        api_key: str | None = None,
     ) -> None:
         self.provider = provider.lower()
         self.model = model

@@ -418,7 +418,6 @@ class _Completed:
 @pytest.fixture
 def fake_server(tmp_path, monkeypatch):
     """Run `kaira run` against a stub project, capturing KairaApp.run."""
-    from kaira.commands import run_cmd
     from kaira.app import KairaApp
 
     monkeypatch.chdir(tmp_path)

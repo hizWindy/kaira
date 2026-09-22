@@ -183,7 +183,10 @@ def test_embedded_field_generates_nested_annotation_on_mongo(tmp_path, monkeypat
     assert "from models.emergency_contact import EmergencyContact" in schema_code
     assert "emergency_contact: EmergencyContact" in schema_code
     # Update is PATCH-style, so the nested field must be optional there.
-    assert "emergency_contact: Optional[EmergencyContact] = None" in schema_code
+    assert (
+        "emergency_contact: Optional[EmergencyContact] = None" in schema_code
+        or "emergency_contact: EmergencyContact | None = None" in schema_code
+    )
     compile(schema_code, "credential_schema.py", "exec")
 
 

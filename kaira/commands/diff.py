@@ -9,7 +9,6 @@ from __future__ import annotations
 import difflib
 import re
 from pathlib import Path
-from typing import Optional
 
 import typer
 from rich.panel import Panel
@@ -17,12 +16,11 @@ from rich.prompt import Prompt
 from rich.syntax import Syntax
 from rich.text import Text
 
-from kaira.config import get_config, TIER_LAYERS
+from kaira.config import TIER_LAYERS, get_config
 from kaira.console import console
-from kaira.core.parser import parse_fields, validate_model_name
-from kaira.core.generator import generate_layer, resolve_output_path
 from kaira.core.detector import file_exists
-
+from kaira.core.generator import generate_layer, resolve_output_path
+from kaira.core.parser import parse_fields, validate_model_name
 
 # ---------------------------------------------------------------------------
 # Annotation helpers
@@ -91,8 +89,8 @@ def _build_annotated_diff(existing: str, new: str, filename: str) -> str:
 
 def diff_command(
     model_name: str,
-    fields: Optional[str] = None,
-    layer: Optional[str] = None,
+    fields: str | None = None,
+    layer: str | None = None,
 ) -> None:
     """Show a Rich-highlighted diff between the existing file(s) and freshly generated content.
 

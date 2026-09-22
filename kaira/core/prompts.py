@@ -13,7 +13,8 @@ Phase 1–4 commands are NOT modified.
 from __future__ import annotations
 
 import sys
-from typing import Any, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 import typer
 

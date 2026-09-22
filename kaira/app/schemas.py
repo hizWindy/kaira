@@ -19,11 +19,11 @@ except ImportError:
 Schema = BaseModel
 
 __all__ = [
-    "Schema",
     "BaseModel",
-    "Field",
     "ConfigDict",
+    "EmailStr",
+    "Field",
+    "Schema",
     "field_validator",
     "model_validator",
-    "EmailStr",
 ]

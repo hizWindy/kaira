@@ -5,7 +5,7 @@ from __future__ import annotations
 from rich.panel import Panel
 from rich.table import Table
 
-from kaira.config import get_config, find_config_path
+from kaira.config import find_config_path, get_config
 from kaira.console import console
 
 
@@ -32,6 +32,7 @@ def info_command() -> None:
         return
 
     from rich import box
+
     from kaira.core.theme import Theme
 
     table = Table(

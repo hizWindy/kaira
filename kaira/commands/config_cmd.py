@@ -91,6 +91,7 @@ def config_show() -> None:
     config = get_config()
 
     from rich import box
+
     from kaira.core.theme import Theme
 
     table = Table(
@@ -131,7 +132,7 @@ def config_reset_onboarding() -> None:
     --------
     kaira config reset-onboarding
     """
-    from kaira.commands.onboarding import reset_config, _CONFIG_FILE
+    from kaira.commands.onboarding import _CONFIG_FILE, reset_config
 
     if _CONFIG_FILE.exists():
         reset_config()

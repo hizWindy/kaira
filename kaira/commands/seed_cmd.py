@@ -5,7 +5,7 @@ from __future__ import annotations
 import ast
 import os
 from pathlib import Path
-from typing import Annotated, Any, Optional
+from typing import Annotated, Any
 
 import typer
 from jinja2 import Environment, FileSystemLoader
@@ -13,20 +13,26 @@ from rich.panel import Panel
 from rich.prompt import Confirm
 
 from kaira.config import (
+    SERVER_MANAGED_FIELDS,
+    SUPPORTED_FIELD_TYPES,
+    embedded_model_names,
     get_config,
     save_config,
-    embedded_model_names,
-    SUPPORTED_FIELD_TYPES,
-    SERVER_MANAGED_FIELDS,
 )
-from kaira.core.parser import _embedded_target, infer_column_type, normalize_ast_type
 from kaira.console import console
+from kaira.core.aliases import complete_model_name
 from kaira.core.detector import write_with_check
 from kaira.core.drivers import get_engine_driver
-from kaira.core.parser import camel_to_snake, snake_to_pascal, table_name
+from kaira.core.parser import (
+    _embedded_target,
+    camel_to_snake,
+    infer_column_type,
+    normalize_ast_type,
+    snake_to_pascal,
+    table_name,
+)
 from kaira.core.project_runner import run_project_file, run_project_script
 from kaira.core.stats import build_stats_table, counts_by_name, try_collect_db_stats
-from kaira.core.aliases import complete_model_name
 
 TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
 
@@ -35,7 +41,7 @@ app = typer.Typer(help="Database seeding commands.")
 _MANAGED_FIELDS = SERVER_MANAGED_FIELDS
 
 
-def _embedded_seed_type(raw_type: str, embedded: set[str]) -> Optional[str]:
+def _embedded_seed_type(raw_type: str, embedded: set[str]) -> str | None:
     """Return the canonical embedded type for *raw_type*, or ``None``.
 
     Mirrors the check in ``sync``: without it an embedded field is dropped from
@@ -57,8 +63,8 @@ def _embedded_seed_type(raw_type: str, embedded: set[str]) -> Optional[str]:
 
 def _parse_live_model_fields(
     model_file: Path,
-    target_model_name: Optional[str] = None,
-    embedded: Optional[set[str]] = None,
+    target_model_name: str | None = None,
+    embedded: set[str] | None = None,
 ) -> list[dict[str, str]]:
     """Inspect a generated Python model file via AST and extract active fields.
 
@@ -74,7 +80,7 @@ def _parse_live_model_fields(
     except (OSError, SyntaxError):
         return []
 
-    target_node: Optional[ast.ClassDef] = None
+    target_node: ast.ClassDef | None = None
     if target_model_name:
         for node in ast.walk(tree):
             if isinstance(node, ast.ClassDef) and node.name == target_model_name:
@@ -103,7 +109,7 @@ def _parse_live_model_fields(
     fields: list[dict[str, str]] = []
     for stmt in target_node.body:
         name = ""
-        stmt_val: Optional[ast.expr] = None
+        stmt_val: ast.expr | None = None
 
         if isinstance(stmt, ast.AnnAssign) and isinstance(stmt.target, ast.Name):
             name = stmt.target.id
@@ -119,7 +125,7 @@ def _parse_live_model_fields(
         if not name or name in _MANAGED_FIELDS or name.startswith("_"):
             continue
 
-        norm_type: Optional[str] = None
+        norm_type: str | None = None
         if isinstance(stmt, ast.AnnAssign):
             raw_type = ""
             try:
@@ -348,7 +354,7 @@ def seed_generate(
 @app.command("run")
 def seed_run(
     model_name: Annotated[
-        Optional[str],
+        str | None,
         typer.Argument(
             help="Name of the model to seed.",
             autocompletion=complete_model_name,

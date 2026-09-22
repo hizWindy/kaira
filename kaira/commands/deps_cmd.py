@@ -7,7 +7,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated
 
 import typer
 from rich.panel import Panel
@@ -102,7 +102,7 @@ def _read_pyproject_deps() -> list[str]:
         return []
 
 
-def _pin_version(package: str) -> Optional[str]:
+def _pin_version(package: str) -> str | None:
     """Get the currently installed version of a package.
 
     Args:

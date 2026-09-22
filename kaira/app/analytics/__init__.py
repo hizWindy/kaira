@@ -23,7 +23,7 @@ class Analytics:
     """Analytics tracking wrapper (Mixpanel, Amplitude, etc.)."""
 
     def __init__(
-        self, provider: str = "mixpanel", api_key: Optional[str] = None
+        self, provider: str = "mixpanel", api_key: str | None = None
     ) -> None:
         self.provider = provider
         self.api_key = api_key or __import__("os").environ.get(
@@ -41,7 +41,7 @@ class Analytics:
             self._enabled = True
 
     def track(
-        self, event_name: str, properties: Optional[Dict[str, Any]] = None
+        self, event_name: str, properties: dict[str, Any] | None = None
     ) -> None:
         """Track an analytics event."""
         if not self._enabled:
@@ -58,7 +58,7 @@ class Analytics:
             elif self.provider == "amplitude":
                 self._client.log_event(event_name, properties or {})
 
-    def page(self, page_name: str, properties: Optional[Dict[str, Any]] = None) -> None:
+    def page(self, page_name: str, properties: dict[str, Any] | None = None) -> None:
         """Track a page view."""
         self.track(f"page:{page_name}", properties)
 

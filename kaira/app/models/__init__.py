@@ -26,7 +26,7 @@ from kaira.app.models.sqlalchemy import Model as SQLModel
 from kaira.config import get_config
 
 
-def _resolve_model_base() -> Type[Any]:
+def _resolve_model_base() -> type[Any]:
     try:
         cfg = get_config()
         orm = getattr(cfg, "orm", "sqlalchemy").lower()
@@ -53,7 +53,7 @@ def _resolve_model_base() -> Type[Any]:
         return SQLModel
 
 
-Model: Type[Any] = _resolve_model_base()
+Model: type[Any] = _resolve_model_base()
 BaseModel = Model
 
 __all__ = [

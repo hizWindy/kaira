@@ -5,16 +5,15 @@ from __future__ import annotations
 import os
 import re
 import shutil
-import sys
 import subprocess
+import sys
 import time
+from collections.abc import Sequence
 from pathlib import Path
-from typing import List, Optional, Sequence
 
 import typer
 from jinja2 import Environment, FileSystemLoader
 from rich.markup import escape
-
 
 from kaira.config import KairaConfig
 from kaira.console import console
@@ -143,9 +142,9 @@ class _InstallOutputParser:
     def __init__(
         self,
         strategy: str,
-        resolve: "ProgressPhase",
-        download: "ProgressPhase",
-        install: "ProgressPhase",
+        resolve: ProgressPhase,
+        download: ProgressPhase,
+        install: ProgressPhase,
     ) -> None:
         self.strategy = strategy
         self.resolve = resolve
@@ -155,7 +154,7 @@ class _InstallOutputParser:
 
     # -- helpers ------------------------------------------------------------
 
-    def _item(self, name: str) -> Optional["ProgressItem"]:
+    def _item(self, name: str) -> ProgressItem | None:
         """Find the nested item for *name*, comparing normalised names."""
         wanted = name.replace("_", "-").lower()
         for item in self.install.items:
@@ -367,7 +366,7 @@ def classify_install_error(
 
 def install_packages(
     packages: list[str],
-    project_dir: Optional[Path] = None,
+    project_dir: Path | None = None,
     upgrade: bool = False,
 ) -> tuple[int, int, int]:
     """Install python packages via batched invocation with progress rendering.
@@ -667,7 +666,7 @@ def init_project(
         "tier": tier,
         "providers": ["cache", "auth", "monitor"] if tier == "enterprise" else ["cache", "auth"],
         "enforce_layers": True,
-        "kaira_version": "0.2.4",
+        "kaira_version": "0.2.5",
     }
 
     # 1. main.py selection based on tier
@@ -727,22 +726,7 @@ def init_project(
         non_interactive=True,
     )
 
-    # 5. middleware/security.py
-    sec_tmpl = env.get_template("security_middleware.py.j2")
-    write_with_check(
-        cwd / "middleware" / "security.py",
-        sec_tmpl.render(**ctx),
-        force=True,
-        non_interactive=True,
-    )
-
-    # 6. rate_limit.py
-    rl_tmpl = env.get_template("rate_limit.py.j2")
-    write_with_check(
-        cwd / "rate_limit.py", rl_tmpl.render(**ctx), force=True, non_interactive=True
-    )
-
-    # 7. auth boilerplate
+    # 5. auth boilerplate
     if auth == "jwt":
         templates = {
             "auth_jwt_dependencies.py.j2": cwd / "auth" / "dependencies.py",
@@ -776,7 +760,7 @@ def init_project(
             non_interactive=True,
         )
 
-    # 8. Active environment file (.env). Staging/production config belongs in the
+    # 6. Active environment file (.env). Staging/production config belongs in the
     # deploy platform's env/secrets, not committed files — so only .env (+ the
     # committed .env.example below) is generated.
     secret = "placeholder-32-character-secret-key-for-kaira-api"
@@ -838,9 +822,9 @@ def init_project(
         cwd / ".env.example", example_content, force=True, non_interactive=True
     )
 
-    # 9. Docker setup — rendered from the same dynamic registry `kaira docker
+    # 7. Docker setup — rendered from the same dynamic registry `kaira docker
     # sync` uses, so a fresh project and a synced one produce identical output.
-    # No .kaira.json exists yet at this point (written in step 12 below), so the
+    # No .kaira.json exists yet at this point (written in step 10 below), so the
     # state is built directly from what init already knows rather than through
     # docker_state.resolve_state(), which reads it from disk.
     docker_python = docker_state.resolve_python_version(None)
@@ -861,7 +845,7 @@ def init_project(
         ).items():
             write_with_check(cwd / filename, content, force=True, non_interactive=True)
 
-    # 10. CI/CD workflow setup
+    # 8. CI/CD workflow setup
     if ci == "github":
         gh_dir = cwd / ".github" / "workflows"
         gh_dir.mkdir(parents=True, exist_ok=True)
@@ -898,7 +882,7 @@ def init_project(
             non_interactive=True,
         )
 
-    # 11. Gitignore, project README, pyproject.toml
+    # 9. Gitignore, project README, pyproject.toml
     write_with_check(
         cwd / ".gitignore",
         env.get_template("gitignore_project.j2").render(**ctx),
@@ -918,7 +902,7 @@ def init_project(
         non_interactive=True,
     )
 
-    # 11b. Agent Skills Library (.agents/skills/*/SKILL.md)
+    # 9b. Agent Skills Library (.agents/skills/*/SKILL.md)
     skills_dir = cwd / ".agents" / "skills"
     skill_definitions = [
         ("khaira-scaffold-model", "skills/skill_scaffold_model.md.j2"),
@@ -969,7 +953,7 @@ def init_project(
         non_interactive=True,
     )
 
-    # 12. Local Kaira settings configuration file
+    # 10. Local Kaira settings configuration file
     config = KairaConfig(
         db_type=db,
         auth_type=auth,
@@ -987,7 +971,7 @@ def init_project(
     with open(config_path, "w", encoding="utf-8") as f:
         json.dump(config.to_dict(), f, indent=2)
 
-    # 13. Documentation generation for framework tiers
+    # 11. Documentation generation for framework tiers
     if tier != "simple":
         try:
             from kaira.migrations.file_writer import FileWriter
@@ -998,18 +982,18 @@ def init_project(
 
 
 def init_command(
-    name: Optional[str] = None,
-    db: Optional[str] = None,
-    auth: Optional[str] = None,
-    docker: Optional[bool] = None,
-    ci: Optional[str] = None,
-    profile: Optional[str] = None,
+    name: str | None = None,
+    db: str | None = None,
+    auth: str | None = None,
+    docker: bool | None = None,
+    ci: str | None = None,
+    profile: str | None = None,
     yes: bool = False,
-    tier: Optional[str] = None,
-    db_user: Optional[str] = None,
-    db_password: Optional[str] = None,
-    db_host: Optional[str] = None,
-    db_port: Optional[int] = None,
+    tier: str | None = None,
+    db_user: str | None = None,
+    db_password: str | None = None,
+    db_host: str | None = None,
+    db_port: int | None = None,
 ) -> None:
     """Entrypoint for kaira init command with wizard setup."""
     valid_dbs = {"postgresql", "mysql", "mongodb", "sqlite"}
@@ -1056,7 +1040,7 @@ def init_command(
     # Interactive setup wizard.  A fully flag-driven run asks nothing, so the
     # heading would introduce an empty section — the scaffold section below
     # echoes the resolved configuration either way.
-    if not (db and auth and docker is not None and ci is not None and tier is not None):
+    if is_interactive_run and not (db and auth and docker is not None and ci is not None and tier is not None):
         ui.section("setup", name)
 
     if not tier:
@@ -1082,12 +1066,15 @@ def init_command(
         tier = tier.lower()
 
     if not db:
-        db_choice = select_option(
-            "database",
-            ["SQLite", "PostgreSQL", "MySQL", "MongoDB"],
-            "SQLite",
-        )
-        db = db_choice.lower()
+        if is_interactive_run:
+            db_choice = select_option(
+                "database",
+                ["SQLite", "PostgreSQL", "MySQL", "MongoDB"],
+                "SQLite",
+            )
+            db = db_choice.lower()
+        else:
+            db = "sqlite"
     else:
         db = db.lower()
     if db not in valid_dbs:
@@ -1121,8 +1108,11 @@ def init_command(
             db_port = db_port or default_port
 
     if not auth:
-        auth_choice = select_option("auth", ["JWT", "OAuth2", "API Key", "None"], "JWT")
-        auth = auth_choice.lower().replace(" ", "-")
+        if is_interactive_run:
+            auth_choice = select_option("auth", ["JWT", "OAuth2", "API Key", "None"], "JWT")
+            auth = auth_choice.lower().replace(" ", "-")
+        else:
+            auth = "jwt"
     else:
         auth = auth.lower().replace(" ", "-")
     if auth not in valid_auth:
@@ -1132,22 +1122,28 @@ def init_command(
         raise typer.Exit(1)
 
     if docker is None:
-        docker = select_confirm("docker", default=True)
+        if is_interactive_run:
+            docker = select_confirm("docker", default=True)
+        else:
+            docker = False
 
     if ci is None:
-        include_ci = select_confirm("ci/cd", default=True)
-        if include_ci:
-            ci_choice = select_option(
-                "ci platform",
-                ["GitHub Actions", "GitLab CI", "Bitbucket Pipelines"],
-                "GitHub Actions",
-            )
-            if "github" in ci_choice.lower():
-                ci = "github"
-            elif "gitlab" in ci_choice.lower():
-                ci = "gitlab"
+        if is_interactive_run:
+            include_ci = select_confirm("ci/cd", default=True)
+            if include_ci:
+                ci_choice = select_option(
+                    "ci platform",
+                    ["GitHub Actions", "GitLab CI", "Bitbucket Pipelines"],
+                    "GitHub Actions",
+                )
+                if "github" in ci_choice.lower():
+                    ci = "github"
+                elif "gitlab" in ci_choice.lower():
+                    ci = "gitlab"
+                else:
+                    ci = "bitbucket"
             else:
-                ci = "bitbucket"
+                ci = "none"
         else:
             ci = "none"
     else:
@@ -1279,7 +1275,7 @@ def init_command(
 def upgrade_command(
     tier: str = "standard",
     dry_run: bool = False,
-    features: Optional[List[str]] = None,
+    features: list[str] | None = None,
 ) -> None:
     """Execute project tier upgrade with snapshot and rollback safety."""
     from kaira.core.theme import Theme, sym
@@ -1315,10 +1311,11 @@ def upgrade_command(
 
 def microservice_split_command(
     service_name: str,
-    models: Optional[List[str]] = None,
+    models: list[str] | None = None,
 ) -> None:
     """Extract specified models and their layers into an autonomous microservice package."""
     import shutil
+
     from kaira.core.theme import Theme, sym
 
     models = models or []

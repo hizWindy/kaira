@@ -20,4 +20,4 @@ class Storage:
 S3 = Storage
 GCS = Storage
 
-__all__ = ["Storage", "S3", "GCS"]
+__all__ = ["GCS", "S3", "Storage"]

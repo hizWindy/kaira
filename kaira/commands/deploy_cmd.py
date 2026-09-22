@@ -15,8 +15,8 @@ from jinja2 import Environment, FileSystemLoader
 from rich.panel import Panel
 from rich.table import Table
 
-from kaira.console import console
 from kaira.commands.ux_helpers import typed_confirmation
+from kaira.console import console
 
 TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
 

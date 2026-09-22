@@ -5,8 +5,6 @@ from __future__ import annotations
 import pytest
 
 from kaira.core.parser import (
-    FieldDef,
-    RelationDef,
     camel_to_snake,
     parse_fields,
     parse_relation,
@@ -16,7 +14,6 @@ from kaira.core.parser import (
     table_name,
     validate_model_name,
 )
-
 
 # ---------------------------------------------------------------------------
 # validate_model_name

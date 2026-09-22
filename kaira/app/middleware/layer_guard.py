@@ -8,8 +8,10 @@ Ensures strict separation of concerns:
 from __future__ import annotations
 
 import ast
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable, List, Optional
+from typing import Any
+
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
@@ -17,9 +19,9 @@ from starlette.responses import Response
 from kaira.app.exceptions import LayerViolationError
 
 
-def audit_router_ast(filepath: Path) -> List[str]:
-    """Scan a router Python file's AST for forbidden repository imports."""
-    violations: List[str] = []
+def audit_router_ast(filepath: Path) -> list[str]:
+    """Scan a router Python file's AST for forbidden repository and database imports."""
+    violations: list[str] = []
     try:
         source = filepath.read_text(encoding="utf-8")
         tree = ast.parse(source, filename=str(filepath))
@@ -36,20 +38,28 @@ def audit_router_ast(filepath: Path) -> List[str]:
                     violations.append(
                         f"{filepath.name}: Direct import of '{alias.name}' in router layer is prohibited."
                     )
+                if alias.name in ("core.database", "khaira.database"):
+                    violations.append(
+                        f"{filepath.name}: Direct import of '{alias.name}' in router layer is prohibited. Use service layer."
+                    )
         elif isinstance(node, ast.ImportFrom):
             mod = node.module or ""
             if "repository" in mod.lower() or "repositories" in mod.lower():
                 violations.append(
                     f"{filepath.name}: Direct 'from {mod}' in router layer is prohibited. Use service layer."
                 )
+            if mod in ("core.database", "khaira.database"):
+                violations.append(
+                    f"{filepath.name}: Direct 'from {mod}' in router layer is prohibited. Use service layer."
+                )
     return violations
 
 
-def audit_layers(routers_dir: Path) -> List[str]:
+def audit_layers(routers_dir: Path) -> list[str]:
     """Audit all router files in a project for layer separation compliance."""
     if not routers_dir.exists():
         return []
-    all_violations: List[str] = []
+    all_violations: list[str] = []
     for r_file in routers_dir.rglob("*.py"):
         if r_file.name.startswith("__"):
             continue
@@ -63,7 +73,7 @@ class LayerGuardMiddleware(BaseHTTPMiddleware):
     def __init__(
         self,
         app: Any,
-        routers_dir: Optional[Path] = None,
+        routers_dir: Path | None = None,
         enforce: bool = True,
     ) -> None:
         super().__init__(app)

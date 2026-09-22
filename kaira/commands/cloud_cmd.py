@@ -24,10 +24,11 @@ import re
 import stat
 import time
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated
 
 import typer
 
+from kaira.commands.ux_helpers import mask_credentials, typed_confirmation
 from kaira.console import console
 from kaira.core.theme import Theme, sym
 from kaira.core.ui import (
@@ -37,7 +38,6 @@ from kaira.core.ui import (
     spinner_context,
     with_summary,
 )
-from kaira.commands.ux_helpers import mask_credentials, typed_confirmation
 
 app = typer.Typer(
     help="Cloud database providers (Supabase, Atlas, Firebase) and fallback."
@@ -334,7 +334,7 @@ _PROVIDER_HINTS = {
 @with_summary
 def cloud_connect(
     provider: Annotated[
-        Optional[str],
+        str | None,
         typer.Option(
             "--provider", "-p", help="Cloud provider: supabase | atlas | firebase"
         ),

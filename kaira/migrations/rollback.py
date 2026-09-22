@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import shutil
 from pathlib import Path
-from typing import Optional
 
 from kaira.app.exceptions import RollbackError
 
@@ -12,10 +11,10 @@ from kaira.app.exceptions import RollbackError
 class SnapshotManager:
     """Manages project backups and restoration."""
 
-    def __init__(self, backup_dir: Optional[Path] = None) -> None:
+    def __init__(self, backup_dir: Path | None = None) -> None:
         self.backup_dir = backup_dir or Path(".kaira/backup")
 
-    def create_snapshot(self, root: Optional[Path] = None) -> Path:
+    def create_snapshot(self, root: Path | None = None) -> Path:
         """Create a backup of the project state before applying modifications."""
         root = root or Path.cwd()
         self.backup_dir.mkdir(parents=True, exist_ok=True)
@@ -56,7 +55,7 @@ class SnapshotManager:
 
         return self.backup_dir
 
-    def rollback(self, root: Optional[Path] = None) -> None:
+    def rollback(self, root: Path | None = None) -> None:
         """Restore project state from snapshot."""
         root = root or Path.cwd()
         if not self.backup_dir.exists():

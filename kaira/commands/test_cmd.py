@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated
 
 import typer
 from jinja2 import Environment, FileSystemLoader
@@ -34,7 +34,7 @@ def _get_env() -> Environment:
 @app.command("generate")
 def test_generate(
     model_name: Annotated[
-        Optional[str],
+        str | None,
         typer.Argument(
             help="Name of the model to test.",
             autocompletion=complete_model_name,

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+
 from khaira.models import Mapped
 
 
@@ -110,9 +111,9 @@ def test_kaira_http_abstraction() -> None:
 def test_khaira_auth_abstraction() -> None:
     """Test from khaira.auth import OAuth2PasswordBearer, JWT, hash_password, etc."""
     from khaira.auth import (
+        JWT,
         ApiKey,
         HTTPBearer,
-        JWT,
         JWTManager,
         OAuth2,
         OAuth2PasswordBearer,
@@ -226,7 +227,7 @@ def test_khaira_security_abstraction() -> None:
 
 def test_khaira_other_submodules() -> None:
     """Test cache, task, ai, logging, tracing submodules."""
-    from khaira.ai import Agent, RAG
+    from khaira.ai import RAG, Agent
     from khaira.cache import Cache
     from khaira.logging import logger
     from khaira.task import Task

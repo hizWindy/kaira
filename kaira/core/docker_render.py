@@ -14,7 +14,6 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 from jinja2 import Environment, FileSystemLoader
 from rich.panel import Panel
@@ -126,23 +125,23 @@ class FilePlan:
         return compute_diff(existing, self.content, self.path.name)
 
 
-def docker_enabled(root: Optional[Path] = None) -> bool:
+def docker_enabled(root: Path | None = None) -> bool:
     """True when the project has a generated Dockerfile."""
     root = Path.cwd() if root is None else root
     return (root / DOCKERFILE).is_file()
 
 
-def compose_enabled(root: Optional[Path] = None) -> bool:
+def compose_enabled(root: Path | None = None) -> bool:
     """True when the project has generated compose files."""
     root = Path.cwd() if root is None else root
     return any((root / name).is_file() for name in COMPOSE_FILES)
 
 
 def build_plan(
-    root: Optional[Path] = None,
+    root: Path | None = None,
     *,
-    state: Optional[ProjectState] = None,
-    with_compose: Optional[bool] = None,
+    state: ProjectState | None = None,
+    with_compose: bool | None = None,
 ) -> list[FilePlan]:
     """Compare the project's Docker files against freshly rendered output.
 
@@ -176,7 +175,7 @@ def build_plan(
     return plans
 
 
-def is_out_of_sync(root: Optional[Path] = None) -> bool:
+def is_out_of_sync(root: Path | None = None) -> bool:
     """True when any generated Docker file differs from current project state.
 
     Returns ``False`` for projects with no Dockerfile at all — nothing to drift.
@@ -306,7 +305,7 @@ def apply_plan(
 # ---------------------------------------------------------------------------
 
 
-def maybe_autosync(*, quiet: bool = False, root: Optional[Path] = None) -> bool:
+def maybe_autosync(*, quiet: bool = False, root: Path | None = None) -> bool:
     """Offer to regenerate Docker files after a project-state change.
 
     Called by every command that changes what Docker should contain (cache

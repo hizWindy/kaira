@@ -14,10 +14,10 @@ from kaira.app.providers.base import KairaProvider
 
 __all__ = [
     "KairaApp",
-    "KairaProvider",
-    "LifecycleManager",
     "KairaError",
+    "KairaProvider",
     "LayerViolationError",
+    "LifecycleManager",
     "ProviderError",
     "UpgradeError",
 ]

@@ -8,7 +8,6 @@ from sqlalchemy.orm import DeclarativeBase
 class SQLAlchemyModel(DeclarativeBase):
     """Declarative Base class for SQLAlchemy ORM models in Kaira."""
 
-    pass
 
 
 Model = SQLAlchemyModel

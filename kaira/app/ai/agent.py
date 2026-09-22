@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, List, Optional
+from typing import Any
 
 
 class Agent:
@@ -12,7 +12,7 @@ class Agent:
         self,
         provider: str = "openai",
         model: str = "gpt-4o",
-        tools: Optional[List[Any]] = None,
+        tools: list[Any] | None = None,
     ) -> None:
         self.provider = provider
         self.model = model

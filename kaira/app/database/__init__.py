@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import os
-from typing import Any, AsyncGenerator, Optional
+from collections.abc import AsyncGenerator
+from typing import Any, Optional
 
 try:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -28,7 +29,7 @@ except ImportError:
 class Database:
     """Database connection and session helper."""
 
-    def __init__(self, dsn: Optional[str] = None) -> None:
+    def __init__(self, dsn: str | None = None) -> None:
         self.dsn = dsn or os.getenv("DATABASE_URL") or "sqlite+aiosqlite:///./app.db"
 
     def get_dsn(self) -> str:
@@ -50,11 +51,11 @@ async def get_db() -> AsyncGenerator[Any, None]:
 
 
 __all__ = [
-    "Base",
-    "DeclarativeBase",
-    "declarative_base",
-    "Database",
     "AsyncSession",
+    "Base",
+    "Database",
+    "DeclarativeBase",
     "Session",
+    "declarative_base",
     "get_db",
 ]

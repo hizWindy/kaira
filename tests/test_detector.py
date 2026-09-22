@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import pytest
-from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 from kaira.core.detector import (
     compute_diff,
@@ -12,7 +10,6 @@ from kaira.core.detector import (
     show_diff,
     write_with_check,
 )
-
 
 # ---------------------------------------------------------------------------
 # file_exists

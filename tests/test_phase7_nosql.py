@@ -8,13 +8,13 @@ from rich.console import Console
 from typer.testing import CliRunner
 
 from kaira.commands.db_cmd import _get_database_url
-from kaira.main import app
 from kaira.core.drivers import (
-    get_engine_driver,
-    RelationalEngineDriver,
     DocumentEngineDriver,
+    RelationalEngineDriver,
+    get_engine_driver,
 )
 from kaira.core.stats import build_stats_table, counts_by_name, try_collect_db_stats
+from kaira.main import app
 
 runner = CliRunner()
 
